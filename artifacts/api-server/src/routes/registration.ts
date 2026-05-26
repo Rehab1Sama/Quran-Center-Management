@@ -4,6 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { authenticate, requireRole } from "../middlewares/authenticate";
 import { hashPassword } from "../lib/auth";
 import { OpenRegistrationBody, SubmitRegistrationBody } from "@workspace/api-zod";
+import { appendStudentToSheet } from "../lib/sheets";
 
 const router: IRouter = Router();
 
@@ -183,6 +184,24 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
       memorizeFrom: memorizeFrom ?? null,
       extraData: extraData ? JSON.stringify(extraData) : null,
     });
+
+    // Get circle name for Google Sheets
+    const circleName = targetCircleId
+      ? (await db.select({ name: circlesTable.name }).from(circlesTable).where(eq(circlesTable.id, targetCircleId)))[0]?.name
+      : undefined;
+
+    // Append to Google Sheets (non-blocking, errors are logged not thrown)
+    appendStudentToSheet({
+      fullName,
+      email: email.toLowerCase(),
+      phone: phone ?? null,
+      country: country ?? null,
+      ageRange: ageRange ?? null,
+      educationLevel: educationLevel ?? null,
+      track: track ?? null,
+      circleName: circleName ?? null,
+      memorizeFrom: memorizeFrom ?? null,
+    }).catch(() => {});
   }
 
   res.status(201).json({ success: true });

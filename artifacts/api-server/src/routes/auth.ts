@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, studentsTable } from "@workspace/db";
+import { db, usersTable, studentsTable, circlesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { hashPassword, verifyPassword, generateToken } from "../lib/auth";
 import { authenticate } from "../middlewares/authenticate";
 import { LoginBody, LoginSelectAccountBody } from "@workspace/api-zod";
+import { appendVolunteerToSheet } from "../lib/sheets";
 
 const router: IRouter = Router();
 
@@ -167,6 +168,24 @@ router.post("/auth/staff-register", async (req, res): Promise<void> => {
     extraData: extraData ? JSON.stringify(extraData) : null,
   }).returning();
   const { passwordHash: _ph, ...safeUser } = user;
+
+  // Get circle name for Google Sheets
+  const parsedCircleId = circleId ? parseInt(circleId) : null;
+  const circleName = parsedCircleId
+    ? (await db.select({ name: circlesTable.name }).from(circlesTable).where(eq(circlesTable.id, parsedCircleId)))[0]?.name
+    : undefined;
+
+  // Append to Google Sheets (non-blocking)
+  appendVolunteerToSheet({
+    fullName: name,
+    email: email.toLowerCase(),
+    role: targetRole,
+    phone: phone ?? null,
+    country: country ?? null,
+    track: track ?? null,
+    circleName: circleName ?? null,
+  }).catch(() => {});
+
   res.status(201).json(safeUser);
 });
 

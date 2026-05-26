@@ -17,6 +17,7 @@
     "drizzle-orm": "catalog:",
     "exceljs": "^4.4.0",
     "express": "^5",
+    "googleapis": "^172.0.0",
     "pino": "^9",
     "pino-http": "^10"
   },
