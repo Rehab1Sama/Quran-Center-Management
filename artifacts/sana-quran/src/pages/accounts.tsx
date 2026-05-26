@@ -1,0 +1,569 @@
+import { useState } from "react";
+import {
+  useListUsers,
+  useCreateUser,
+  useUpdateUser,
+  useDeleteUser,
+  useListCircles,
+  useResetUserPassword,
+  useDisableUser,
+  useEnableUser,
+  useListTracks,
+  useGetCurrentUser,
+} from "@workspace/api-client-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { Plus, Pencil, Trash2, UserPlus, Search, KeyRound, Ban, CheckCircle2, Archive } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const ROLES = [
+  { value: "leader", label: "القائدة" },
+  { value: "deputy", label: "النائبة" },
+  { value: "data_entry", label: "مُدخلة بيانات" },
+  { value: "teacher", label: "معلمة" },
+  { value: "supervisor", label: "مشرفة" },
+  { value: "track_supervisor", label: "مسؤولة مسار" },
+  { value: "exam_supervisor", label: "مسؤولة الاختبارات" },
+  { value: "student", label: "طالبة" },
+];
+
+function getRoleBadgeClass(role: string) {
+  const map: Record<string, string> = {
+    leader: "bg-teal-100 text-teal-700",
+    deputy: "bg-teal-100 text-teal-600",
+    data_entry: "bg-blue-100 text-blue-700",
+    teacher: "bg-emerald-100 text-emerald-700",
+    supervisor: "bg-amber-100 text-amber-700",
+    track_supervisor: "bg-pink-100 text-pink-700",
+    exam_supervisor: "bg-teal-100 text-teal-700",
+    student: "bg-gray-100 text-gray-700",
+  };
+  return map[role] ?? "bg-gray-100 text-gray-700";
+}
+
+type UserRow = {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  track?: string | null;
+  circleId?: number | null;
+  isArchived?: boolean;
+};
+
+type PersonGroup = {
+  email: string;
+  name: string;
+  accounts: UserRow[];
+};
+
+function groupByEmail(users: UserRow[]): PersonGroup[] {
+  const map = new Map<string, PersonGroup>();
+  for (const u of users) {
+    if (!map.has(u.email)) {
+      map.set(u.email, { email: u.email, name: u.name, accounts: [] });
+    }
+    map.get(u.email)!.accounts.push(u);
+  }
+  return [...map.values()];
+}
+
+export default function AccountsPage() {
+  const { data: currentUser } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
+  const isLeader = currentUser?.role === "leader";
+  const { data: users, isLoading } = useListUsers(undefined, { query: { queryKey: ["users"] } });
+  const { data: circles } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
+  const { data: tracks, isLoading: tracksLoading } = useListTracks({ query: { queryKey: ["tracks"] } });
+  const createUser = useCreateUser();
+  const updateUser = useUpdateUser();
+  const deleteUser = useDeleteUser();
+  const resetPwd = useResetUserPassword();
+  const disableUser = useDisableUser();
+  const enableUser = useEnableUser();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [permDeleteOpen, setPermDeleteOpen] = useState(false);
+  const [permDeleteTarget, setPermDeleteTarget] = useState<{ id: number; label: string } | null>(null);
+  const [permDeleting, setPermDeleting] = useState(false);
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserRow | null>(null);
+  const [resetPwdOpen, setResetPwdOpen] = useState(false);
+  const [resetPwdUserId, setResetPwdUserId] = useState<number | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "",
+    track: "",
+    circleId: "",
+  });
+
+  const openCreate = () => {
+    setEditingUser(null);
+    setForm({ name: "", email: "", password: "", role: "", track: "", circleId: "" });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (user: UserRow) => {
+    setEditingUser(user);
+    setForm({
+      name: user.name,
+      email: user.email,
+      password: "",
+      role: user.role,
+      track: user.track ?? "",
+      circleId: user.circleId?.toString() ?? "",
+    });
+    setDialogOpen(true);
+  };
+
+  const openAddRole = (person: PersonGroup) => {
+    setEditingUser(null);
+    setForm({
+      name: person.name,
+      email: person.email,
+      password: "",
+      role: "",
+      track: "",
+      circleId: "",
+    });
+    setDialogOpen(true);
+  };
+
+  const handleSave = () => {
+    const data: any = {
+      name: form.name,
+      email: form.email,
+      role: form.role,
+      track: form.track || null,
+      circleId: form.circleId ? parseInt(form.circleId) : null,
+    };
+    if (form.password) data.password = form.password;
+
+    if (editingUser) {
+      updateUser.mutate(
+        { id: editingUser.id, data },
+        {
+          onSuccess: () => {
+            toast({ title: "تم تحديث الحساب بنجاح" });
+            queryClient.invalidateQueries({ queryKey: ["users"] });
+            setDialogOpen(false);
+          },
+          onError: () => toast({ title: "خطأ في تحديث الحساب", variant: "destructive" }),
+        }
+      );
+    } else {
+      createUser.mutate(
+        { data: { ...data, password: form.password } },
+        {
+          onSuccess: () => {
+            toast({ title: "تم إنشاء الحساب بنجاح" });
+            queryClient.invalidateQueries({ queryKey: ["users"] });
+            setDialogOpen(false);
+          },
+          onError: () => toast({ title: "خطأ في إنشاء الحساب", variant: "destructive" }),
+        }
+      );
+    }
+  };
+
+  const handleDelete = (userId: number, label: string) => {
+    if (!confirm(`هل تريدين حذف "${label}"؟`)) return;
+    deleteUser.mutate(
+      { id: userId },
+      {
+        onSuccess: () => {
+          toast({ title: "تم حذف الحساب" });
+          queryClient.invalidateQueries({ queryKey: ["users"] });
+        },
+        onError: () => toast({ title: "خطأ في حذف الحساب", variant: "destructive" }),
+      }
+    );
+  };
+
+  const handleArchiveAccount = (userId: number, label: string) => {
+    if (!confirm(`هل تريدين أرشفة "${label}"؟ ستنتقل بياناته للأرشيف وتبقى إحصائياته محفوظة.`)) return;
+    deleteUser.mutate(
+      { id: userId },
+      {
+        onSuccess: () => {
+          toast({ title: "تمت الأرشفة", description: "الحساب في الأرشيف وبياناته محفوظة" });
+          queryClient.invalidateQueries({ queryKey: ["users"] });
+        },
+        onError: () => toast({ title: "خطأ في الأرشفة", variant: "destructive" }),
+      }
+    );
+  };
+
+  const handlePermanentDelete = async () => {
+    if (!permDeleteTarget) return;
+    setPermDeleting(true);
+    try {
+      const token = localStorage.getItem("sana_auth_token");
+      const res = await fetch(`${BASE}/api/users/${permDeleteTarget.id}/permanent`, {
+        method: "DELETE",
+        headers: token ? { "Authorization": `Bearer ${token}` } : {},
+      });
+      if (res.ok || res.status === 204) {
+        toast({ title: "تم الحذف النهائي", description: "تم حذف الحساب بشكل نهائي من النظام" });
+        queryClient.invalidateQueries({ queryKey: ["users"] });
+        setPermDeleteOpen(false);
+        setPermDeleteTarget(null);
+      } else {
+        toast({ title: "خطأ في الحذف النهائي", variant: "destructive" });
+      }
+    } finally {
+      setPermDeleting(false);
+    }
+  };
+
+  const handleResetPwd = () => {
+    if (!newPassword.trim() || !resetPwdUserId) return;
+    resetPwd.mutate(
+      { id: resetPwdUserId, data: { newPassword } },
+      {
+        onSuccess: () => {
+          toast({ title: "تم تغيير كلمة المرور" });
+          setResetPwdOpen(false);
+          setNewPassword("");
+        },
+        onError: () => toast({ title: "خطأ في تغيير كلمة المرور", variant: "destructive" }),
+      }
+    );
+  };
+
+  const handleToggleDisable = (acc: UserRow) => {
+    const fn = acc.isArchived ? enableUser : disableUser;
+    const label = acc.isArchived ? "تفعيل" : "تعطيل";
+    fn.mutate(
+      { id: acc.id },
+      {
+        onSuccess: () => {
+          toast({ title: `تم ${label} الحساب` });
+          queryClient.invalidateQueries({ queryKey: ["users"] });
+        },
+      }
+    );
+  };
+
+  const allPersons = groupByEmail((users ?? []) as UserRow[]);
+  const persons = allPersons.filter(p => {
+    if (searchTerm.trim() && !p.name.includes(searchTerm) && !p.email.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+    if (roleFilter && !p.accounts.some(a => a.role === roleFilter)) return false;
+    return true;
+  });
+  // deputy has no track/circle requirement
+  const needsTrack = ["data_entry", "track_supervisor", "teacher", "supervisor", "student"].includes(form.role);
+  const needsCircle = ["teacher", "supervisor", "student"].includes(form.role);
+  const filteredCircles = form.track
+    ? (circles ?? []).filter(c => c.track === form.track)
+    : (circles ?? []);
+
+  return (
+    <div className="space-y-6" dir="rtl">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">الحسابات</h1>
+          <p className="text-muted-foreground text-sm mt-1">إدارة المستخدمين وأدوارهم</p>
+        </div>
+        <Button onClick={openCreate} className="gap-2" data-testid="button-create-user">
+          <Plus className="w-4 h-4" />
+          حساب جديد
+        </Button>
+      </div>
+
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <Input
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            placeholder="بحث بالاسم أو البريد..."
+            className="pr-9 text-right"
+            dir="rtl"
+          />
+        </div>
+        <select
+          value={roleFilter}
+          onChange={e => setRoleFilter(e.target.value)}
+          className="border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground min-w-[120px]"
+          dir="rtl"
+        >
+          <option value="">كل الأدوار</option>
+          {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+        </select>
+      </div>
+
+      <Card className="border-0 shadow-sm" data-testid="card-accounts">
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-8 text-center text-muted-foreground">جاري التحميل...</div>
+          ) : (
+            <div className="divide-y divide-border">
+              {persons.length === 0 && searchTerm ? (
+                <div className="p-8 text-center text-muted-foreground">لا توجد نتائج مطابقة</div>
+              ) : persons.map(person => (
+                <div key={person.email} className="p-4 hover:bg-muted/20 transition-colors">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-foreground">{person.name}</div>
+                      <div className="text-xs text-muted-foreground mb-2">{person.email}</div>
+                      <div className="flex flex-wrap gap-2">
+                        {person.accounts.map(acc => (
+                          <div
+                            key={acc.id}
+                            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 ${acc.isArchived ? "bg-gray-100 opacity-60" : "bg-muted/50"}`}
+                            data-testid={`row-user-${acc.id}`}
+                          >
+                            <Badge className={`text-xs ${getRoleBadgeClass(acc.role)}`}>
+                              {ROLES.find(r => r.value === acc.role)?.label ?? acc.role}
+                            </Badge>
+                            {acc.track && (
+                              <span className="text-xs text-muted-foreground">{acc.track}</span>
+                            )}
+                            {acc.isArchived && <span className="text-xs text-gray-500">معطّل</span>}
+                            <button
+                              onClick={() => openEdit(acc)}
+                              className="text-muted-foreground hover:text-foreground transition-colors ml-1"
+                              data-testid={`button-edit-user-${acc.id}`}
+                              title="تعديل"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => { setResetPwdUserId(acc.id); setNewPassword(""); setResetPwdOpen(true); }}
+                              className="text-muted-foreground hover:text-blue-600 transition-colors"
+                              title="إعادة تعيين كلمة المرور"
+                            >
+                              <KeyRound className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => handleToggleDisable(acc)}
+                              className={`transition-colors ${acc.isArchived ? "text-muted-foreground hover:text-emerald-600" : "text-muted-foreground hover:text-destructive"}`}
+                              title={acc.isArchived ? "تفعيل الحساب" : "تعطيل الحساب"}
+                            >
+                              {acc.isArchived ? <CheckCircle2 className="w-3 h-3" /> : <Ban className="w-3 h-3" />}
+                            </button>
+                            {isLeader && acc.role !== "leader" && acc.role !== "deputy" && (
+                              <button
+                                onClick={() => handleArchiveAccount(acc.id, `${acc.role} — ${person.name}`)}
+                                className="text-muted-foreground hover:text-amber-600 transition-colors"
+                                title="أرشفة الحساب (البيانات تبقى محفوظة)"
+                              >
+                                <Archive className="w-3 h-3" />
+                              </button>
+                            )}
+                            {isLeader && acc.role !== "leader" && acc.role !== "deputy" && (
+                              <button
+                                onClick={() => { setPermDeleteTarget({ id: acc.id, label: `${person.name} (${acc.role})` }); setPermDeleteOpen(true); }}
+                                className="text-muted-foreground hover:text-destructive transition-colors"
+                                data-testid={`button-delete-user-${acc.id}`}
+                                title="حذف نهائي"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openAddRole(person)}
+                      className="shrink-0 gap-1.5 text-xs h-8"
+                      title="إضافة دور لنفس الشخص"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      إضافة دور
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>
+              {editingUser
+                ? "تعديل الحساب"
+                : form.email
+                ? `إضافة دور لـ ${form.name}`
+                : "إنشاء حساب جديد"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>الاسم</Label>
+              <Input
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="الاسم الكامل"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>البريد الإلكتروني</Label>
+              <Input
+                value={form.email}
+                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="email@sana.sa"
+                readOnly={!!(!editingUser && form.email)}
+                className={!editingUser && form.email ? "bg-muted" : ""}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                كلمة المرور{" "}
+                {(editingUser || (!editingUser && form.email)) && (
+                  <span className="text-xs text-muted-foreground">(اتركيها فارغة لعدم التغيير)</span>
+                )}
+              </Label>
+              <Input
+                type="password"
+                value={form.password}
+                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                placeholder="••••••••"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>الدور</Label>
+              <Select value={form.role} onValueChange={v => setForm(f => ({ ...f, role: v, track: "", circleId: "" }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="اختيار الدور" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.map(r => (
+                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {needsTrack && (
+              <div className="space-y-2">
+                <Label>المسار</Label>
+                <Select value={form.track} onValueChange={v => setForm(f => ({ ...f, track: v, circleId: "" }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={tracksLoading ? "جارٍ التحميل..." : "اختيار المسار"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tracksLoading ? (
+                      <SelectItem value="__loading__" disabled>جارٍ تحميل المسارات...</SelectItem>
+                    ) : !tracks?.length ? (
+                      <SelectItem value="__empty__" disabled>لا توجد مسارات — أضيفيها من "إدارة المسارات"</SelectItem>
+                    ) : (
+                      tracks.map(t => (
+                        <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {needsCircle && form.track && (
+              <div className="space-y-2">
+                <Label>الحلقة</Label>
+                <Select value={form.circleId} onValueChange={v => setForm(f => ({ ...f, circleId: v }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختيار الحلقة" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredCircles.map((c: any) => (
+                      <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>إلغاء</Button>
+            <Button
+              onClick={handleSave}
+              disabled={!form.name || !form.email || !form.role || createUser.isPending || updateUser.isPending}
+              data-testid="button-save-user"
+            >
+              {editingUser ? "حفظ التعديلات" : "إنشاء الحساب"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resetPwdOpen} onOpenChange={setResetPwdOpen}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>إعادة تعيين كلمة المرور</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <Input
+              type="password"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              placeholder="كلمة المرور الجديدة"
+              onKeyDown={e => e.key === "Enter" && handleResetPwd()}
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setResetPwdOpen(false)}>إلغاء</Button>
+            <Button onClick={handleResetPwd} disabled={!newPassword.trim() || resetPwd.isPending}>
+              تغيير كلمة المرور
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* نافذة تأكيد الحذف النهائي */}
+      <Dialog open={permDeleteOpen} onOpenChange={v => { if (!v) { setPermDeleteOpen(false); setPermDeleteTarget(null); } }}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-destructive">⚠️ حذف نهائي</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-xl bg-red-50 border border-red-200 p-3">
+              <p className="text-sm font-semibold text-red-800 mb-1">تحذير: هذا الإجراء لا يمكن التراجع عنه</p>
+              <p className="text-xs text-red-700">سيتم حذف حساب <span className="font-bold">{permDeleteTarget?.label}</span> نهائيًا من النظام بما فيه جميع بياناته.</p>
+            </div>
+            <p className="text-xs text-muted-foreground">إذا أردتِ الاحتفاظ بالبيانات والإحصائيات، استخدمي زر الأرشفة بدلًا من الحذف النهائي.</p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setPermDeleteOpen(false); setPermDeleteTarget(null); }}>إلغاء</Button>
+            <Button
+              variant="destructive"
+              onClick={handlePermanentDelete}
+              disabled={permDeleting}
+            >
+              {permDeleting ? "جاري الحذف..." : "تأكيد الحذف النهائي"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

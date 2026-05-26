@@ -1,0 +1,666 @@
+import { useState } from "react";
+import { useListCircles, useListCircleNames, useGetCurrentUser, useListStudents, useUpdateStudent, useArchiveStudent, useGetMonthlyAttendanceReport, useCreateUser, useListTracks } from "@workspace/api-client-react";
+import MessagesSection from "@/components/MessagesSection";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BookOpen, Users, ChevronDown, ChevronUp, Archive, ArrowLeftRight, Search, UserCircle, BarChart2, Link2, Clock, UserPlus } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
+
+type CircleItem = { id: number; name: string; track: string };
+type Student = { id: number; fullName: string; circleId?: number | null };
+
+function TransferModal({
+  student,
+  allCircles,
+  currentCircleId,
+  onClose,
+  onTransfer,
+  isLoading,
+}: {
+  student: Student;
+  allCircles: CircleItem[];
+  currentCircleId: number;
+  onClose: () => void;
+  onTransfer: (circleId: number) => void;
+  isLoading: boolean;
+}) {
+  const [selected, setSelected] = useState<number | null>(null);
+  const otherCircles = allCircles.filter(c => c.id !== currentCircleId);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm" dir="rtl">
+        <div className="p-5 border-b border-border">
+          <h3 className="font-bold text-base">نقل الطالبة</h3>
+          <p className="text-sm text-muted-foreground mt-1">{student.fullName}</p>
+        </div>
+        <div className="p-4 max-h-64 overflow-y-auto space-y-2">
+          {otherCircles.map(c => (
+            <button
+              key={c.id}
+              onClick={() => setSelected(c.id)}
+              className={`w-full text-right px-4 py-3 rounded-xl border-2 transition-all ${
+                selected === c.id
+                  ? "border-primary bg-primary/5 font-semibold"
+                  : "border-border hover:border-primary/50"
+              }`}
+              data-testid={`circle-option-${c.id}`}
+            >
+              <span className="text-sm">{c.name}</span>
+              <span className="text-xs text-muted-foreground mr-2">({c.track})</span>
+            </button>
+          ))}
+          {otherCircles.length === 0 && (
+            <p className="text-center text-sm text-muted-foreground py-4">لا توجد حلقات أخرى</p>
+          )}
+        </div>
+        <div className="p-4 flex gap-2 border-t border-border">
+          <Button
+            onClick={() => selected && onTransfer(selected)}
+            disabled={!selected || isLoading}
+            className="flex-1"
+            size="sm"
+          >
+            {isLoading ? "جاري النقل..." : "نقل"}
+          </Button>
+          <Button variant="outline" onClick={onClose} size="sm" className="flex-1">
+            إلغاء
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function TrackPage() {
+  const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
+  const { data: circles } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
+  const { data: circleNames } = useListCircleNames({ query: { queryKey: ["circleNames"] } });
+  const { data: allStudents } = useListStudents(undefined, { query: { queryKey: ["allStudents"] } });
+  const { data: allTracks } = useListTracks({ query: { queryKey: ["tracks"] } });
+  const updateStudent = useUpdateStudent();
+  const archiveStudent = useArchiveStudent();
+  const createUser = useCreateUser();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
+
+  const [expandedCircle, setExpandedCircle] = useState<number | null>(null);
+  const [transferStudent, setTransferStudent] = useState<{ student: Student; circleId: number } | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // نافذة إضافة حساب طالبة (مسؤولة المسار فقط)
+  const [addStudentOpen, setAddStudentOpen] = useState(false);
+  const [studentForm, setStudentForm] = useState({ name: "", email: "", password: "", circleId: "" });
+
+  // نافذة إضافة دور لطالبة موجودة
+  const [addRoleOpen, setAddRoleOpen] = useState(false);
+  const [roleForm, setRoleForm] = useState({ name: "", email: "", password: "", track: "", circleId: "" });
+
+  const myTrack = user?.track;
+  const trackCircles = circles?.filter(c => c.track === myTrack) ?? [];
+
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const { data: trackReport } = useGetMonthlyAttendanceReport(
+    { month: currentMonth },
+    { query: { queryKey: ["trackReport", currentMonth] } }
+  );
+
+  const getCircleStudents = (circleId: number): Student[] =>
+    (allStudents ?? []).filter(s => s.circleId === circleId);
+
+  const handleArchive = (student: Student) => {
+    if (!confirm(`هل أنتِ متأكدة من أرشفة "${student.fullName}"؟`)) return;
+    archiveStudent.mutate(
+      { id: student.id },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ["allStudents"] });
+          toast({ title: "تمت الأرشفة", description: `تم أرشفة ${student.fullName}` });
+        },
+        onError: () => {
+          toast({ title: "خطأ", description: "فشلت عملية الأرشفة", variant: "destructive" });
+        },
+      }
+    );
+  };
+
+  const handleTransfer = (circleId: number) => {
+    if (!transferStudent) return;
+    updateStudent.mutate(
+      { id: transferStudent.student.id, data: { circleId } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ["allStudents"] });
+          setTransferStudent(null);
+          toast({ title: "تم النقل", description: `تم نقل ${transferStudent.student.fullName} بنجاح` });
+        },
+        onError: () => {
+          toast({ title: "خطأ", description: "فشلت عملية النقل", variant: "destructive" });
+        },
+      }
+    );
+  };
+
+  const handleAddRole = () => {
+    if (!roleForm.name || !roleForm.email || !roleForm.password || !roleForm.circleId || !roleForm.track) return;
+    const selectedCircle = (circles ?? []).find(c => c.id === parseInt(roleForm.circleId));
+    createUser.mutate(
+      {
+        data: {
+          name: roleForm.name,
+          email: roleForm.email,
+          password: roleForm.password,
+          role: "student",
+          track: roleForm.track,
+          circleId: parseInt(roleForm.circleId),
+        } as any,
+      },
+      {
+        onSuccess: () => {
+          toast({ title: "تم إضافة الدور", description: `${roleForm.name} في ${selectedCircle?.name ?? ""}` });
+          queryClient.invalidateQueries({ queryKey: ["allStudents"] });
+          setAddRoleOpen(false);
+          setRoleForm({ name: "", email: "", password: "", track: "", circleId: "" });
+        },
+        onError: () => toast({ title: "خطأ في إضافة الدور", variant: "destructive" }),
+      }
+    );
+  };
+
+  const handleAddStudent = () => {
+    if (!studentForm.name || !studentForm.email || !studentForm.password || !studentForm.circleId) return;
+    const selectedCircle = trackCircles.find(c => c.id === parseInt(studentForm.circleId));
+    createUser.mutate(
+      {
+        data: {
+          name: studentForm.name,
+          email: studentForm.email,
+          password: studentForm.password,
+          role: "student",
+          track: myTrack ?? undefined,
+          circleId: parseInt(studentForm.circleId),
+        } as any,
+      },
+      {
+        onSuccess: () => {
+          toast({ title: "تم إضافة الطالبة", description: `${studentForm.name} في ${selectedCircle?.name ?? ""}` });
+          queryClient.invalidateQueries({ queryKey: ["allStudents"] });
+          setAddStudentOpen(false);
+          setStudentForm({ name: "", email: "", password: "", circleId: "" });
+        },
+        onError: () => toast({ title: "خطأ في إضافة الطالبة", variant: "destructive" }),
+      }
+    );
+  };
+
+  const searchResults = searchTerm.trim()
+    ? (allStudents ?? []).filter(s =>
+        trackCircles.some(c => c.id === s.circleId) &&
+        s.fullName.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : [];
+
+  return (
+    <div className="space-y-6" dir="rtl">
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">مساري · {myTrack}</h1>
+          <p className="text-muted-foreground text-sm mt-1">{user?.name}</p>
+        </div>
+        <Button
+          size="sm"
+          className="gap-1.5 text-xs"
+          onClick={() => { setStudentForm({ name: "", email: "", password: "", circleId: "" }); setAddStudentOpen(true); }}
+        >
+          <UserPlus className="w-4 h-4" />
+          إضافة طالبة
+        </Button>
+      </div>
+
+      {/* Messages from leader */}
+      <MessagesSection />
+
+      {/* Track Statistics */}
+      {trackReport && trackReport.length > 0 && (
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <BarChart2 className="w-4 h-4 text-primary" />
+              إحصائيات المسار — الشهر الحالي
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-0">
+            {/* Summary row */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-teal-50 rounded-xl p-3 text-center">
+                <p className="text-xl font-bold text-teal-700">
+                  {trackReport.reduce((s, c) => s + c.totalStudents, 0)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">طالبة</p>
+              </div>
+              <div className="bg-rose-50 rounded-xl p-3 text-center">
+                <p className="text-xl font-bold text-rose-600">
+                  {trackReport.reduce((s, c) => s + c.totalAbsences, 0)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">إجمالي الغياب</p>
+              </div>
+              <div className="bg-emerald-50 rounded-xl p-3 text-center">
+                {(() => {
+                  const total = trackReport.reduce((s, c) => s + c.totalSessions, 0);
+                  const absent = trackReport.reduce((s, c) => s + c.totalAbsences, 0);
+                  const rate = total > 0 ? Math.round(((total - absent) / total) * 100) : null;
+                  return (
+                    <>
+                      <p className={`text-xl font-bold ${rate == null ? "text-muted-foreground" : rate >= 80 ? "text-emerald-600" : rate >= 60 ? "text-amber-600" : "text-rose-600"}`}>
+                        {rate != null ? `${rate}%` : "—"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">معدل الحضور</p>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Bar chart comparing circles */}
+            {trackReport.filter(c => c.attendanceRate != null).length > 0 && (
+              <div>
+                <p className="text-xs text-muted-foreground font-medium mb-2">مقارنة الحلقات</p>
+                <ResponsiveContainer width="100%" height={Math.max(100, trackReport.length * 30)}>
+                  <BarChart
+                    data={trackReport
+                      .filter(c => c.attendanceRate != null)
+                      .sort((a, b) => (b.attendanceRate ?? 0) - (a.attendanceRate ?? 0))
+                      .map(c => ({ name: c.circleName, rate: c.attendanceRate, students: c.totalStudents }))}
+                    layout="vertical"
+                    margin={{ top: 0, right: 40, bottom: 0, left: 4 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 10 }} />
+                    <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 10 }} />
+                    <Tooltip
+                      formatter={(v: number) => [`${v}%`, "الحضور"]}
+                      contentStyle={{ direction: "rtl", fontFamily: "Arial", fontSize: 12 }}
+                    />
+                    <Bar dataKey="rate" radius={[0, 4, 4, 0]} maxBarSize={18}>
+                      {trackReport
+                        .filter(c => c.attendanceRate != null)
+                        .sort((a, b) => (b.attendanceRate ?? 0) - (a.attendanceRate ?? 0))
+                        .map((c, i) => (
+                          <Cell
+                            key={i}
+                            fill={(c.attendanceRate ?? 0) >= 80 ? "#10b981" : (c.attendanceRate ?? 0) >= 60 ? "#f59e0b" : "#ef4444"}
+                          />
+                        ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          className="pr-9"
+          placeholder="بحث عن طالبة بالاسم..."
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          data-testid="input-student-search"
+        />
+      </div>
+
+      {searchTerm.trim() && (
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold">نتائج البحث ({searchResults.length})</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {searchResults.length === 0 ? (
+              <p className="text-center py-6 text-muted-foreground text-sm">لا توجد نتائج</p>
+            ) : (
+              <div className="divide-y divide-border/50">
+                {searchResults.map(student => {
+                  const circle = trackCircles.find(c => c.id === student.circleId);
+                  return (
+                    <div key={student.id} className="flex items-center justify-between px-4 py-3">
+                      <div>
+                        <p className="font-semibold text-sm">{student.fullName}</p>
+                        <p className="text-xs text-muted-foreground">{circle?.name ?? "—"}</p>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => navigate(`/students/${student.id}`)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors text-xs font-semibold"
+                        >
+                          <UserCircle className="w-3 h-3" />
+                          ملف
+                        </button>
+                        <button
+                          onClick={() => student.circleId && setTransferStudent({ student, circleId: student.circleId })}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors text-xs font-semibold"
+                        >
+                          <ArrowLeftRight className="w-3 h-3" />
+                          نقل
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        <Card className="border-0 shadow-sm" data-testid="card-track-circles">
+          <CardContent className="p-4 text-center">
+            <p className="text-3xl font-bold text-primary">{trackCircles.length}</p>
+            <p className="text-xs text-muted-foreground mt-1 font-medium">الحلقات</p>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-sm" data-testid="card-track-students">
+          <CardContent className="p-4 text-center">
+            <p className="text-3xl font-bold text-teal-600">
+              {trackCircles.reduce((s, c) => s + getCircleStudents(c.id).length, 0)}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1 font-medium">الطالبات</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-0 shadow-sm" data-testid="card-track-circles-list">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-bold flex items-center gap-2">
+            <BookOpen className="w-4 h-4 text-primary" />
+            حلقات المسار
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {trackCircles.length === 0 ? (
+            <p className="text-center py-8 text-muted-foreground text-sm">لا توجد حلقات في هذا المسار</p>
+          ) : (
+            <div className="divide-y divide-border/50">
+              {trackCircles.map(circle => {
+                const circleStudents = getCircleStudents(circle.id);
+                const isExpanded = expandedCircle === circle.id;
+
+                return (
+                  <div key={circle.id} data-testid={`row-circle-${circle.id}`}>
+                    <button
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors text-right"
+                      onClick={() => setExpandedCircle(isExpanded ? null : circle.id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-sm">{circle.name}</p>
+                            {(circle as any).meetingTime && (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Clock className="w-3 h-3" />{(circle as any).meetingTime}
+                              </span>
+                            )}
+                            {(circle as any).whatsappLink && (
+                              <a
+                                href={(circle as any).whatsappLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-green-600 hover:text-green-700"
+                                title="مجموعة الواتس"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <Link2 className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <Users className="w-3 h-3 text-primary" />
+                            <span className="text-xs text-primary font-semibold">{circleStudents.length} طالبة</span>
+                          </div>
+                        </div>
+                      </div>
+                      {isExpanded
+                        ? <ChevronUp className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                        : <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      }
+                    </button>
+
+                    {isExpanded && (
+                      <div className="bg-muted/20 px-4 pb-3">
+                        {circleStudents.length === 0 ? (
+                          <p className="text-sm text-muted-foreground py-3 text-center">لا توجد طالبات في هذه الحلقة</p>
+                        ) : (
+                          <div className="space-y-2 pt-2">
+                            {circleStudents.map(student => (
+                              <div
+                                key={student.id}
+                                className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5 shadow-sm"
+                                data-testid={`student-row-${student.id}`}
+                              >
+                                <span className="text-sm font-medium">{student.fullName}</span>
+                                <div className="flex gap-1.5">
+                                  <button
+                                    onClick={() => navigate(`/students/${student.id}`)}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors text-xs font-semibold"
+                                    title="ملف الطالبة"
+                                    data-testid={`btn-profile-${student.id}`}
+                                  >
+                                    <UserCircle className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => setTransferStudent({ student, circleId: circle.id })}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors text-xs font-semibold"
+                                    title="نقل لحلقة أخرى"
+                                    data-testid={`btn-transfer-${student.id}`}
+                                  >
+                                    <ArrowLeftRight className="w-3 h-3" />
+                                    نقل
+                                  </button>
+                                  <button
+                                    onClick={() => handleArchive(student)}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors text-xs font-semibold"
+                                    title="أرشفة الطالبة"
+                                    data-testid={`btn-archive-${student.id}`}
+                                  >
+                                    <Archive className="w-3 h-3" />
+                                    أرشفة
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setRoleForm({ name: student.fullName, email: "", password: "", track: myTrack ?? "", circleId: circle.id.toString() });
+                                      setAddRoleOpen(true);
+                                    }}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors text-xs font-semibold"
+                                    title="إضافة دور لهذه الطالبة"
+                                    data-testid={`btn-add-role-${student.id}`}
+                                  >
+                                    <UserPlus className="w-3 h-3" />
+                                    دور
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {transferStudent && circleNames && (
+        <TransferModal
+          student={transferStudent.student}
+          allCircles={circleNames}
+          currentCircleId={transferStudent.circleId}
+          onClose={() => setTransferStudent(null)}
+          onTransfer={handleTransfer}
+          isLoading={updateStudent.isPending}
+        />
+      )}
+
+      {/* نافذة إضافة دور لطالبة موجودة */}
+      <Dialog open={addRoleOpen} onOpenChange={setAddRoleOpen}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>إضافة دور · طالبة</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>اسم الطالبة</Label>
+              <Input
+                value={roleForm.name}
+                onChange={e => setRoleForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="الاسم الكامل"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>البريد الإلكتروني</Label>
+              <Input
+                value={roleForm.email}
+                onChange={e => setRoleForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="email@sana.sa"
+                type="email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>كلمة المرور</Label>
+              <Input
+                type="password"
+                value={roleForm.password}
+                onChange={e => setRoleForm(f => ({ ...f, password: e.target.value }))}
+                placeholder="••••••••"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>المسار</Label>
+              <Select
+                value={roleForm.track}
+                onValueChange={v => setRoleForm(f => ({ ...f, track: v, circleId: "" }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="اختيار المسار" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(allTracks ?? []).map(t => (
+                    <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {roleForm.track && (
+              <div className="space-y-2">
+                <Label>الحلقة</Label>
+                <Select
+                  value={roleForm.circleId}
+                  onValueChange={v => setRoleForm(f => ({ ...f, circleId: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختيار الحلقة" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(circles ?? [])
+                      .filter(c => c.track === roleForm.track)
+                      .map(c => (
+                        <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3">
+              <p className="text-xs text-emerald-700">الدور: <span className="font-semibold">طالبة</span></p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setAddRoleOpen(false)}>إلغاء</Button>
+            <Button
+              onClick={handleAddRole}
+              disabled={!roleForm.name || !roleForm.email || !roleForm.password || !roleForm.track || !roleForm.circleId || createUser.isPending}
+            >
+              {createUser.isPending ? "جاري الإضافة..." : "إضافة الدور"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* نافذة إضافة طالبة — مسؤولة المسار */}
+      <Dialog open={addStudentOpen} onOpenChange={setAddStudentOpen}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>إضافة حساب طالبة</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>اسم الطالبة</Label>
+              <Input
+                value={studentForm.name}
+                onChange={e => setStudentForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="الاسم الكامل"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>البريد الإلكتروني</Label>
+              <Input
+                value={studentForm.email}
+                onChange={e => setStudentForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="email@sana.sa"
+                type="email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>كلمة المرور</Label>
+              <Input
+                type="password"
+                value={studentForm.password}
+                onChange={e => setStudentForm(f => ({ ...f, password: e.target.value }))}
+                placeholder="••••••••"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>الحلقة</Label>
+              <Select value={studentForm.circleId} onValueChange={v => setStudentForm(f => ({ ...f, circleId: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="اختيار الحلقة" />
+                </SelectTrigger>
+                <SelectContent>
+                  {trackCircles.map(c => (
+                    <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-xl bg-blue-50 border border-blue-200 p-3">
+              <p className="text-xs text-blue-700">الدور: <span className="font-semibold">طالبة</span> · المسار: <span className="font-semibold">{myTrack}</span></p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setAddStudentOpen(false)}>إلغاء</Button>
+            <Button
+              onClick={handleAddStudent}
+              disabled={!studentForm.name || !studentForm.email || !studentForm.password || !studentForm.circleId || createUser.isPending}
+            >
+              {createUser.isPending ? "جاري الإضافة..." : "إضافة الطالبة"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
