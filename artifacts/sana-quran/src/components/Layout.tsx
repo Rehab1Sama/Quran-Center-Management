@@ -558,6 +558,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
       { href: "/store-manage", label: "المتجر", icon: ShoppingBag },
       { href: "/messages", label: "الرسائل", icon: MessageSquare },
       { href: "/registration", label: "التسجيل", icon: PenSquare },
+      { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList },
       { href: "/onboard", label: "إضافة عضو مباشرة", icon: BookUser },
       { href: "/export", label: "تصدير البيانات", icon: FileDown },
     ];
@@ -584,6 +585,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
       { href: "/store-manage", label: "المتجر", icon: ShoppingBag },
       { href: "/messages", label: "الرسائل", icon: MessageSquare },
       { href: "/registration", label: "التسجيل", icon: PenSquare },
+      { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList },
       { href: "/onboard", label: "إضافة عضو مباشرة", icon: BookUser },
       { href: "/export", label: "تصدير البيانات", icon: FileDown },
       { href: "/deputy-tasks", label: "مهامي", icon: ClipboardList },
@@ -632,6 +634,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
       ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen }] : []),
       { href: "/messages", label: "الرسائل", icon: MessageSquare },
       { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount },
+      { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList },
     ];
   }
   if (role === "volunteer") {

@@ -3,6 +3,8 @@ import { logger } from "./lib/logger";
 import { db, usersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { hashPassword } from "./lib/auth";
+import cron from "node-cron";
+import { runWeeklyBackup } from "./lib/backup";
 
 async function seedLeader() {
   try {
@@ -55,4 +57,12 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
   void seedLeader();
+
+  cron.schedule("0 2 * * 0", () => {
+    logger.info("Starting weekly backup...");
+    runWeeklyBackup()
+      .then(() => logger.info("Weekly backup completed"))
+      .catch((e: unknown) => logger.error({ err: e }, "Weekly backup failed"));
+  }, { timezone: "Asia/Riyadh" });
+  logger.info("Weekly backup cron scheduled (Sundays 2:00 AM Riyadh time)");
 });

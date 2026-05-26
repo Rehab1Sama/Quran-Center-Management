@@ -7,6 +7,7 @@ export const registrationSettingsTable = pgTable("registration_settings", {
   isOpen: boolean("is_open").notNull().default(false),
   staffRegistrationOpen: boolean("staff_registration_open").notNull().default(true),
   existingStudentRegOpen: boolean("existing_student_reg_open").notNull().default(false),
+  startDate: text("start_date"),
   deadline: text("deadline"),
   customQuestions: text("custom_questions"),
   staffCustomQuestions: text("staff_custom_questions"),

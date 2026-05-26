@@ -15,6 +15,7 @@ export const usersTable = pgTable("users", {
   ageRange: text("age_range"),
   educationLevel: text("education_level"),
   isArchived: boolean("is_archived").notNull().default(false),
+  registrationStatus: text("registration_status"),
   extraData: text("extra_data"),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -27,6 +27,7 @@ import reviewPlanStatsRouter from "./reviewPlanStats";
 import deputyTasksRouter from "./deputyTasks";
 import deputyCircleVisitsRouter from "./deputyCircleVisits";
 import setupRouter from "./setup";
+import registrationApprovalRouter from "./registrationApproval";
 
 const router: IRouter = Router();
 
@@ -58,5 +59,6 @@ router.use(reviewPlanRouter);
 router.use(reviewPlanStatsRouter);
 router.use(deputyTasksRouter);
 router.use(deputyCircleVisitsRouter);
+router.use(registrationApprovalRouter);
 
 export default router;

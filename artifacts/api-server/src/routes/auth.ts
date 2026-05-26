@@ -31,12 +31,37 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   if (verified.length === 1) {
     const user = verified[0];
+    if (user.registrationStatus === "pending") {
+      res.status(403).json({ error: "طلبك قيد المراجعة، سيتم إشعارك عند القبول" });
+      return;
+    }
+    if (user.registrationStatus === "rejected") {
+      res.status(403).json({ error: "تم رفض طلب التسجيل" });
+      return;
+    }
     const token = generateToken(user.id, user.role);
     const { passwordHash: _ph, ...safeUser } = user;
     await db.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
     res.json({ user: safeUser, token });
     return;
   }
+
+  const approvedVerified = verified.filter(
+    u => u.registrationStatus !== "pending" && u.registrationStatus !== "rejected",
+  );
+  if (approvedVerified.length === 0) {
+    res.status(403).json({ error: "طلبك قيد المراجعة، سيتم إشعارك عند القبول" });
+    return;
+  }
+  if (approvedVerified.length === 1) {
+    const user = approvedVerified[0];
+    const token = generateToken(user.id, user.role);
+    const { passwordHash: _ph, ...safeUser } = user;
+    await db.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
+    res.json({ user: safeUser, token });
+    return;
+  }
+  const _unused_verified = verified;
 
   const roleLabels: Record<string, string> = {
     leader: "القائدة",
@@ -50,7 +75,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   res.json({
     requiresSelection: true,
-    accounts: verified.map(u => ({
+    accounts: approvedVerified.map(u => ({
       id: u.id,
       name: u.name,
       role: u.role,
@@ -165,6 +190,7 @@ router.post("/auth/staff-register", async (req, res): Promise<void> => {
     track: track ?? null,
     circleId: circleId ? parseInt(circleId) : null,
     isArchived: false,
+    registrationStatus: "pending",
     extraData: extraData ? JSON.stringify(extraData) : null,
   }).returning();
   const { passwordHash: _ph, ...safeUser } = user;

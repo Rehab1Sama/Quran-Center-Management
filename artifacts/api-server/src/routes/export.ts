@@ -1,5 +1,7 @@
 import { Router, type IRouter } from "express";
 import ExcelJS from "exceljs";
+import path from "path";
+import fs from "fs";
 import {
   db, studentsTable, usersTable, circlesTable, recordsTable,
   studentTransfersTable, studentArchiveEventsTable,
@@ -7,6 +9,7 @@ import {
 } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { authenticate, requireRole } from "../middlewares/authenticate";
+import { runWeeklyBackup, listBackups, getBackupPath } from "../lib/backup";
 
 const router: IRouter = Router();
 
@@ -336,6 +339,29 @@ router.get("/export/registrations", authenticate, requireRole("leader"), async (
   }));
 
   await sendWorkbook(res, wb, `بيانات_التسجيل_${new Date().toISOString().slice(0, 10)}`);
+});
+
+// ─── Backup: list + download + generate now ───────────────────────────────────
+router.get("/export/backups", authenticate, requireRole("leader", "deputy"), async (_req, res): Promise<void> => {
+  res.json(listBackups());
+});
+
+router.post("/export/backups/generate", authenticate, requireRole("leader", "deputy"), async (_req, res): Promise<void> => {
+  try {
+    const filepath = await runWeeklyBackup();
+    res.json({ success: true, filepath });
+  } catch (err) {
+    res.status(500).json({ error: "فشل إنشاء النسخة الاحتياطية" });
+  }
+});
+
+router.get("/export/backups/:filename", authenticate, requireRole("leader", "deputy"), async (req, res): Promise<void> => {
+  const rawFilename = String(req.params.filename);
+  const filepath = getBackupPath(rawFilename);
+  if (!filepath) { res.status(404).json({ error: "الملف غير موجود" }); return; }
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(rawFilename)}`);
+  res.sendFile(filepath);
 });
 
 export default router;

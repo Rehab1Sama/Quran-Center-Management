@@ -24,11 +24,24 @@ async function upsertSettings(values: Record<string, unknown>) {
 
 router.get("/registration/status", async (_req, res): Promise<void> => {
   const settings = await getSettings();
+  const now = new Date();
+  const startDate = (settings as any).startDate ?? null;
+  const deadline = settings.deadline ?? null;
+  const effectivelyOpen = settings.isOpen
+    && (!startDate || now >= new Date(startDate))
+    && (!deadline || now <= new Date(deadline));
+
+  if (settings.isOpen && deadline && now > new Date(deadline)) {
+    await upsertSettings({ isOpen: false });
+  }
+
   res.json({
-    isOpen: settings.isOpen,
+    isOpen: effectivelyOpen,
+    rawIsOpen: settings.isOpen,
     staffRegistrationOpen: settings.staffRegistrationOpen,
     existingStudentRegOpen: settings.existingStudentRegOpen,
-    deadline: settings.deadline,
+    startDate,
+    deadline,
     customQuestions: settings.customQuestions,
     staffCustomQuestions: (settings as any).staffCustomQuestions ?? null,
   });
@@ -37,7 +50,8 @@ router.get("/registration/status", async (_req, res): Promise<void> => {
 router.post("/registration/open", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
   const parsed = OpenRegistrationBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  await upsertSettings({ isOpen: true, ...parsed.data });
+  const startDate = typeof (req.body as any).startDate === "string" ? (req.body as any).startDate : null;
+  await upsertSettings({ isOpen: true, startDate, ...parsed.data });
   res.json({ success: true });
 });
 
@@ -166,6 +180,7 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
     country: country ?? null,
     ageRange: ageRange ?? null,
     educationLevel: educationLevel ?? null,
+    registrationStatus: "pending",
   }).returning();
 
   if (!role || role === "student") {

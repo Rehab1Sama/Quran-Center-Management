@@ -18,6 +18,7 @@
     "exceljs": "^4.4.0",
     "express": "^5",
     "googleapis": "^172.0.0",
+    "node-cron": "^4.2.1",
     "pino": "^9",
     "pino-http": "^10"
   },
@@ -26,6 +27,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "catalog:",
+    "@types/node-cron": "^3.0.11",
     "esbuild": "^0.27.3",
     "esbuild-plugin-pino": "^2.3.3",
     "pino-pretty": "^13",

@@ -44,6 +44,7 @@ import ThursdayReviewPage from "@/pages/thursday-review";
 import DeputyTasksPage from "@/pages/deputy-tasks";
 import DeputyBoardPage from "@/pages/deputy-board";
 import DeputyCirclesPage from "@/pages/deputy-circles";
+import PendingRegistrationsPage from "@/pages/pending-registrations";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 
@@ -145,6 +146,9 @@ function AppRoutes() {
         </Route>
         <Route path="/registration">
           {isLeader ? <RegistrationManagePage /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/pending-registrations">
+          {(isLeaderOrDeputy || isTrackSupervisor) ? <PendingRegistrationsPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/onboard">
           {isLeaderOrDeputy ? <OnboardPage /> : <Redirect to="/" />}

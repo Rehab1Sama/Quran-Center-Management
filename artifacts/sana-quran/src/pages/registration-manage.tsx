@@ -310,6 +310,9 @@ export default function RegistrationManagePage() {
   const queryClient = useQueryClient();
   const [staffLoading, setStaffLoading] = useState(false);
   const [viewingStudent, setViewingStudent] = useState<any>(null);
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [periodLoading, setPeriodLoading] = useState(false);
 
   const handleOpen = () => {
     openReg.mutate(
@@ -319,6 +322,34 @@ export default function RegistrationManagePage() {
         onError: () => toast({ title: "خطأ", variant: "destructive" }),
       }
     );
+  };
+
+  const handleSetPeriod = async () => {
+    if (!periodStart || !periodEnd) {
+      toast({ title: "يرجى تحديد تاريخ البداية والنهاية", variant: "destructive" });
+      return;
+    }
+    if (new Date(periodEnd) <= new Date(periodStart)) {
+      toast({ title: "تاريخ النهاية يجب أن يكون بعد تاريخ البداية", variant: "destructive" });
+      return;
+    }
+    setPeriodLoading(true);
+    try {
+      const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const token = localStorage.getItem("sana_auth_token");
+      const res = await fetch(`${BASE_URL}/api/registration/open`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ startDate: periodStart, deadline: periodEnd }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast({ title: `تم تعيين مدة التسجيل من ${periodStart} إلى ${periodEnd}` });
+      queryClient.invalidateQueries({ queryKey: ["regStatus"] });
+    } catch {
+      toast({ title: "خطأ في الحفظ", variant: "destructive" });
+    } finally {
+      setPeriodLoading(false);
+    }
   };
 
   const handleClose = () => {
@@ -395,6 +426,59 @@ export default function RegistrationManagePage() {
               <p className="text-xs text-emerald-600 font-mono break-all">{window.location.origin}/register</p>
             </div>
           )}
+
+          {/* Current Period Display */}
+          {((status as any)?.startDate || (status as any)?.deadline) && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm">
+              <p className="font-semibold text-amber-800 mb-1 flex items-center gap-1">
+                <Settings className="w-3.5 h-3.5" />
+                المدة الزمنية المحددة
+              </p>
+              <div className="text-amber-700 space-y-0.5">
+                {(status as any).startDate && <p>البداية: {(status as any).startDate}</p>}
+                {(status as any).deadline && <p>النهاية: {(status as any).deadline}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Period Setter */}
+          <div className="border border-dashed border-border rounded-xl p-4 space-y-3">
+            <p className="text-sm font-bold text-muted-foreground flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              تعيين مدة التسجيل (فتح تلقائي وإغلاق تلقائي)
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">تاريخ البداية</Label>
+                <Input
+                  type="date"
+                  value={periodStart}
+                  onChange={e => setPeriodStart(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">تاريخ النهاية</Label>
+                <Input
+                  type="date"
+                  value={periodEnd}
+                  onChange={e => setPeriodEnd(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+            <Button
+              onClick={handleSetPeriod}
+              disabled={periodLoading || !periodStart || !periodEnd}
+              className="w-full text-sm"
+              size="sm"
+            >
+              {periodLoading ? "جاري الحفظ..." : "تعيين المدة وفتح التسجيل"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              سيُفتح التسجيل تلقائياً في تاريخ البداية ويُغلق تلقائياً في تاريخ النهاية
+            </p>
+          </div>
 
           {/* Custom Questions Editor */}
           <div className="border-t border-border/50 pt-4">
