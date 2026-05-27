@@ -3608,9 +3608,11 @@ components:
           type: string
         createdById:
           type: integer
+        questionType:
+          type: string
         createdAt:
           type: string
-      required: [id, question, dateFrom, dateTo, createdById, createdAt]
+      required: [id, question, dateFrom, dateTo, createdById, questionType, createdAt]
 
     CreateCustomQuestionBody:
       type: object
@@ -3621,7 +3623,9 @@ components:
           type: string
         dateTo:
           type: string
-      required: [question, dateFrom, dateTo]
+        questionType:
+          type: string
+      required: [question, dateFrom, dateTo, questionType]
 
     CustomQuestionAnswer:
       type: object
@@ -3632,13 +3636,15 @@ components:
           type: integer
         supervisorNameId:
           type: integer
+        trackId:
+          type: integer
         date:
           type: string
         answer:
           type: string
         createdAt:
           type: string
-      required: [id, questionId, supervisorNameId, date, answer, createdAt]
+      required: [id, questionId, date, answer, createdAt]
 
     SaveCustomQuestionAnswerBody:
       type: object
@@ -3647,11 +3653,13 @@ components:
           type: integer
         supervisorNameId:
           type: integer
+        trackId:
+          type: integer
         date:
           type: string
         answer:
           type: string
-      required: [questionId, supervisorNameId, date, answer]
+      required: [questionId, date, answer]
 
     CalendarEvent:
       type: object

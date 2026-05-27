@@ -212,6 +212,13 @@ export default function DailyTasksPage() {
     query: { queryKey: ["customQuestions", today] },
   });
 
+  const individualQuestions = customQuestions?.filter(q => q.questionType !== "collective") ?? [];
+  const collectiveQuestions = customQuestions?.filter(q => q.questionType === "collective") ?? [];
+
+  const [collectiveAnswers, setCollectiveAnswers] = useState<Record<number, string>>({});
+  const [collectiveSaved, setCollectiveSaved] = useState(false);
+  const saveCollectiveAnswer = useSaveCustomQuestionAnswer();
+
   const [selectedNameId, setSelectedNameId] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [taskState, setTaskState] = useState<Record<number, CircleTaskState>>({});
@@ -342,6 +349,54 @@ export default function DailyTasksPage() {
         </CardContent>
       </Card>
 
+      {/* Collective (track-level) questions — shown outside circle cards */}
+      {collectiveQuestions.length > 0 && (
+        <Card className="border-2 border-purple-200 shadow-sm">
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-purple-600" />
+              <span className="text-purple-700">أسئلة عامة للمسار</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 space-y-3">
+            {collectiveQuestions.map(q => (
+              <div key={q.id}>
+                <p className="text-xs text-muted-foreground mb-1 font-medium">{q.question}</p>
+                <textarea
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none"
+                  rows={2}
+                  placeholder="الإجابة باسم المسار..."
+                  value={collectiveAnswers[q.id] ?? ""}
+                  onChange={e => {
+                    setCollectiveAnswers(prev => ({ ...prev, [q.id]: e.target.value }));
+                    setCollectiveSaved(false);
+                  }}
+                />
+              </div>
+            ))}
+            <Button
+              size="sm"
+              className="w-full text-xs h-8 bg-purple-600 hover:bg-purple-700"
+              disabled={saveCollectiveAnswer.isPending || collectiveSaved}
+              onClick={async () => {
+                if (!trackId) return;
+                for (const q of collectiveQuestions) {
+                  const ans = collectiveAnswers[q.id];
+                  if (ans?.trim()) {
+                    await saveCollectiveAnswer.mutateAsync({
+                      data: { questionId: q.id, trackId, date: today, answer: ans.trim() },
+                    });
+                  }
+                }
+                setCollectiveSaved(true);
+              }}
+            >
+              {collectiveSaved ? "تم الحفظ ✓" : "حفظ إجابات المسار"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {selectedNameId && (
         <div className="space-y-3">
           <p className="text-sm font-semibold text-muted-foreground">
@@ -411,10 +466,10 @@ export default function DailyTasksPage() {
                         </select>
                       </div>
 
-                      {customQuestions && customQuestions.length > 0 && (
+                      {individualQuestions.length > 0 && (
                         <div className="mt-4 space-y-3 pt-3 border-t border-border/50">
-                          <p className="text-xs font-bold text-primary">أسئلة إضافية</p>
-                          {customQuestions.map(q => (
+                          <p className="text-xs font-bold text-primary">أسئلة فردية</p>
+                          {individualQuestions.map(q => (
                             <div key={q.id}>
                               <p className="text-xs text-muted-foreground mb-1">{q.question}</p>
                               <textarea

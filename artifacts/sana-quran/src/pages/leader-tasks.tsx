@@ -186,12 +186,12 @@ function CustomQuestionsPanel({ date }: { date: string }) {
   const { toast } = useToast();
 
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ question: "", dateFrom: date, dateTo: date });
+  const [form, setForm] = useState({ question: "", dateFrom: date, dateTo: date, questionType: "individual" });
 
   const handleAdd = async () => {
     if (!form.question.trim()) return;
-    await createQ.mutateAsync({ data: { question: form.question.trim(), dateFrom: form.dateFrom, dateTo: form.dateTo } });
-    setAdding(false); setForm({ question: "", dateFrom: date, dateTo: date });
+    await createQ.mutateAsync({ data: { question: form.question.trim(), dateFrom: form.dateFrom, dateTo: form.dateTo, questionType: form.questionType } });
+    setAdding(false); setForm({ question: "", dateFrom: date, dateTo: date, questionType: "individual" });
     qc.invalidateQueries({ queryKey: ["customQuestionsAll"] });
     toast({ title: "تمت إضافة السؤال" });
   };
@@ -220,6 +220,9 @@ function CustomQuestionsPanel({ date }: { date: string }) {
                 <div>
                   <p className="text-sm font-medium">{q.question}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{fmtDate(q.dateFrom)} ← {fmtDate(q.dateTo)}</p>
+                  <span className={`text-xs mt-1 inline-block px-2 py-0.5 rounded-full font-medium ${q.questionType === "collective" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
+                    {q.questionType === "collective" ? "عام (باسم المسار)" : "فردي (باسم المسؤولة)"}
+                  </span>
                 </div>
                 <button onClick={() => handleDelete(q.id)} className="text-muted-foreground hover:text-red-600 transition-colors mt-0.5">
                   <Trash2 className="w-4 h-4" />
@@ -248,6 +251,19 @@ function CustomQuestionsPanel({ date }: { date: string }) {
                 <p className="text-xs text-muted-foreground mb-1">إلى تاريخ:</p>
                 <input type="date" className="border border-border rounded-lg px-2 py-1.5 text-xs w-full"
                   value={form.dateTo} onChange={e => setForm(p => ({ ...p, dateTo: e.target.value }))} />
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-1.5 font-medium">نوع السؤال:</p>
+              <div className="flex gap-3">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="qtype" value="individual" checked={form.questionType === "individual"} onChange={() => setForm(p => ({ ...p, questionType: "individual" }))} className="accent-primary" />
+                  <span className="text-xs">فردي — كل مسؤولة تجاوب باسمها</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="qtype" value="collective" checked={form.questionType === "collective"} onChange={() => setForm(p => ({ ...p, questionType: "collective" }))} className="accent-primary" />
+                  <span className="text-xs">عام — الإجابة باسم المسار</span>
+                </label>
               </div>
             </div>
             <div className="flex gap-2">

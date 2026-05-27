@@ -582,7 +582,6 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
       { href: "/shortcomings", label: "التقصير", icon: AlertTriangle },
       { href: "/stumbling-stats", label: "إحصائيات التعثر", icon: AlertTriangle },
       { href: "/review-plans", label: "خطط المراجعة", icon: BookOpen },
-      { href: "/store-manage", label: "المتجر", icon: ShoppingBag },
       { href: "/messages", label: "الرسائل", icon: MessageSquare },
       { href: "/registration", label: "التسجيل", icon: PenSquare },
       { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList },

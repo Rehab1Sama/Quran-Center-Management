@@ -162,13 +162,14 @@ router.post("/custom-questions", authenticate, async (req, res): Promise<void> =
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  const { question, dateFrom, dateTo } = req.body as { question: string; dateFrom: string; dateTo: string };
+  const { question, dateFrom, dateTo, questionType } = req.body as { question: string; dateFrom: string; dateTo: string; questionType?: string };
   if (!question?.trim() || !dateFrom || !dateTo) {
     res.status(400).json({ error: "question, dateFrom, dateTo required" });
     return;
   }
+  const type = questionType === "collective" ? "collective" : "individual";
   const [row] = await db.insert(customQuestionsTable)
-    .values({ question: question.trim(), dateFrom, dateTo, createdById: req.userId! })
+    .values({ question: question.trim(), dateFrom, dateTo, createdById: req.userId!, questionType: type })
     .returning();
   res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
 });
@@ -183,16 +184,44 @@ router.delete("/custom-questions/:id", authenticate, async (req, res): Promise<v
 });
 
 router.post("/custom-question-answers", authenticate, async (req, res): Promise<void> => {
-  const { questionId, supervisorNameId, date, answer } = req.body as {
-    questionId: number; supervisorNameId: number; date: string; answer: string;
+  const { questionId, supervisorNameId, trackId, date, answer } = req.body as {
+    questionId: number; supervisorNameId?: number; trackId?: number; date: string; answer: string;
   };
-  const [row] = await db.insert(customQuestionAnswersTable)
-    .values({ questionId, supervisorNameId, date, answer })
-    .onConflictDoUpdate({
-      target: [customQuestionAnswersTable.questionId, customQuestionAnswersTable.supervisorNameId, customQuestionAnswersTable.date],
-      set: { answer },
-    }).returning();
-  res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
+
+  if (trackId && !supervisorNameId) {
+    // Collective answer: one per (questionId, trackId, date) — delete existing then insert
+    await db.delete(customQuestionAnswersTable).where(
+      and(
+        eq(customQuestionAnswersTable.questionId, questionId),
+        eq(customQuestionAnswersTable.trackId, trackId),
+        eq(customQuestionAnswersTable.date, date),
+      )
+    );
+    const [row] = await db.insert(customQuestionAnswersTable)
+      .values({ questionId, trackId, date, answer })
+      .returning();
+    res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
+  } else {
+    // Individual answer: upsert on (questionId, supervisorNameId, date)
+    const [row] = await db.insert(customQuestionAnswersTable)
+      .values({ questionId, supervisorNameId: supervisorNameId!, date, answer })
+      .onConflictDoUpdate({
+        target: [customQuestionAnswersTable.questionId, customQuestionAnswersTable.supervisorNameId, customQuestionAnswersTable.date],
+        set: { answer },
+      }).returning();
+    res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
+  }
+});
+
+// GET collective answers for a track and date range
+router.get("/collective-question-answers", authenticate, async (req, res): Promise<void> => {
+  const { trackId, date } = req.query as { trackId?: string; date?: string };
+  const filters = [];
+  if (trackId) filters.push(eq(customQuestionAnswersTable.trackId, parseInt(trackId)));
+  if (date) filters.push(eq(customQuestionAnswersTable.date, date));
+  const rows = await db.select().from(customQuestionAnswersTable)
+    .where(filters.length ? and(...filters as Parameters<typeof and>) : undefined);
+  res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
 });
 
 export default router;

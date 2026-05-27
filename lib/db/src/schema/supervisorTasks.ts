@@ -30,13 +30,15 @@ export const customQuestionsTable = pgTable("custom_questions", {
   dateFrom: text("date_from").notNull(),
   dateTo: text("date_to").notNull(),
   createdById: integer("created_by_id").notNull(),
+  questionType: text("question_type").notNull().default("individual"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const customQuestionAnswersTable = pgTable("custom_question_answers", {
   id: serial("id").primaryKey(),
   questionId: integer("question_id").notNull(),
-  supervisorNameId: integer("supervisor_name_id").notNull(),
+  supervisorNameId: integer("supervisor_name_id"),
+  trackId: integer("track_id"),
   date: text("date").notNull(),
   answer: text("answer").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
