@@ -13,6 +13,7 @@ export const studentsTable = pgTable("students", {
   memorizeFrom: text("memorize_from"),
   extraData: text("extra_data"),
   isArchived: boolean("is_archived").notNull().default(false),
+  isNewcomer: boolean("is_newcomer").notNull().default(false),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   leaveStart: text("leave_start"),
   leaveEnd: text("leave_end"),

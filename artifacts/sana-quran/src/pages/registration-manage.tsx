@@ -480,6 +480,40 @@ export default function RegistrationManagePage() {
             </p>
           </div>
 
+          {/* Auto-approve toggle */}
+          <div className="flex items-center justify-between gap-4 bg-muted/30 rounded-xl p-4">
+            <div>
+              <p className="font-semibold text-sm">قبول الطالبات تلقائياً</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {(status as any)?.autoApproveStudents
+                  ? "الطالبات يُقبلن فور التسجيل بدون مراجعة"
+                  : "الطالبات تبقى معلقة حتى يتم قبولهن يدوياً"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {(status as any)?.autoApproveStudents ? "مفعّل" : "معطّل"}
+              </span>
+              <Switch
+                checked={(status as any)?.autoApproveStudents ?? false}
+                onCheckedChange={async (checked) => {
+                  try {
+                    const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+                    const token = localStorage.getItem("sana_auth_token");
+                    await fetch(`${BASE_URL}/api/registration/auto-approve-${checked ? "on" : "off"}`, {
+                      method: "POST",
+                      headers: { Authorization: `Bearer ${token}` },
+                    });
+                    toast({ title: checked ? "تم تفعيل القبول التلقائي" : "تم إيقاف القبول التلقائي" });
+                    queryClient.invalidateQueries({ queryKey: ["regStatus"] });
+                  } catch {
+                    toast({ title: "خطأ في الاتصال", variant: "destructive" });
+                  }
+                }}
+              />
+            </div>
+          </div>
+
           {/* Custom Questions Editor */}
           <div className="border-t border-border/50 pt-4">
             <CustomQuestionsEditor formType="student" />

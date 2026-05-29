@@ -31,6 +31,8 @@ export const customQuestionsTable = pgTable("custom_questions", {
   dateTo: text("date_to").notNull(),
   createdById: integer("created_by_id").notNull(),
   questionType: text("question_type").notNull().default("individual"),
+  answerType: text("answer_type").notNull().default("text"),
+  answerOptions: text("answer_options"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

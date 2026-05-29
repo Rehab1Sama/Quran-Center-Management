@@ -359,21 +359,33 @@ export default function DailyTasksPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4 space-y-3">
-            {collectiveQuestions.map(q => (
-              <div key={q.id}>
-                <p className="text-xs text-muted-foreground mb-1 font-medium">{q.question}</p>
-                <textarea
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none"
-                  rows={2}
-                  placeholder="الإجابة باسم المسار..."
-                  value={collectiveAnswers[q.id] ?? ""}
-                  onChange={e => {
-                    setCollectiveAnswers(prev => ({ ...prev, [q.id]: e.target.value }));
-                    setCollectiveSaved(false);
-                  }}
-                />
-              </div>
-            ))}
+            {collectiveQuestions.map(q => {
+              const val = collectiveAnswers[q.id] ?? "";
+              const setVal = (v: string) => { setCollectiveAnswers(prev => ({ ...prev, [q.id]: v })); setCollectiveSaved(false); };
+              const opts: string[] = (q as any).answerOptions ? JSON.parse((q as any).answerOptions) : [];
+              return (
+                <div key={q.id}>
+                  <p className="text-xs text-muted-foreground mb-1 font-medium">{q.question}</p>
+                  {(q as any).answerType === "yesno" ? (
+                    <div className="flex gap-2">
+                      {["نعم", "لا"].map(opt => (
+                        <button key={opt} type="button" onClick={() => setVal(opt)}
+                          className={`flex-1 py-1.5 rounded-lg border-2 text-xs font-semibold transition-all ${val === opt ? "border-purple-600 bg-purple-50 text-purple-700" : "border-border text-muted-foreground hover:border-purple-400/60"}`}>
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (q as any).answerType === "dropdown" ? (
+                    <select className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white" value={val} onChange={e => setVal(e.target.value)}>
+                      <option value="">اختاري...</option>
+                      {opts.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <textarea className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none" rows={2} placeholder="الإجابة باسم المسار..." value={val} onChange={e => setVal(e.target.value)} />
+                  )}
+                </div>
+              );
+            })}
             <Button
               size="sm"
               className="w-full text-xs h-8 bg-purple-600 hover:bg-purple-700"
@@ -469,20 +481,33 @@ export default function DailyTasksPage() {
                       {individualQuestions.length > 0 && (
                         <div className="mt-4 space-y-3 pt-3 border-t border-border/50">
                           <p className="text-xs font-bold text-primary">أسئلة فردية</p>
-                          {individualQuestions.map(q => (
-                            <div key={q.id}>
-                              <p className="text-xs text-muted-foreground mb-1">{q.question}</p>
-                              <textarea
-                                className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none"
-                                rows={2}
-                                placeholder="اكتبي إجابتك..."
-                                value={s.customAnswers[q.id] ?? ""}
-                                onChange={e => updateState(circle.id, {
-                                  customAnswers: { ...s.customAnswers, [q.id]: e.target.value },
-                                })}
-                              />
-                            </div>
-                          ))}
+                          {individualQuestions.map(q => {
+                            const val = s.customAnswers[q.id] ?? "";
+                            const setVal = (v: string) => updateState(circle.id, { customAnswers: { ...s.customAnswers, [q.id]: v } });
+                            const opts: string[] = (q as any).answerOptions ? JSON.parse((q as any).answerOptions) : [];
+                            return (
+                              <div key={q.id}>
+                                <p className="text-xs text-muted-foreground mb-1">{q.question}</p>
+                                {(q as any).answerType === "yesno" ? (
+                                  <div className="flex gap-2">
+                                    {["نعم", "لا"].map(opt => (
+                                      <button key={opt} type="button" onClick={() => setVal(opt)}
+                                        className={`flex-1 py-1.5 rounded-lg border-2 text-xs font-semibold transition-all ${val === opt ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}>
+                                        {opt}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : (q as any).answerType === "dropdown" ? (
+                                  <select className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white" value={val} onChange={e => setVal(e.target.value)}>
+                                    <option value="">اختاري...</option>
+                                    {opts.map(o => <option key={o} value={o}>{o}</option>)}
+                                  </select>
+                                ) : (
+                                  <textarea className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none" rows={2} placeholder="اكتبي إجابتك..." value={val} onChange={e => setVal(e.target.value)} />
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
 

@@ -162,14 +162,23 @@ router.post("/custom-questions", authenticate, async (req, res): Promise<void> =
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  const { question, dateFrom, dateTo, questionType } = req.body as { question: string; dateFrom: string; dateTo: string; questionType?: string };
+  const { question, dateFrom, dateTo, questionType, answerType, answerOptions } = req.body as {
+    question: string; dateFrom: string; dateTo: string;
+    questionType?: string; answerType?: string; answerOptions?: string;
+  };
   if (!question?.trim() || !dateFrom || !dateTo) {
     res.status(400).json({ error: "question, dateFrom, dateTo required" });
     return;
   }
   const type = questionType === "collective" ? "collective" : "individual";
+  const aType = ["text", "dropdown", "yesno"].includes(answerType ?? "") ? answerType! : "text";
   const [row] = await db.insert(customQuestionsTable)
-    .values({ question: question.trim(), dateFrom, dateTo, createdById: req.userId!, questionType: type })
+    .values({
+      question: question.trim(), dateFrom, dateTo,
+      createdById: req.userId!, questionType: type,
+      answerType: aType,
+      answerOptions: aType === "dropdown" && answerOptions ? answerOptions : null,
+    })
     .returning();
   res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
 });

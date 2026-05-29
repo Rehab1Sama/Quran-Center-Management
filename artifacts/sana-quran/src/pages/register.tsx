@@ -372,6 +372,7 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [circles, setCircles] = useState<Circle[]>([]);
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+  const [hasMemorized, setHasMemorized] = useState<"" | "yes" | "no">("");
 
   useEffect(() => {
     fetch(`${BASE}/api/registration/circles-new-students`)
@@ -410,6 +411,7 @@ export default function RegisterPage() {
 
     if (!form.track) newErrors.track = "يرجى اختيار المسار";
     if (!form.circleId) newErrors.circleId = "يرجى اختيار الحلقة";
+    if (!hasMemorized) newErrors.hasMemorized = "يرجى الإجابة على سؤال الحفظ";
 
     for (const q of customQuestions) {
       if (q.required && !customAnswers[q.id]?.trim()) {
@@ -449,6 +451,7 @@ export default function RegisterPage() {
           circleId: form.circleId ? Number(form.circleId) : undefined,
           memorizeFrom: form.memorizeFrom || undefined,
           role: "student",
+          isNewcomer: hasMemorized === "no",
           extraData: Object.keys(extraData).length > 0 ? extraData : undefined,
         }),
       });
@@ -682,14 +685,37 @@ export default function RegisterPage() {
                     </Select>
                   </div>
 
-                  {/* المحفوظات */}
+                  {/* هل تحفظين شيئاً؟ */}
                   <div className="space-y-2 border-t border-border/40 pt-4">
-                    <Label className="text-sm font-semibold">ما حفظته حتى الآن (اختياري)</Label>
-                    <p className="text-xs text-muted-foreground">اختاري السور أو الأجزاء التي حفظتِها</p>
-                    <MemorizedQuranSelector
-                      value={form.memorizedQuran}
-                      onChange={v => set("memorizedQuran", v)}
-                    />
+                    <Label className="text-sm font-semibold">هل تحفظين شيئاً من القرآن الكريم؟ *</Label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setHasMemorized("yes")}
+                        className={`flex-1 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${hasMemorized === "yes" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}
+                      >
+                        نعم
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHasMemorized("no")}
+                        className={`flex-1 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${hasMemorized === "no" ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-border text-muted-foreground hover:border-emerald-400/60"}`}
+                      >
+                        لا — مستجدة
+                      </button>
+                    </div>
+                    {(errors as any).hasMemorized && <p className="text-xs text-rose-600">{(errors as any).hasMemorized}</p>}
+                    {hasMemorized === "yes" && (
+                      <div className="space-y-2 mt-2">
+                        <p className="text-xs text-muted-foreground">اختاري السور أو الأجزاء التي حفظتِها</p>
+                        <MemorizedQuranSelector value={form.memorizedQuran} onChange={v => set("memorizedQuran", v)} />
+                      </div>
+                    )}
+                    {hasMemorized === "no" && (
+                      <p className="text-xs text-emerald-700 bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+                        ستكونين في المرحلة التأسيسية — ستُعفى من المراجعة البعيدة حتى تحفظي ما يكفي
+                      </p>
+                    )}
                   </div>
 
                   {/* الأسئلة المخصصة */}

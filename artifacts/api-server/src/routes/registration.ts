@@ -10,7 +10,15 @@ const router: IRouter = Router();
 
 async function getSettings() {
   const [settings] = await db.select().from(registrationSettingsTable);
-  return settings ?? { isOpen: false, staffRegistrationOpen: true, existingStudentRegOpen: false, deadline: null, customQuestions: null, staffCustomQuestions: null };
+  return settings ?? {
+    isOpen: false,
+    staffRegistrationOpen: true,
+    existingStudentRegOpen: false,
+    autoApproveStudents: false,
+    deadline: null,
+    customQuestions: null,
+    staffCustomQuestions: null,
+  };
 }
 
 async function upsertSettings(values: Record<string, unknown>) {
@@ -40,6 +48,7 @@ router.get("/registration/status", async (_req, res): Promise<void> => {
     rawIsOpen: settings.isOpen,
     staffRegistrationOpen: settings.staffRegistrationOpen,
     existingStudentRegOpen: settings.existingStudentRegOpen,
+    autoApproveStudents: (settings as any).autoApproveStudents ?? false,
     startDate,
     deadline,
     customQuestions: settings.customQuestions,
@@ -80,6 +89,16 @@ router.post("/registration/existing-close", authenticate, requireRole("leader"),
   res.json({ success: true });
 });
 
+router.post("/registration/auto-approve-on", authenticate, requireRole("leader"), async (_req, res): Promise<void> => {
+  await upsertSettings({ autoApproveStudents: true });
+  res.json({ success: true });
+});
+
+router.post("/registration/auto-approve-off", authenticate, requireRole("leader"), async (_req, res): Promise<void> => {
+  await upsertSettings({ autoApproveStudents: false });
+  res.json({ success: true });
+});
+
 // Public endpoint — all active circles (for existing-student form, no capacity filter)
 router.get("/registration/circles-public", async (_req, res): Promise<void> => {
   const rows = await db
@@ -90,9 +109,7 @@ router.get("/registration/circles-public", async (_req, res): Promise<void> => {
 });
 
 // Public endpoint — circles with available capacity for NEW students
-// Hides circles that are full (newStudentCapacity reached)
 router.get("/registration/circles-new-students", async (_req, res): Promise<void> => {
-  // Get all active circles with their settings
   const circles = await db
     .select({
       id: circlesTable.id,
@@ -104,7 +121,6 @@ router.get("/registration/circles-new-students", async (_req, res): Promise<void
     .from(circlesTable)
     .where(eq(circlesTable.isArchived, false));
 
-  // Count students per circle from studentsTable
   const counts = await db
     .select({
       circleId: studentsTable.circleId,
@@ -115,14 +131,12 @@ router.get("/registration/circles-new-students", async (_req, res): Promise<void
 
   const countMap = new Map(counts.map(r => [r.circleId, r.count]));
 
-  // Filter: hide circles where newStudentCapacity is set AND count >= capacity
   const available = circles.filter(c => {
-    if (c.newStudentCapacity == null) return true; // no limit
+    if (c.newStudentCapacity == null) return true;
     const registered = countMap.get(c.id) ?? 0;
     return registered < c.newStudentCapacity;
   });
 
-  // Include remaining spots in the response
   const result = available.map(c => ({
     id: c.id,
     name: c.name,
@@ -166,10 +180,13 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
   }
 
   const { email, password, fullName, phone, country, ageRange, educationLevel, memorizeFrom, track, circleId, role } = parsed.data;
-  // Accept optional extra answers for custom questions
   const extraData = (req.body as any).extraData ?? null;
+  const isNewcomer = (req.body as any).isNewcomer === true;
 
-  const [user] = await db.insert(usersTable).values({
+  const autoApprove = (settings as any).autoApproveStudents === true;
+  const registrationStatus = autoApprove ? "approved" : "pending";
+
+  await db.insert(usersTable).values({
     email: email.toLowerCase(),
     name: fullName,
     passwordHash: hashPassword(password),
@@ -180,7 +197,7 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
     country: country ?? null,
     ageRange: ageRange ?? null,
     educationLevel: educationLevel ?? null,
-    registrationStatus: "pending",
+    registrationStatus,
   }).returning();
 
   if (!role || role === "student") {
@@ -189,6 +206,10 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
       const [regCircle] = await db.select().from(circlesTable).where(eq(circlesTable.trackType, "registration"));
       targetCircleId = regCircle?.id;
     }
+
+    const mergedExtra = extraData ? { ...extraData } : {};
+    if (isNewcomer) mergedExtra.__isNewcomer = true;
+
     await db.insert(studentsTable).values({
       fullName,
       circleId: targetCircleId ?? null,
@@ -197,15 +218,14 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
       ageRange: ageRange ?? null,
       educationLevel: educationLevel ?? null,
       memorizeFrom: memorizeFrom ?? null,
-      extraData: extraData ? JSON.stringify(extraData) : null,
+      extraData: Object.keys(mergedExtra).length > 0 ? JSON.stringify(mergedExtra) : null,
+      isNewcomer,
     });
 
-    // Get circle name for Google Sheets
     const circleName = targetCircleId
       ? (await db.select({ name: circlesTable.name }).from(circlesTable).where(eq(circlesTable.id, targetCircleId)))[0]?.name
       : undefined;
 
-    // Append to Google Sheets (non-blocking, errors are logged not thrown)
     appendStudentToSheet({
       fullName,
       email: email.toLowerCase(),
@@ -219,7 +239,7 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
     }).catch(() => {});
   }
 
-  res.status(201).json({ success: true });
+  res.status(201).json({ success: true, autoApproved: autoApprove });
 });
 
 export default router;

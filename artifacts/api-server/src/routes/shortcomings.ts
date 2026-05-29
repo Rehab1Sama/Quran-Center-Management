@@ -10,26 +10,43 @@ const HOURS_48 = 48 * 60 * 60 * 1000;
 
 function computeShortcoming(
   r: typeof recordsTable.$inferSelect,
-  trackType?: string | null
+  trackType?: string | null,
+  isFoundational?: boolean,
+  studentCreatedAt?: Date | null,
 ): { isShortcoming: boolean; reasons: string[] } {
   if (r.isAbsent) return { isShortcoming: false, reasons: [] };
+
+  // ── المرحلة التأسيسية — أقل من جزء محفوظ ──────────────────────────────
+  if (isFoundational) {
+    // اليوم الأول (يوم التسجيل): لا محاسبة
+    if (studentCreatedAt) {
+      const studentDate = new Date(studentCreatedAt).toISOString().slice(0, 10);
+      if (r.date === studentDate) return { isShortcoming: false, reasons: [] };
+    }
+  }
 
   const reasons: string[] = [];
   const isRecitation = trackType === "recitation";
 
   if (!isRecitation) {
-    const noReview =
-      (r.reviewNearPages ?? 0) === 0 &&
-      (r.reviewFarPages ?? 0) === 0 &&
-      (r.reviewPages ?? 0) === 0;
-    if (noReview) reasons.push("review");
+    if (isFoundational) {
+      // المرحلة التأسيسية: تُحاسب على المراجعة القريبة فقط (لا مراجعة بعيدة)
+      if ((r.reviewNearPages ?? 0) === 0) reasons.push("review");
+    } else {
+      const noReview =
+        (r.reviewNearPages ?? 0) === 0 &&
+        (r.reviewFarPages ?? 0) === 0 &&
+        (r.reviewPages ?? 0) === 0;
+      if (noReview) reasons.push("review");
+    }
   }
 
   const notListened = r.listenedToReciter === false;
   if (notListened) reasons.push("listen");
 
-  // Non-recitation: either no review OR didn't hear → shortcoming
-  const autoShortcoming = !isRecitation ? (reasons.includes("review") || reasons.includes("listen")) : notListened;
+  const autoShortcoming = !isRecitation
+    ? (reasons.includes("review") || reasons.includes("listen"))
+    : notListened;
 
   if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) {
     return { isShortcoming: r.shortcomingOverride, reasons };
@@ -42,9 +59,11 @@ async function buildShortcomingItem(
   studentName: string,
   circleName: string,
   trackName: string,
-  trackType?: string | null
+  trackType?: string | null,
+  isFoundational?: boolean,
+  studentCreatedAt?: Date | null,
 ) {
-  const { isShortcoming, reasons } = computeShortcoming(r, trackType);
+  const { isShortcoming, reasons } = computeShortcoming(r, trackType, isFoundational, studentCreatedAt);
   const ageMs = Date.now() - new Date(r.createdAt).getTime();
   const canEdit = ageMs < HOURS_48;
 
@@ -60,6 +79,7 @@ async function buildShortcomingItem(
     shortcomingOverride: r.shortcomingOverride ?? null,
     isShortcoming,
     canEdit,
+    isFoundational: isFoundational ?? false,
     createdAt: r.createdAt.toISOString(),
   };
 }
@@ -125,20 +145,28 @@ router.get("/shortcomings", authenticate, async (req, res): Promise<void> => {
     records = records.filter(r => trackCircleIds.includes(r.circleId));
   }
 
+  // جلب بيانات جميع الطالبات (بما فيها isNewcomer) قبل الفلترة
+  const allStudentIds = [...new Set(records.map(r => r.studentId))];
+  const allStudents = allStudentIds.length > 0
+    ? await db.select({
+        id: studentsTable.id,
+        fullName: studentsTable.fullName,
+        isNewcomer: studentsTable.isNewcomer,
+        createdAt: studentsTable.createdAt,
+      }).from(studentsTable).where(inArray(studentsTable.id, allStudentIds))
+    : [];
+  const studentMap = new Map(allStudents.map(s => [s.id, s]));
+
   const shortcomingRecords = records.filter(r => {
     const trackType = circleTrackTypeMap[r.circleId];
-    const { isShortcoming } = computeShortcoming(r, trackType);
+    const student = studentMap.get(r.studentId);
+    const { isShortcoming } = computeShortcoming(
+      r, trackType,
+      student?.isNewcomer ?? false,
+      student?.createdAt ?? null,
+    );
     return isShortcoming;
   });
-
-  const studentIds = [...new Set(shortcomingRecords.map(r => r.studentId))];
-  const students = studentIds.length > 0
-    ? await db.select({ id: studentsTable.id, fullName: studentsTable.fullName })
-        .from(studentsTable)
-        .where(inArray(studentsTable.id, studentIds))
-    : [];
-
-  const studentMap = new Map(students.map(s => [s.id, s.fullName]));
 
   const result = await Promise.all(
     shortcomingRecords
@@ -147,12 +175,15 @@ router.get("/shortcomings", authenticate, async (req, res): Promise<void> => {
         const circle = allCircles.find(c => c.id === r.circleId);
         const cTrackName = getCircleTrackName(r.circleId);
         const trackType = circleTrackTypeMap[r.circleId];
+        const student = studentMap.get(r.studentId);
         return buildShortcomingItem(
           r,
-          studentMap.get(r.studentId) ?? "—",
+          student?.fullName ?? "—",
           circle?.name ?? "—",
           cTrackName,
-          trackType
+          trackType,
+          student?.isNewcomer ?? false,
+          student?.createdAt ?? null,
         );
       })
   );
@@ -198,8 +229,11 @@ router.patch("/records/:id/shortcoming", authenticate, async (req, res): Promise
 
   const allCircles = await db.select().from(circlesTable);
   const allTracks = await db.select().from(tracksTable);
-  const [student] = await db.select({ fullName: studentsTable.fullName })
-    .from(studentsTable).where(eq(studentsTable.id, updated.studentId));
+  const [student] = await db.select({
+    fullName: studentsTable.fullName,
+    isNewcomer: studentsTable.isNewcomer,
+    createdAt: studentsTable.createdAt,
+  }).from(studentsTable).where(eq(studentsTable.id, updated.studentId));
   const circle = allCircles.find(c => c.id === updated.circleId);
   const track = allTracks.find(t => t.id === circle?.trackId);
   const trackType = track?.dataEntryType ?? circle?.trackType ?? "girls";
@@ -209,7 +243,9 @@ router.patch("/records/:id/shortcoming", authenticate, async (req, res): Promise
     student?.fullName ?? "—",
     circle?.name ?? "—",
     track?.name ?? "—",
-    trackType
+    trackType,
+    student?.isNewcomer ?? false,
+    student?.createdAt ?? null,
   );
 
   res.json(item);
