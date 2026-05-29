@@ -186,12 +186,28 @@ function CustomQuestionsPanel({ date }: { date: string }) {
   const { toast } = useToast();
 
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ question: "", dateFrom: date, dateTo: date, questionType: "individual" });
+  const [form, setForm] = useState({
+    question: "", dateFrom: date, dateTo: date,
+    questionType: "individual", answerType: "text", answerOptions: "",
+  });
 
   const handleAdd = async () => {
     if (!form.question.trim()) return;
-    await createQ.mutateAsync({ data: { question: form.question.trim(), dateFrom: form.dateFrom, dateTo: form.dateTo, questionType: form.questionType } });
-    setAdding(false); setForm({ question: "", dateFrom: date, dateTo: date, questionType: "individual" });
+    const optionsJson = form.answerType === "dropdown" && form.answerOptions.trim()
+      ? JSON.stringify(form.answerOptions.split(/[،,]/).map(s => s.trim()).filter(Boolean))
+      : null;
+    await createQ.mutateAsync({
+      data: {
+        question: form.question.trim(),
+        dateFrom: form.dateFrom,
+        dateTo: form.dateTo,
+        questionType: form.questionType,
+        answerType: form.answerType,
+        answerOptions: optionsJson,
+      } as any,
+    });
+    setAdding(false);
+    setForm({ question: "", dateFrom: date, dateTo: date, questionType: "individual", answerType: "text", answerOptions: "" });
     qc.invalidateQueries({ queryKey: ["customQuestionsAll"] });
     toast({ title: "تمت إضافة السؤال" });
   };
@@ -217,14 +233,30 @@ function CustomQuestionsPanel({ date }: { date: string }) {
           ) : (
             questions.map(q => (
               <div key={q.id} className="flex items-start justify-between bg-muted/30 rounded-xl px-3 py-2">
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{q.question}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{fmtDate(q.dateFrom)} ← {fmtDate(q.dateTo)}</p>
-                  <span className={`text-xs mt-1 inline-block px-2 py-0.5 rounded-full font-medium ${q.questionType === "collective" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
-                    {q.questionType === "collective" ? "عام (باسم المسار)" : "فردي (باسم المسؤولة)"}
-                  </span>
+                  <div className="flex gap-1 flex-wrap mt-1">
+                    <span className={`text-xs inline-block px-2 py-0.5 rounded-full font-medium ${q.questionType === "collective" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
+                      {q.questionType === "collective" ? "عام (مسار)" : "فردي (مسؤولة)"}
+                    </span>
+                    <span className={`text-xs inline-block px-2 py-0.5 rounded-full font-medium ${
+                      (q as any).answerType === "yesno" ? "bg-amber-100 text-amber-700"
+                      : (q as any).answerType === "dropdown" ? "bg-teal-100 text-teal-700"
+                      : "bg-gray-100 text-gray-600"
+                    }`}>
+                      {(q as any).answerType === "yesno" ? "نعم / لا"
+                        : (q as any).answerType === "dropdown" ? "قائمة خيارات"
+                        : "نص حر"}
+                    </span>
+                    {(q as any).answerType === "dropdown" && (q as any).answerOptions && (
+                      <span className="text-xs text-muted-foreground">
+                        ({(JSON.parse((q as any).answerOptions) as string[]).join(" · ")})
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <button onClick={() => handleDelete(q.id)} className="text-muted-foreground hover:text-red-600 transition-colors mt-0.5">
+                <button onClick={() => handleDelete(q.id)} className="text-muted-foreground hover:text-red-600 transition-colors mt-0.5 mr-2 shrink-0">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -255,7 +287,7 @@ function CustomQuestionsPanel({ date }: { date: string }) {
             </div>
             <div>
               <p className="text-xs text-muted-foreground mb-1.5 font-medium">نوع السؤال:</p>
-              <div className="flex gap-3">
+              <div className="flex gap-3 flex-wrap">
                 <label className="flex items-center gap-1.5 cursor-pointer">
                   <input type="radio" name="qtype" value="individual" checked={form.questionType === "individual"} onChange={() => setForm(p => ({ ...p, questionType: "individual" }))} className="accent-primary" />
                   <span className="text-xs">فردي — كل مسؤولة تجاوب باسمها</span>
@@ -265,6 +297,39 @@ function CustomQuestionsPanel({ date }: { date: string }) {
                   <span className="text-xs">عام — الإجابة باسم المسار</span>
                 </label>
               </div>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-1.5 font-medium">نوع الإجابة:</p>
+              <div className="flex gap-3 flex-wrap">
+                {[
+                  { value: "text", label: "نص حر" },
+                  { value: "yesno", label: "نعم / لا" },
+                  { value: "dropdown", label: "قائمة خيارات" },
+                ].map(opt => (
+                  <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio" name="atype" value={opt.value}
+                      checked={form.answerType === opt.value}
+                      onChange={() => setForm(p => ({ ...p, answerType: opt.value, answerOptions: "" }))}
+                      className="accent-primary"
+                    />
+                    <span className="text-xs">{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+              {form.answerType === "dropdown" && (
+                <div className="mt-2">
+                  <p className="text-xs text-muted-foreground mb-1">الخيارات (افصلي بفاصلة):</p>
+                  <input
+                    type="text"
+                    className="border border-border rounded-lg px-2 py-1.5 text-xs w-full"
+                    placeholder="مثال: ممتاز، جيد، ضعيف"
+                    value={form.answerOptions}
+                    onChange={e => setForm(p => ({ ...p, answerOptions: e.target.value }))}
+                    dir="rtl"
+                  />
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               <Button size="sm" className="text-xs h-8" onClick={handleAdd}>إضافة السؤال</Button>
