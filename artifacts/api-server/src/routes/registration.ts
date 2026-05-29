@@ -5,8 +5,69 @@ import { authenticate, requireRole } from "../middlewares/authenticate";
 import { hashPassword } from "../lib/auth";
 import { OpenRegistrationBody, SubmitRegistrationBody } from "@workspace/api-zod";
 import { appendStudentToSheet } from "../lib/sheets";
+import { sendEmailOTP } from "../lib/email";
 
 const router: IRouter = Router();
+
+const DISPOSABLE_DOMAINS = new Set([
+  "mailinator.com","guerrillamail.com","10minutemail.com","throwam.com","yopmail.com",
+  "trashmail.com","temp-mail.org","fakeinbox.com","sharklasers.com","guerrillamail.info",
+  "guerrillamail.biz","guerrillamail.de","guerrillamail.net","guerrillamail.org",
+  "spam4.me","tempr.email","discard.email","maildrop.cc","mailnull.com",
+  "spamgourmet.com","trashmail.at","trashmail.io","trashmail.me","trashmail.net",
+  "trashmail.xyz","dispostable.com","mailnesia.com","getairmail.com","mytemp.email",
+  "tempmail.com","tempmail.net","tempmailaddress.com","throwaway.email","spamfree24.org",
+  "getnada.com","inalid.com","tmail.com","mailsac.com","mailnull.com","throwam.com",
+]);
+
+const otpStore = new Map<string, { otp: string; expiresAt: number; attempts: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of otpStore) { if (v.expiresAt < now) otpStore.delete(k); }
+}, 5 * 60 * 1000);
+
+router.post("/registration/send-email-otp", async (req, res): Promise<void> => {
+  const { email } = req.body as { email?: string };
+  if (!email || !email.includes("@") || !email.includes(".")) {
+    res.status(400).json({ error: "بريد إلكتروني غير صحيح" }); return;
+  }
+  const domain = email.split("@")[1]?.toLowerCase() ?? "";
+  if (DISPOSABLE_DOMAINS.has(domain)) {
+    res.status(400).json({ error: "البريد المؤقت غير مقبول — استخدمي بريدًا حقيقيًا" }); return;
+  }
+  const key = email.toLowerCase();
+  const existing = otpStore.get(key);
+  if (existing && existing.expiresAt > Date.now() && existing.attempts >= 5) {
+    res.status(429).json({ error: "تم إرسال الرمز كثيرًا، انتظري قليلاً ثم أعيدي المحاولة" }); return;
+  }
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  otpStore.set(key, { otp, expiresAt: Date.now() + 10 * 60 * 1000, attempts: (existing?.attempts ?? 0) + 1 });
+  try {
+    await sendEmailOTP(email, otp);
+    res.json({ success: true });
+  } catch {
+    if (process.env.NODE_ENV !== "production") {
+      res.json({ success: true, devOtp: otp });
+    } else {
+      res.status(500).json({ error: "فشل إرسال البريد — تأكد من ضبط EMAIL_USER و EMAIL_PASS" });
+    }
+  }
+});
+
+router.post("/registration/verify-email-otp", async (req, res): Promise<void> => {
+  const { email, otp } = req.body as { email?: string; otp?: string };
+  if (!email || !otp) { res.status(400).json({ error: "بيانات غير مكتملة" }); return; }
+  const key = email.toLowerCase();
+  const stored = otpStore.get(key);
+  if (!stored) { res.status(400).json({ error: "لم يتم إرسال رمز لهذا البريد أو انتهت صلاحيته" }); return; }
+  if (stored.expiresAt < Date.now()) {
+    otpStore.delete(key);
+    res.status(400).json({ error: "انتهت صلاحية الرمز — اطلبي رمزًا جديدًا" }); return;
+  }
+  if (stored.otp !== otp.trim()) { res.status(400).json({ error: "رمز التحقق غير صحيح" }); return; }
+  otpStore.delete(key);
+  res.json({ success: true });
+});
 
 async function getSettings() {
   const [settings] = await db.select().from(registrationSettingsTable);

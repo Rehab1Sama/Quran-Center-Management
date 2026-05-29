@@ -373,6 +373,9 @@ export default function RegisterPage() {
   const [circles, setCircles] = useState<Circle[]>([]);
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
   const [hasMemorized, setHasMemorized] = useState<"" | "yes" | "no">("");
+  const [emailOtp, setEmailOtp] = useState({
+    sent: false, verified: false, code: "", sending: false, verifying: false, error: "",
+  });
 
   useEffect(() => {
     fetch(`${BASE}/api/registration/circles-new-students`)
@@ -393,6 +396,47 @@ export default function RegisterPage() {
       return Array.isArray(parsed) ? parsed : [];
     } catch { return []; }
   })();
+
+  const sendOTP = async () => {
+    if (!form.email || !form.email.includes("@")) {
+      toast({ title: "أدخلي البريد الإلكتروني أولاً", variant: "destructive" }); return;
+    }
+    setEmailOtp(s => ({ ...s, sending: true, error: "" }));
+    try {
+      const res = await fetch(`${BASE}/api/registration/send-email-otp`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: form.email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "فشل إرسال الرمز");
+      setEmailOtp(s => ({ ...s, sent: true, sending: false, code: data.devOtp ?? "" }));
+      if (data.devOtp) {
+        toast({ title: `[وضع التطوير] رمز التحقق: ${data.devOtp}` });
+      } else {
+        toast({ title: "تم إرسال رمز التحقق إلى بريدك الإلكتروني" });
+      }
+    } catch (err: any) {
+      setEmailOtp(s => ({ ...s, sending: false, error: err.message ?? "خطأ" }));
+      toast({ title: err.message ?? "خطأ في إرسال الرمز", variant: "destructive" });
+    }
+  };
+
+  const verifyOTP = async () => {
+    if (!emailOtp.code.trim()) return;
+    setEmailOtp(s => ({ ...s, verifying: true, error: "" }));
+    try {
+      const res = await fetch(`${BASE}/api/registration/verify-email-otp`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: form.email, otp: emailOtp.code.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "رمز غير صحيح");
+      setEmailOtp(s => ({ ...s, verified: true, verifying: false }));
+      toast({ title: "✓ تم التحقق من البريد الإلكتروني بنجاح" });
+    } catch (err: any) {
+      setEmailOtp(s => ({ ...s, verifying: false, error: err.message ?? "خطأ" }));
+    }
+  };
 
   const set = (field: string, val: string) => {
     setForm(f => ({ ...f, [field]: val }));
@@ -417,6 +461,15 @@ export default function RegisterPage() {
       if (q.required && !customAnswers[q.id]?.trim()) {
         newErrors[`custom_${q.id}`] = `يرجى الإجابة على: ${q.label}`;
       }
+    }
+
+    if (!emailOtp.verified) {
+      if (!emailOtp.sent) {
+        toast({ title: "يرجى التحقق من البريد الإلكتروني أولاً — اضغطي «تحقق» بجانب البريد", variant: "destructive" });
+      } else {
+        toast({ title: "يرجى إدخال رمز التحقق المرسل إلى بريدك", variant: "destructive" });
+      }
+      return;
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -542,15 +595,60 @@ export default function RegisterPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-sm font-semibold">البريد الإلكتروني *</Label>
-                      <Input
-                        required type="email"
-                        value={form.email}
-                        onChange={e => set("email", e.target.value)}
-                        placeholder="email@example.com"
-                        className="text-left"
-                        dir="ltr"
-                        data-testid="input-email"
-                      />
+                      <div className="flex gap-1.5">
+                        <Input
+                          required type="email"
+                          value={form.email}
+                          onChange={e => {
+                            set("email", e.target.value);
+                            setEmailOtp(s => ({ ...s, sent: false, verified: false, code: "", error: "" }));
+                          }}
+                          placeholder="email@example.com"
+                          className={`text-left flex-1 min-w-0 ${emailOtp.verified ? "border-emerald-400 bg-emerald-50" : ""}`}
+                          dir="ltr"
+                          disabled={emailOtp.verified}
+                          data-testid="input-email"
+                        />
+                        {emailOtp.verified ? (
+                          <span className="flex items-center gap-1 text-emerald-600 text-xs font-bold shrink-0 px-1.5">
+                            <CheckCircle className="w-4 h-4" />
+                          </span>
+                        ) : (
+                          <Button
+                            type="button" size="sm" variant="outline"
+                            className="text-xs shrink-0 h-10 px-2"
+                            onClick={sendOTP}
+                            disabled={emailOtp.sending || !form.email.includes("@")}
+                          >
+                            {emailOtp.sending ? "..." : emailOtp.sent ? "إعادة" : "تحقق"}
+                          </Button>
+                        )}
+                      </div>
+                      {emailOtp.sent && !emailOtp.verified && (
+                        <div className="space-y-1 mt-1">
+                          <p className="text-xs text-muted-foreground">أدخلي رمز التحقق المرسل للبريد (٦ أرقام)</p>
+                          <div className="flex gap-1.5">
+                            <Input
+                              value={emailOtp.code}
+                              onChange={e => setEmailOtp(s => ({ ...s, code: e.target.value.replace(/\D/g, ""), error: "" }))}
+                              placeholder="000000"
+                              className="text-center text-base font-mono tracking-widest"
+                              dir="ltr" maxLength={6}
+                              onKeyDown={e => e.key === "Enter" && verifyOTP()}
+                              autoFocus
+                            />
+                            <Button
+                              type="button" size="sm"
+                              className="shrink-0 h-10 px-3"
+                              onClick={verifyOTP}
+                              disabled={emailOtp.verifying || emailOtp.code.length < 6}
+                            >
+                              {emailOtp.verifying ? "..." : "تأكيد"}
+                            </Button>
+                          </div>
+                          {emailOtp.error && <p className="text-xs text-rose-600">{emailOtp.error}</p>}
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm font-semibold">كلمة المرور *</Label>
