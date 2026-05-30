@@ -23,7 +23,7 @@ import {
   ArrowRight, UserCircle, BookOpen, Calendar, ArrowLeftRight,
   Phone, Globe, GraduationCap, StickyNote, Archive, RotateCcw,
   Plane, MessageSquare, Trash2, Plus, Printer, TrendingUp, ListChecks, AlertTriangle,
-  Target, CheckCircle2, Circle,
+  Target, CheckCircle2, Circle, PlaneTakeoff, XCircle,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
@@ -398,7 +398,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
           <CardTitle className="text-sm font-bold text-muted-foreground">ملخص الحضور</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="bg-muted/50 rounded-xl p-3 text-center">
               <p className="text-2xl font-bold text-foreground">{profile.attendanceSummary.totalSessions}</p>
               <p className="text-xs text-muted-foreground mt-0.5">إجمالي الجلسات</p>
@@ -414,6 +414,10 @@ export default function StudentProfilePage({ id }: { id: number }) {
                   : "—"}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">نسبة الحضور</p>
+            </div>
+            <div className="bg-orange-50 rounded-xl p-3 text-center">
+              <p className="text-2xl font-bold text-orange-600">{(profile as any).totalShortcomings ?? 0}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">مرات التقصير</p>
             </div>
           </div>
           {profile.recentAbsences.length > 0 && (
@@ -841,6 +845,64 @@ export default function StudentProfilePage({ id }: { id: number }) {
                 <p className="text-xs text-muted-foreground mt-0.5">بواسطة: {t.transferredBy}</p>
               </div>
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Leave History */}
+      {((profile as any).leaveHistory?.length > 0 || onLeave) && (
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold text-muted-foreground flex items-center gap-2">
+              <PlaneTakeoff className="w-4 h-4" />
+              سجل الإجازات
+              <span className="text-xs font-normal bg-muted px-1.5 py-0.5 rounded-md">
+                {(profile as any).leaveHistory?.length ?? 0} إجازة
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-2">
+            {((profile as any).leaveHistory ?? []).map((l: any) => {
+              const start = new Date(l.leaveStart);
+              const end = new Date(l.leaveEnd);
+              const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+              const isCancelled = !!l.cancelledAt;
+              return (
+                <div key={l.id} className={`rounded-xl px-3 py-2.5 border ${isCancelled ? "bg-muted/30 border-border/40" : "bg-amber-50 border-amber-200"}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-0.5 flex-1 min-w-0">
+                      <p className="text-sm font-semibold">
+                        {new Date(l.leaveStart).toLocaleDateString("ar-SA", { day: "numeric", month: "short", year: "numeric" })}
+                        {" – "}
+                        {new Date(l.leaveEnd).toLocaleDateString("ar-SA", { day: "numeric", month: "short", year: "numeric" })}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {days} يوم
+                        {l.grantedBy && ` · مُنحت بواسطة: ${l.grantedBy}`}
+                      </p>
+                      {isCancelled && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <XCircle className="w-3 h-3 text-rose-400 shrink-0" />
+                          أُلغيت
+                          {l.cancelledBy && ` بواسطة ${l.cancelledBy}`}
+                          {l.cancelledAt && ` — ${new Date(l.cancelledAt).toLocaleDateString("ar-SA", { day: "numeric", month: "short", year: "numeric" })}`}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      {isCancelled ? (
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">ملغاة</span>
+                      ) : (
+                        <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-medium">فعّالة</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {((profile as any).leaveHistory?.length ?? 0) === 0 && onLeave && (
+              <p className="text-xs text-muted-foreground">الإجازة الحالية لم تُسجَّل بعد في السجل</p>
+            )}
           </CardContent>
         </Card>
       )}

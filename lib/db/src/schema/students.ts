@@ -54,6 +54,19 @@ export const studentArchiveEventsTable = pgTable("student_archive_events", {
 
 export type StudentArchiveEvent = typeof studentArchiveEventsTable.$inferSelect;
 
+export const studentLeaveHistoryTable = pgTable("student_leave_history", {
+  id: serial("id").primaryKey(),
+  studentId: integer("student_id").notNull(),
+  leaveStart: text("leave_start").notNull(),
+  leaveEnd: text("leave_end").notNull(),
+  grantedById: integer("granted_by_id"),
+  grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  cancelledById: integer("cancelled_by_id"),
+});
+
+export type StudentLeaveHistory = typeof studentLeaveHistoryTable.$inferSelect;
+
 export const messagesTable = pgTable("messages", {
   id: serial("id").primaryKey(),
   senderId: integer("sender_id").notNull(),

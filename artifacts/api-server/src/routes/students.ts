@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, reviewPlansTable, usersTable, studentArchiveEventsTable } from "@workspace/db";
+import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, reviewPlansTable, usersTable, studentArchiveEventsTable, studentLeaveHistoryTable } from "@workspace/db";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateStudentBody, UpdateStudentBody } from "@workspace/api-zod";
@@ -227,8 +227,7 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
 
 router.patch("/students/:id/leave", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
+    res.status(403).json({ error: "Forbidden" }); return;
   }
   const id = parseId(req.params.id);
   const { leaveStart, leaveEnd } = req.body as { leaveStart?: string | null; leaveEnd?: string | null };
@@ -236,6 +235,30 @@ router.patch("/students/:id/leave", authenticate, async (req, res): Promise<void
     .set({ leaveStart: leaveStart ?? null, leaveEnd: leaveEnd ?? null })
     .where(eq(studentsTable.id, id)).returning();
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
+
+  if (leaveStart && leaveEnd) {
+    // تسجيل منح الإجازة
+    await db.insert(studentLeaveHistoryTable).values({
+      studentId: id,
+      leaveStart,
+      leaveEnd,
+      grantedById: req.userId ?? null,
+    });
+  } else if (!leaveStart && !leaveEnd) {
+    // تسجيل إلغاء الإجازة — تحديث آخر سجل غير ملغى
+    const [lastLeave] = await db.select().from(studentLeaveHistoryTable)
+      .where(and(
+        eq(studentLeaveHistoryTable.studentId, id),
+        sql`${studentLeaveHistoryTable.cancelledAt} IS NULL`,
+      ))
+      .orderBy(desc(studentLeaveHistoryTable.grantedAt))
+      .limit(1);
+    if (lastLeave) {
+      await db.update(studentLeaveHistoryTable)
+        .set({ cancelledAt: new Date(), cancelledById: req.userId ?? null })
+        .where(eq(studentLeaveHistoryTable.id, lastLeave.id));
+    }
+  }
   res.json(student);
 });
 
@@ -436,6 +459,42 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
   const totalReviewPages = presentRecords.reduce((s, r) => s + (r.reviewPages ?? 0) + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0), 0);
   const totalRecitationPages = presentRecords.reduce((s, r) => s + (r.recitationPages ?? 0), 0);
 
+  // Shortcomings count
+  const isRecitationTrack = circle?.trackType === "recitation";
+  const totalShortcomings = presentRecords.filter(r => {
+    if (r.shortcomingOverride === true) return true;
+    if (r.shortcomingOverride === false) return false;
+    if (isRecitationTrack) return r.listenedToReciter === false;
+    const noReview = (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
+    return noReview || r.listenedToReciter === false;
+  }).length;
+
+  // Leave history
+  const leaveHistoryRaw = await db.select().from(studentLeaveHistoryTable)
+    .where(eq(studentLeaveHistoryTable.studentId, id))
+    .orderBy(desc(studentLeaveHistoryTable.grantedAt));
+
+  const lhUserIds = [...new Set([
+    ...leaveHistoryRaw.map(l => l.grantedById).filter((x): x is number => x !== null),
+    ...leaveHistoryRaw.map(l => l.cancelledById).filter((x): x is number => x !== null),
+  ])];
+  const lhUsers = lhUserIds.length
+    ? await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable)
+        .where(sql`${usersTable.id} = ANY(ARRAY[${sql.join(lhUserIds.map(uid => sql`${uid}`), sql`, `)}]::int[])`)
+    : [];
+  const lhUserMap: Record<number, string> = {};
+  for (const u of lhUsers) lhUserMap[u.id] = u.name;
+
+  const leaveHistory = leaveHistoryRaw.map(l => ({
+    id: l.id,
+    leaveStart: l.leaveStart,
+    leaveEnd: l.leaveEnd,
+    grantedAt: l.grantedAt.toISOString(),
+    grantedBy: l.grantedById ? (lhUserMap[l.grantedById] ?? "غير معروف") : null,
+    cancelledAt: l.cancelledAt?.toISOString() ?? null,
+    cancelledBy: l.cancelledById ? (lhUserMap[l.cancelledById] ?? "غير معروف") : null,
+  }));
+
   // Recent sessions (last 20 records sorted by date desc)
   const recentRecords = [...allRecords]
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -488,6 +547,8 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     totalMemorizePages: Math.round(totalMemorizePages * 10) / 10,
     totalReviewPages: Math.round(totalReviewPages * 10) / 10,
     totalRecitationPages: Math.round(totalRecitationPages * 10) / 10,
+    totalShortcomings,
+    leaveHistory,
   });
 });
 

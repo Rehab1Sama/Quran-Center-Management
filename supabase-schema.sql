@@ -62,6 +62,17 @@ CREATE TABLE IF NOT EXISTS "students" (
   "updated_at" timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS "student_leave_history" (
+  "id" serial PRIMARY KEY,
+  "student_id" integer NOT NULL,
+  "leave_start" text NOT NULL,
+  "leave_end" text NOT NULL,
+  "granted_by_id" integer,
+  "granted_at" timestamptz NOT NULL DEFAULT now(),
+  "cancelled_at" timestamptz,
+  "cancelled_by_id" integer
+);
+
 CREATE TABLE IF NOT EXISTS "student_transfers" (
   "id" serial PRIMARY KEY,
   "student_id" integer NOT NULL,

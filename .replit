@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -62,3 +62,6 @@ externalPort = 3000
 DATABASE_URL = "postgresql://postgres.uqlshjldemwyygrplowi:Rrehabfall66@aws-0-eu-west-3.pooler.supabase.com:6543/postgres"
 EMAIL_USER = "sana.qur3n@gmail.com"
 EMAIL_PASS = "mkrstiewylmppfwu"
+
+[nix]
+channel = "stable-25_05"
