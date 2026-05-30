@@ -225,7 +225,7 @@ function AppRoutes() {
           {isLeader ? <DeputyBoardPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/student-leaves">
-          <StudentLeavesPage />
+          {(isLeader || isDeputy || isTrackSupervisor) ? <StudentLeavesPage /> : <Redirect to="/" />}
         </Route>
 
         <Route path="/students/:id">
