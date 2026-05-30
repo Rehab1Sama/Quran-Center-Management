@@ -540,6 +540,8 @@ router.get("/students/:id/review-plan", authenticate, async (req, res): Promise<
   const isOnLeave = !!(studentForLeave?.leaveStart && studentForLeave?.leaveEnd &&
     studentForLeave.leaveStart <= today && today <= studentForLeave.leaveEnd);
 
+  const hasEnteredToday = todayRecords.length > 0;
+
   res.json(fmtPlan(plan, {
     dayInCycle, cycleStart, todayEntry,
     plannedPagesForToday: Math.round(plannedPagesForToday * 10) / 10,
@@ -554,6 +556,7 @@ router.get("/students/:id/review-plan", authenticate, async (req, res): Promise<
     dayPerformance,
     isLocked,
     isOnLeave,
+    hasEnteredToday,
   }));
 });
 

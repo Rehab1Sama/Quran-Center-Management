@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   BookOpen, CheckCircle2, AlertTriangle, XCircle,
   Users, Download, ChevronDown, ChevronUp, Loader2,
-  RefreshCw, TrendingUp, BarChart2, Bell,
+  RefreshCw, TrendingUp, BarChart2, Bell, Clock,
 } from "lucide-react";
+import { calculatePages, SURAHS, getSurahByName } from "@/lib/quran";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -175,25 +176,63 @@ function openPlanPDF(plan: any) {
 }
 
 // ── Student self-entry for leave students ───────────────────────────────────
+type EntryStatus = "full" | "partial" | "none";
+
+const PERF_CONFIG: Record<EntryStatus, { label: string; Icon: any; borderClass: string; bgClass: string; textClass: string; iconClass: string }> = {
+  full:    { label: "منتظمة ✓",    Icon: CheckCircle2, borderClass: "border-emerald-200", bgClass: "bg-emerald-50", textClass: "text-emerald-800", iconClass: "text-emerald-600" },
+  partial: { label: "متأخرة ⏳",   Icon: Clock,        borderClass: "border-amber-200",   bgClass: "bg-amber-50",   textClass: "text-amber-800",   iconClass: "text-amber-500"  },
+  none:    { label: "ما أنجزت ✗", Icon: XCircle,      borderClass: "border-rose-200",    bgClass: "bg-rose-50",    textClass: "text-rose-800",    iconClass: "text-rose-500"   },
+};
+
+function inferStatusFromPlan(plan: any): EntryStatus {
+  const actual = plan.actualPagesForToday ?? 0;
+  const planned = plan.plannedPagesForToday ?? 0;
+  if (actual >= planned && planned > 0) return "full";
+  if (actual > 0) return "partial";
+  return "none";
+}
+
 function SelfEntrySection({ plan, onSubmitted }: { plan: any; onSubmitted: () => void }) {
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [selected, setSelected] = useState<EntryStatus | null>(null);
+  const [stoppedSurah, setStoppedSurah] = useState<string>("");
+  const [stoppedAyah, setStoppedAyah] = useState<number | "">(1);
+  const [result, setResult] = useState<EntryStatus | null>(null);
   const theme = plan.theme;
-
   const todayEntry = plan.todayEntry;
-  const alreadyEntered = plan.actualPagesForToday > 0;
 
-  async function handleEntry(completed: boolean) {
+  const alreadyEntered: boolean = plan.hasEnteredToday ?? (plan.actualPagesForToday > 0);
+
+  // Surahs within today's plan range
+  const startIdx = SURAHS.findIndex(s => s.name === todayEntry?.surahStart);
+  const endIdx   = SURAHS.findIndex(s => s.name === todayEntry?.surahEnd);
+  const surahsInRange = startIdx !== -1 && endIdx !== -1 ? SURAHS.slice(startIdx, endIdx + 1) : [];
+
+  const stoppedSurahInfo = stoppedSurah ? getSurahByName(stoppedSurah) : null;
+  const partialPages = (selected === "partial" && stoppedSurah && stoppedAyah)
+    ? calculatePages(todayEntry?.surahStart, todayEntry?.ayahStart, stoppedSurah, Number(stoppedAyah))
+    : 0;
+
+  const canConfirm = selected !== null && (selected !== "partial" || (!!stoppedSurah && !!stoppedAyah));
+
+  async function handleSubmit() {
+    if (!canConfirm || !selected) return;
     setSubmitting(true);
     try {
       const token = getToken();
-      const body: any = { completed };
-      if (completed && todayEntry) {
+      const body: any = { status: selected };
+      if (selected === "full" && todayEntry) {
         body.surahStart = todayEntry.surahStart;
-        body.ayahStart = todayEntry.ayahStart;
-        body.surahEnd = todayEntry.surahEnd;
-        body.ayahEnd = todayEntry.ayahEnd;
-        body.pages = todayEntry.pages;
+        body.ayahStart  = todayEntry.ayahStart;
+        body.surahEnd   = todayEntry.surahEnd;
+        body.ayahEnd    = todayEntry.ayahEnd;
+        body.pages      = todayEntry.pages;
+      } else if (selected === "partial") {
+        body.surahStart   = todayEntry?.surahStart;
+        body.ayahStart    = todayEntry?.ayahStart;
+        body.stoppedSurah = stoppedSurah;
+        body.stoppedAyah  = Number(stoppedAyah);
+        body.stoppedPages = partialPages;
       }
       const res = await fetch(`${BASE}/api/records/student-self-entry`, {
         method: "POST",
@@ -205,7 +244,8 @@ function SelfEntrySection({ plan, onSubmitted }: { plan: any; onSubmitted: () =>
         alert(data.error ?? "حدث خطأ");
         return;
       }
-      setSubmitted(true);
+      const data = await res.json();
+      setResult((data.performanceStatus as EntryStatus) ?? selected);
       onSubmitted();
     } catch {
       alert("حدث خطأ في الاتصال");
@@ -221,14 +261,24 @@ function SelfEntrySection({ plan, onSubmitted }: { plan: any; onSubmitted: () =>
     ? `${todayEntry.surahStart} (${todayEntry.ayahStart} – ${todayEntry.ayahEnd})`
     : `${todayEntry.surahStart} (${todayEntry.ayahStart}) ← ${todayEntry.surahEnd} (${todayEntry.ayahEnd})`;
 
-  if (alreadyEntered || submitted) {
+  // Show result after submission OR after reload if already entered
+  const displayStatus: EntryStatus | null = result ?? (alreadyEntered ? inferStatusFromPlan(plan) : null);
+
+  if (displayStatus) {
+    const cfg = PERF_CONFIG[displayStatus];
     return (
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-1">
+      <div className={`rounded-xl border ${cfg.borderClass} ${cfg.bgClass} p-4 space-y-1.5`}>
         <div className="flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <p className="text-sm font-bold text-emerald-800">سُجِّل إنجازك لليوم ✓</p>
+          <cfg.Icon className={`w-4 h-4 ${cfg.iconClass} shrink-0`} />
+          <p className={`text-sm font-bold ${cfg.textClass}`}>سُجِّل إنجازك لليوم — {cfg.label}</p>
         </div>
-        <p className="text-xs text-emerald-700">{section} · {todayEntry.pages} وجه</p>
+        <p className={`text-xs ${cfg.textClass} opacity-80`}>{section} · {todayEntry.pages} وجه</p>
+        {displayStatus === "partial" && stoppedSurah && (
+          <p className={`text-xs ${cfg.textClass} opacity-80`}>
+            وقفتِ عند: {stoppedSurah} آية {stoppedAyah}
+            {partialPages > 0 && ` · ${partialPages} وجه`}
+          </p>
+        )}
       </div>
     );
   }
@@ -236,25 +286,80 @@ function SelfEntrySection({ plan, onSubmitted }: { plan: any; onSubmitted: () =>
   return (
     <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: `${theme.primaryColor}44`, background: theme.secondaryColor }}>
       <p className="text-sm font-bold" style={{ color: theme.accentColor }}>📝 سجّلي إنجازك لليوم</p>
-      <p className="text-xs" style={{ color: theme.accentColor }}>مراجعة اليوم: <span className="font-semibold">{section}</span> ({todayEntry.pages} وجه)</p>
-      <div className="flex gap-2">
+      <p className="text-xs" style={{ color: theme.accentColor }}>
+        مراجعة اليوم: <span className="font-semibold">{section}</span> ({todayEntry.pages} وجه)
+      </p>
+
+      {/* خيارات الإنجاز */}
+      <div className="grid grid-cols-3 gap-2">
+        {(["full", "partial", "none"] as EntryStatus[]).map(s => {
+          const cfg = PERF_CONFIG[s];
+          const labels = { full: "أنجزت النصاب", partial: "تأخرت", none: "ما أنجزت" };
+          const isActive = selected === s;
+          return (
+            <button
+              key={s}
+              onClick={() => { setSelected(s); setStoppedSurah(""); setStoppedAyah(1); }}
+              className={`rounded-xl py-2.5 px-1 text-xs font-bold border transition-all ${
+                isActive
+                  ? `${cfg.bgClass} ${cfg.borderClass} ${cfg.textClass}`
+                  : "border-border/50 text-muted-foreground hover:bg-muted/40"
+              }`}
+            >
+              {s === "full" ? "✓" : s === "partial" ? "⏳" : "✗"} {labels[s]}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* منسدلة التأخر */}
+      {selected === "partial" && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-2">
+          <p className="text-xs font-semibold text-amber-800">وقفتِ عند:</p>
+          <div className="flex gap-2">
+            <select
+              value={stoppedSurah}
+              onChange={e => { setStoppedSurah(e.target.value); setStoppedAyah(1); }}
+              className="flex-1 rounded-lg border border-amber-200 bg-white text-xs py-1.5 px-2 text-amber-900"
+              dir="rtl"
+            >
+              <option value="">اختاري السورة</option>
+              {surahsInRange.map(s => (
+                <option key={s.name} value={s.name}>{s.name}</option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min={1}
+              max={stoppedSurahInfo?.ayahs ?? 999}
+              value={stoppedAyah}
+              onChange={e => setStoppedAyah(e.target.value === "" ? "" : Math.max(1, parseInt(e.target.value) || 1))}
+              placeholder="آية"
+              disabled={!stoppedSurah}
+              className="w-20 rounded-lg border border-amber-200 bg-white text-xs py-1.5 px-2 text-center text-amber-900 disabled:opacity-40"
+              dir="ltr"
+            />
+          </div>
+          {stoppedSurah && stoppedAyah && (
+            <p className="text-xs text-amber-700">
+              من {todayEntry.surahStart} ({todayEntry.ayahStart}) → {stoppedSurah} ({stoppedAyah})
+              {partialPages > 0 && <span className="font-bold"> · {partialPages} وجه</span>}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* زر التأكيد */}
+      {selected && (
         <button
-          onClick={() => handleEntry(true)}
-          disabled={submitting}
-          className="flex-1 rounded-xl py-2.5 text-sm font-bold text-white transition-opacity disabled:opacity-60"
+          onClick={handleSubmit}
+          disabled={submitting || !canConfirm}
+          className="w-full rounded-xl py-2.5 text-sm font-bold text-white transition-opacity disabled:opacity-50"
           style={{ background: theme.primaryColor }}
         >
-          {submitting ? "جاري الحفظ..." : "✓ أكملت اليوم"}
+          {submitting ? "جاري الحفظ..." : "تأكيد الإنجاز"}
         </button>
-        <button
-          onClick={() => handleEntry(false)}
-          disabled={submitting}
-          className="flex-1 rounded-xl py-2.5 text-sm font-bold border transition-colors disabled:opacity-60"
-          style={{ borderColor: `${theme.primaryColor}44`, color: theme.accentColor }}
-        >
-          ✗ لم أكمل
-        </button>
-      </div>
+      )}
     </div>
   );
 }

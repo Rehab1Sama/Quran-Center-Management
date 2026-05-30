@@ -136,18 +136,24 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
   const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const allStudents = await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false));
-  const onLeaveStudents = allStudents.filter(s =>
-    s.leaveStart && s.leaveEnd && s.leaveStart <= today && today <= s.leaveEnd
-  );
+
+  const circles = await db.select().from(circlesTable);
+  const circleMap: Record<number, typeof circles[0]> = {};
+  for (const c of circles) circleMap[c.id] = c;
+
+  const ALLOWED_TRACK_TYPES = ["girls", "fixation", "simple_review"];
+  const onLeaveStudents = allStudents.filter(s => {
+    if (!s.leaveStart || !s.leaveEnd) return false;
+    if (!(s.leaveStart <= today && today <= s.leaveEnd)) return false;
+    const circle = s.circleId ? circleMap[s.circleId] : null;
+    const trackType = circle?.trackType ?? "girls";
+    return ALLOWED_TRACK_TYPES.includes(trackType);
+  });
 
   if (!onLeaveStudents.length) {
     res.json([]);
     return;
   }
-
-  const circles = await db.select().from(circlesTable);
-  const circleMap: Record<number, typeof circles[0]> = {};
-  for (const c of circles) circleMap[c.id] = c;
 
   const activePlans = await db.select().from(reviewPlansTable).where(eq(reviewPlansTable.status, "active"));
   const planByStudent: Record<number, typeof activePlans[0]> = {};
