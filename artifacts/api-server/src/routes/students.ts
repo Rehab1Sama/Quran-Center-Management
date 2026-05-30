@@ -128,10 +128,7 @@ router.patch("/students/:id/restore", authenticate, async (req, res): Promise<vo
 });
 
 router.get("/students/on-leave", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
+  if (!req.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
@@ -141,13 +138,9 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
   const circleMap: Record<number, typeof circles[0]> = {};
   for (const c of circles) circleMap[c.id] = c;
 
-  const ALLOWED_TRACK_TYPES = ["girls", "fixation", "simple_review"];
   const onLeaveStudents = allStudents.filter(s => {
     if (!s.leaveStart || !s.leaveEnd) return false;
-    if (!(s.leaveStart <= today && today <= s.leaveEnd)) return false;
-    const circle = s.circleId ? circleMap[s.circleId] : null;
-    const trackType = circle?.trackType ?? "girls";
-    return ALLOWED_TRACK_TYPES.includes(trackType);
+    return s.leaveStart <= today && today <= s.leaveEnd;
   });
 
   if (!onLeaveStudents.length) {
@@ -180,8 +173,11 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
 
     const leaveDays = getWorkingDaysBetween(leaveStart, today);
 
+    const trackType = circle?.trackType ?? "girls";
+    const useMemoForTrack = trackType === "simple_review" || trackType === "fixation";
     let enteredDays = 0;
     let enteredToday = false;
+    let todayStatus: "full" | "partial" | "none" | null = null;
 
     if (plan && leaveDays.length > 0) {
       const records = await db.select().from(recordsTable)
@@ -196,6 +192,17 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
           if (day === today) enteredToday = true;
         }
       }
+      // حساب حالة اليوم
+      const todayRec = records.find(r => r.date === today && !r.isAbsent);
+      if (todayRec) {
+        const actualPages = useMemoForTrack
+          ? (todayRec.memorizePages ?? 0)
+          : (todayRec.reviewFarPages ?? 0);
+        const plannedPerDay = plan.cycleLength > 0 ? plan.totalPages / plan.cycleLength : 0;
+        if (actualPages >= plannedPerDay && plannedPerDay > 0) todayStatus = "full";
+        else if (actualPages > 0) todayStatus = "partial";
+        else todayStatus = "none";
+      }
     }
 
     return {
@@ -204,12 +211,14 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
       circleId: student.circleId,
       circleName: circle?.name ?? null,
       track: circle?.track ?? null,
+      trackType,
       leaveStart,
       leaveEnd,
       hasPlan: !!plan,
       leaveDaysCount: leaveDays.length,
       enteredDays,
       enteredToday,
+      todayStatus,
     };
   }));
 

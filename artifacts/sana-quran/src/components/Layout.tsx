@@ -596,6 +596,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
     return [
       { href: "/", label: "إدخال البيانات", icon: PenSquare },
       { href: "/calendar", label: "التقويم", icon: Calendar },
+      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
     ];
   }
   if (role === "teacher" || role === "supervisor") {
@@ -605,6 +606,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
       ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen }] : []),
       { href: "/badges", label: "أوسمتي", icon: Award },
       { href: "/calendar", label: "التقويم", icon: Calendar },
+      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
       { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount },
     ];
   }
@@ -615,6 +617,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
       { href: "/badges", label: "أوسمتي", icon: Award },
       ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen }] : []),
       { href: "/calendar", label: "التقويم", icon: Calendar },
+      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
       { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount },
       { href: "/audio", label: "صوتيات المصحف", icon: Headphones },
     ];
@@ -643,6 +646,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
     return [
       { href: "/", label: "الاختبارات", icon: GraduationCap },
       { href: "/calendar", label: "التقويم", icon: Calendar },
+      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
     ];
   }
   if (role === "exam_supervisor") {
@@ -650,6 +654,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
       { href: "/", label: "الاختبارات", icon: GraduationCap },
       { href: "/statistics", label: "الإحصائيات", icon: BarChart3 },
       { href: "/calendar", label: "التقويم", icon: Calendar },
+      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
     ];
   }
   return [];

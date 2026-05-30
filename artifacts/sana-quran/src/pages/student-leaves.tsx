@@ -1,11 +1,17 @@
 import { useState, useEffect } from "react";
-import { useGetCurrentUser } from "@workspace/api-client-react";
 import { getToken } from "@/lib/auth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, PlaneTakeoff, CheckCircle2, XCircle, AlertTriangle, RefreshCw } from "lucide-react";
+import {
+  Loader2, PlaneTakeoff, CheckCircle2, XCircle,
+  AlertTriangle, RefreshCw, Clock, Minus,
+} from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const PLAN_TRACK_TYPES = ["girls", "fixation", "simple_review"];
+
+type TodayStatus = "full" | "partial" | "none" | null;
 
 type OnLeaveStudent = {
   id: number;
@@ -13,16 +19,26 @@ type OnLeaveStudent = {
   circleId: number | null;
   circleName: string | null;
   track: string | null;
+  trackType: string | null;
   leaveStart: string;
   leaveEnd: string;
   hasPlan: boolean;
   leaveDaysCount: number;
   enteredDays: number;
   enteredToday: boolean;
+  todayStatus: TodayStatus;
+};
+
+const TODAY_STATUS_CONFIG: Record<
+  "full" | "partial" | "none",
+  { label: string; Icon: any; badgeClass: string }
+> = {
+  full:    { label: "منتظمة",    Icon: CheckCircle2, badgeClass: "bg-emerald-100 text-emerald-700" },
+  partial: { label: "متأخرة",    Icon: Clock,        badgeClass: "bg-amber-100 text-amber-700"   },
+  none:    { label: "ما أنجزت", Icon: XCircle,      badgeClass: "bg-rose-100 text-rose-700"     },
 };
 
 export default function StudentLeavesPage() {
-  const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const [students, setStudents] = useState<OnLeaveStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -77,7 +93,7 @@ export default function StudentLeavesPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">طالبات الإجازة</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            الطالبات في إجازة حاليًا ومدى التزامهن بخطة المراجعة
+            الطالبات في إجازة حاليًا
           </p>
         </div>
         <button
@@ -99,13 +115,16 @@ export default function StudentLeavesPage() {
       ) : (
         <div className="space-y-3">
           {students.map(s => {
-            const pct = getCommitmentPct(s);
+            const showPlan = PLAN_TRACK_TYPES.includes(s.trackType ?? "girls");
+            const pct = showPlan ? getCommitmentPct(s) : null;
             const pctColor = pct === null ? "" : pct >= 80 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-rose-600";
-            const pctBg = pct === null ? "" : pct >= 80 ? "bg-emerald-50 border-emerald-200" : pct >= 50 ? "bg-amber-50 border-amber-200" : "bg-rose-50 border-rose-200";
+            const pctBg   = pct === null ? "" : pct >= 80 ? "bg-emerald-50 border-emerald-200" : pct >= 50 ? "bg-amber-50 border-amber-200" : "bg-rose-50 border-rose-200";
 
             return (
               <Card key={s.id} className="border-0 shadow-sm">
                 <CardContent className="p-4 space-y-3">
+
+                  {/* رأس البطاقة */}
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-bold text-base">{s.fullName}</p>
@@ -114,61 +133,77 @@ export default function StudentLeavesPage() {
                         {s.track ? ` · مسار ${s.track}` : ""}
                       </p>
                     </div>
-                    <div className="text-left shrink-0 space-y-1">
-                      <Badge className="bg-blue-100 text-blue-700 border-0 text-xs block text-right">
+                    <div className="shrink-0 flex flex-col items-end gap-1">
+                      <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
                         {formatDate(s.leaveStart)} – {formatDate(s.leaveEnd)}
                       </Badge>
-                      {s.enteredToday && (
-                        <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs block text-right">
-                          دخلت اليوم ✓
-                        </Badge>
-                      )}
+                      {/* حالة اليوم — تظهر فقط لمسارات البنات والتثبيت */}
+                      {showPlan && s.hasPlan && (() => {
+                        if (s.todayStatus && s.todayStatus in TODAY_STATUS_CONFIG) {
+                          const cfg = TODAY_STATUS_CONFIG[s.todayStatus];
+                          return (
+                            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${cfg.badgeClass}`}>
+                              <cfg.Icon className="w-3 h-3 shrink-0" />
+                              {cfg.label}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground px-2 py-0.5 rounded-full bg-muted/40">
+                            <Minus className="w-3 h-3 shrink-0" />
+                            لم تُدخل بعد
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
 
-                  {s.hasPlan ? (
-                    <div className={`rounded-xl border p-3 space-y-2 ${pctBg}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <p className={`text-sm font-bold ${pctColor}`}>
-                          خطة المراجعة
-                        </p>
-                        <span className={`text-xs font-bold ${pctColor}`}>
-                          {s.enteredDays} / {s.leaveDaysCount} يوم
-                          {pct !== null && ` (${pct}%)`}
-                        </span>
-                      </div>
-
-                      {s.leaveDaysCount > 0 && (
-                        <div className="w-full bg-white/60 rounded-full h-2 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${
-                              pct !== null && pct >= 80 ? "bg-emerald-500"
-                                : pct !== null && pct >= 50 ? "bg-amber-500"
-                                : "bg-rose-500"
-                            }`}
-                            style={{ width: `${pct ?? 0}%` }}
-                          />
+                  {/* قسم متابعة الخطة — فقط لمسارات البنات + التثبيت */}
+                  {showPlan && (
+                    s.hasPlan ? (
+                      <div className={`rounded-xl border p-3 space-y-2 ${pctBg || "bg-muted/20 border-border/50"}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-sm font-bold ${pctColor || "text-foreground"}`}>
+                            خطة المراجعة
+                          </p>
+                          <span className={`text-xs font-bold ${pctColor}`}>
+                            {s.enteredDays} / {s.leaveDaysCount} يوم
+                            {pct !== null && ` (${pct}%)`}
+                          </span>
                         </div>
-                      )}
 
-                      <div className="flex items-center gap-1.5">
-                        {s.enteredToday ? (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            <span className="text-xs text-emerald-700 font-medium">أدخلت إنجازها اليوم</span>
-                          </>
-                        ) : (
-                          <>
-                            <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                            <span className="text-xs text-rose-700">لم تُدخل إنجازها اليوم</span>
-                          </>
+                        {s.leaveDaysCount > 0 && (
+                          <div className="w-full bg-white/60 rounded-full h-2 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                pct !== null && pct >= 80 ? "bg-emerald-500"
+                                  : pct !== null && pct >= 50 ? "bg-amber-500"
+                                  : "bg-rose-500"
+                              }`}
+                              style={{ width: `${pct ?? 0}%` }}
+                            />
+                          </div>
                         )}
+
+                        <div className="flex items-center gap-1.5">
+                          {s.enteredToday ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span className="text-xs text-emerald-700 font-medium">أدخلت إنجازها اليوم</span>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                              <span className="text-xs text-rose-700">لم تُدخل إنجازها اليوم</span>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-border/50 bg-muted/30 p-3">
-                      <p className="text-xs text-muted-foreground">لا توجد خطة مراجعة مُعيَّنة</p>
-                    </div>
+                    ) : (
+                      <div className="rounded-xl border border-border/50 bg-muted/30 p-3">
+                        <p className="text-xs text-muted-foreground">لا توجد خطة مراجعة مُعيَّنة</p>
+                      </div>
+                    )
                   )}
                 </CardContent>
               </Card>
