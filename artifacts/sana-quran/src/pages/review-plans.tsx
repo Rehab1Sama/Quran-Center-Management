@@ -174,6 +174,91 @@ function openPlanPDF(plan: any) {
   if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 700); }
 }
 
+// ── Student self-entry for leave students ───────────────────────────────────
+function SelfEntrySection({ plan, onSubmitted }: { plan: any; onSubmitted: () => void }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const theme = plan.theme;
+
+  const todayEntry = plan.todayEntry;
+  const alreadyEntered = plan.actualPagesForToday > 0;
+
+  async function handleEntry(completed: boolean) {
+    setSubmitting(true);
+    try {
+      const token = getToken();
+      const body: any = { completed };
+      if (completed && todayEntry) {
+        body.surahStart = todayEntry.surahStart;
+        body.ayahStart = todayEntry.ayahStart;
+        body.surahEnd = todayEntry.surahEnd;
+        body.ayahEnd = todayEntry.ayahEnd;
+        body.pages = todayEntry.pages;
+      }
+      const res = await fetch(`${BASE}/api/records/student-self-entry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error ?? "حدث خطأ");
+        return;
+      }
+      setSubmitted(true);
+      onSubmitted();
+    } catch {
+      alert("حدث خطأ في الاتصال");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (plan.isFriday) return null;
+  if (!todayEntry) return null;
+
+  const section = todayEntry.surahStart === todayEntry.surahEnd
+    ? `${todayEntry.surahStart} (${todayEntry.ayahStart} – ${todayEntry.ayahEnd})`
+    : `${todayEntry.surahStart} (${todayEntry.ayahStart}) ← ${todayEntry.surahEnd} (${todayEntry.ayahEnd})`;
+
+  if (alreadyEntered || submitted) {
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-1">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <p className="text-sm font-bold text-emerald-800">سُجِّل إنجازك لليوم ✓</p>
+        </div>
+        <p className="text-xs text-emerald-700">{section} · {todayEntry.pages} وجه</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: `${theme.primaryColor}44`, background: theme.secondaryColor }}>
+      <p className="text-sm font-bold" style={{ color: theme.accentColor }}>📝 سجّلي إنجازك لليوم</p>
+      <p className="text-xs" style={{ color: theme.accentColor }}>مراجعة اليوم: <span className="font-semibold">{section}</span> ({todayEntry.pages} وجه)</p>
+      <div className="flex gap-2">
+        <button
+          onClick={() => handleEntry(true)}
+          disabled={submitting}
+          className="flex-1 rounded-xl py-2.5 text-sm font-bold text-white transition-opacity disabled:opacity-60"
+          style={{ background: theme.primaryColor }}
+        >
+          {submitting ? "جاري الحفظ..." : "✓ أكملت اليوم"}
+        </button>
+        <button
+          onClick={() => handleEntry(false)}
+          disabled={submitting}
+          className="flex-1 rounded-xl py-2.5 text-sm font-bold border transition-colors disabled:opacity-60"
+          style={{ borderColor: `${theme.primaryColor}44`, color: theme.accentColor }}
+        >
+          ✗ لم أكمل
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Student's own plan view ──────────────────────────────────────────────────
 function StudentReviewPlanView({ studentId }: { studentId: number }) {
   const [plan, setPlan] = useState<any>(null);
@@ -181,7 +266,8 @@ function StudentReviewPlanView({ studentId }: { studentId: number }) {
   const [downloading, setDownloading] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
 
-  useEffect(() => {
+  function loadPlan() {
+    setLoading(true);
     const token = getToken();
     fetch(`${BASE}/api/students/${studentId}/review-plan`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -190,6 +276,10 @@ function StudentReviewPlanView({ studentId }: { studentId: number }) {
       .then(setPlan)
       .catch(() => {})
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    loadPlan();
   }, [studentId]);
 
   function handleDownloadPDF() {
@@ -303,6 +393,8 @@ function StudentReviewPlanView({ studentId }: { studentId: number }) {
           </div>
         </div>
       </div>
+
+      {plan.isOnLeave && <SelfEntrySection plan={plan} onSubmitted={loadPlan} />}
 
       {plan.isCompletedEarly && (
         <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 flex items-center gap-2">

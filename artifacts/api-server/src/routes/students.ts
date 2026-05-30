@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, usersTable, studentArchiveEventsTable } from "@workspace/db";
+import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, reviewPlansTable, usersTable, studentArchiveEventsTable } from "@workspace/db";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateStudentBody, UpdateStudentBody } from "@workspace/api-zod";
@@ -127,8 +127,91 @@ router.patch("/students/:id/restore", authenticate, async (req, res): Promise<vo
   res.json(student);
 });
 
+router.get("/students/on-leave", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const allStudents = await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false));
+  const onLeaveStudents = allStudents.filter(s =>
+    s.leaveStart && s.leaveEnd && s.leaveStart <= today && today <= s.leaveEnd
+  );
+
+  if (!onLeaveStudents.length) {
+    res.json([]);
+    return;
+  }
+
+  const circles = await db.select().from(circlesTable);
+  const circleMap: Record<number, typeof circles[0]> = {};
+  for (const c of circles) circleMap[c.id] = c;
+
+  const activePlans = await db.select().from(reviewPlansTable).where(eq(reviewPlansTable.status, "active"));
+  const planByStudent: Record<number, typeof activePlans[0]> = {};
+  for (const p of activePlans) planByStudent[p.studentId] = p;
+
+  function getWorkingDaysBetween(start: string, end: string): string[] {
+    const days: string[] = [];
+    const cur = new Date(start + "T12:00:00Z");
+    const endD = new Date(end + "T12:00:00Z");
+    while (cur <= endD) {
+      const dow = cur.getUTCDay();
+      if (dow !== 5) days.push(cur.toISOString().slice(0, 10));
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+    return days;
+  }
+
+  const result = await Promise.all(onLeaveStudents.map(async student => {
+    const circle = student.circleId ? circleMap[student.circleId] : null;
+    const plan = planByStudent[student.id];
+
+    const leaveStart = student.leaveStart!;
+    const leaveEnd = student.leaveEnd!;
+
+    const leaveDays = getWorkingDaysBetween(leaveStart, today);
+
+    let enteredDays = 0;
+    let enteredToday = false;
+
+    if (plan && leaveDays.length > 0) {
+      const records = await db.select().from(recordsTable)
+        .where(and(
+          eq(recordsTable.studentId, student.id),
+          gte(recordsTable.date, leaveStart),
+        ));
+      for (const day of leaveDays) {
+        const rec = records.find(r => r.date === day && !r.isAbsent);
+        if (rec) {
+          enteredDays++;
+          if (day === today) enteredToday = true;
+        }
+      }
+    }
+
+    return {
+      id: student.id,
+      fullName: student.fullName,
+      circleId: student.circleId,
+      circleName: circle?.name ?? null,
+      track: circle?.track ?? null,
+      leaveStart,
+      leaveEnd,
+      hasPlan: !!plan,
+      leaveDaysCount: leaveDays.length,
+      enteredDays,
+      enteredToday,
+    };
+  }));
+
+  res.json(result);
+});
+
 router.patch("/students/:id/leave", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "track_supervisor"].includes(req.userRole!)) {
+  if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }

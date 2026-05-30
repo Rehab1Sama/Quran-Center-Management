@@ -9,7 +9,7 @@ import {
   CalendarCheck, PenSquare, Headphones, BookUser, FileDown,
   BarChart2, MessageSquare, Search, Clock, Archive, Layers,
   Calendar, ShoppingBag, Award, Shuffle, GraduationCap, AlertTriangle,
-  ArrowLeftRight, Loader2, BookOpen,
+  ArrowLeftRight, Loader2, BookOpen, PlaneTakeoff,
 } from "lucide-react";
 import logoUrl from "@/assets/logo.jpg";
 import { Button } from "@/components/ui/button";
@@ -560,6 +560,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
       { href: "/registration", label: "التسجيل", icon: PenSquare },
       { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList },
       { href: "/onboard", label: "إضافة عضو مباشرة", icon: BookUser },
+      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
       { href: "/export", label: "تصدير البيانات", icon: FileDown },
     ];
   }
@@ -587,6 +588,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
       { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList },
       { href: "/onboard", label: "إضافة عضو مباشرة", icon: BookUser },
       { href: "/export", label: "تصدير البيانات", icon: FileDown },
+      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
       { href: "/deputy-tasks", label: "مهامي", icon: ClipboardList },
     ];
   }
@@ -633,6 +635,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
       ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen }] : []),
       { href: "/messages", label: "الرسائل", icon: MessageSquare },
       { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount },
+      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
       { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList },
     ];
   }

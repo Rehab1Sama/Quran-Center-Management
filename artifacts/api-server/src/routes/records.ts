@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, recordsTable, studentsTable } from "@workspace/db";
+import { db, recordsTable, studentsTable, usersTable, reviewPlansTable, circlesTable } from "@workspace/db";
 import { eq, and, gte, lte, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateRecordBody, UpdateRecordBody } from "@workspace/api-zod";
@@ -118,6 +118,93 @@ router.get("/records/thursday-history", authenticate, async (req, res): Promise<
     grouped[r.date].totalPages += r.reviewPages ?? 0;
   }
   res.json(Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date)));
+});
+
+router.post("/records/student-self-entry", authenticate, async (req, res): Promise<void> => {
+  if (req.userRole !== "student") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+  if (!me) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const conditions: Parameters<typeof and>[0][] = [eq(studentsTable.fullName, me.name ?? ""), eq(studentsTable.isArchived, false)];
+  if (me.circleId) conditions.push(eq(studentsTable.circleId, me.circleId));
+  const [student] = await db.select().from(studentsTable).where(and(...conditions));
+  if (!student) { res.status(404).json({ error: "لم يتم العثور على سجل الطالبة" }); return; }
+
+  const isOnLeave = !!(student.leaveStart && student.leaveEnd && student.leaveStart <= today && today <= student.leaveEnd);
+  if (!isOnLeave) {
+    res.status(403).json({ error: "هذه الميزة متاحة فقط للطالبات في إجازة" });
+    return;
+  }
+
+  const [plan] = await db.select().from(reviewPlansTable)
+    .where(and(eq(reviewPlansTable.studentId, student.id), eq(reviewPlansTable.status, "active")));
+  if (!plan) { res.status(404).json({ error: "لا توجد خطة مراجعة نشطة" }); return; }
+
+  const { completed, surahStart, ayahStart, surahEnd, ayahEnd, pages } = req.body as {
+    completed: boolean;
+    surahStart?: string; ayahStart?: number;
+    surahEnd?: string; ayahEnd?: number;
+    pages?: number;
+  };
+
+  const existing = await db.select().from(recordsTable)
+    .where(and(eq(recordsTable.studentId, student.id), eq(recordsTable.date, today)));
+  if (existing.length > 0) {
+    await db.delete(recordsTable).where(and(eq(recordsTable.studentId, student.id), eq(recordsTable.date, today)));
+  }
+
+  if (!completed) {
+    const [record] = await db.insert(recordsTable).values({
+      studentId: student.id,
+      circleId: student.circleId!,
+      enteredById: req.userId!,
+      date: today,
+      isAbsent: false,
+      reviewFarPages: 0,
+      memorizePages: 0,
+    }).returning();
+    res.status(201).json(record);
+    return;
+  }
+
+  const useMemoForTrack = plan.trackType === "simple_review" || plan.trackType === "fixation";
+
+  const ss = surahStart ?? null;
+  const as_ = ayahStart ?? null;
+  const se = surahEnd ?? null;
+  const ae = ayahEnd ?? null;
+  const pg = pages ?? 0;
+
+  const values: any = {
+    studentId: student.id,
+    circleId: student.circleId!,
+    enteredById: req.userId!,
+    date: today,
+    isAbsent: false,
+  };
+
+  if (useMemoForTrack) {
+    values.memorizeSurahStart = ss;
+    values.memorizeAyahStart = as_;
+    values.memorizeSurahEnd = se;
+    values.memorizeAyahEnd = ae;
+    values.memorizePages = pg;
+  } else {
+    values.reviewFarSurahStart = ss;
+    values.reviewFarAyahStart = as_;
+    values.reviewFarSurahEnd = se;
+    values.reviewFarAyahEnd = ae;
+    values.reviewFarPages = pg;
+  }
+
+  const [record] = await db.insert(recordsTable).values(values).returning();
+  res.status(201).json(record);
 });
 
 router.post("/records", authenticate, async (req, res): Promise<void> => {

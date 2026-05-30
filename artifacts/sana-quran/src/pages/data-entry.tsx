@@ -801,38 +801,47 @@ export default function DataEntryPage() {
                 {filteredStudents.map((student: any) => (
                   <div
                     key={student.studentId}
-                    className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border hover:bg-muted/30 transition-colors"
+                    className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-colors ${student.onLeave ? "border-blue-200 bg-blue-50/50" : "border-border hover:bg-muted/30"}`}
                     data-testid={`row-student-${student.studentId}`}
                   >
                     <div>
-                      <p className="font-semibold text-sm">{student.studentName}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-sm">{student.studentName}</p>
+                        {student.onLeave && (
+                          <span className="text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5">إجازة</span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">{student.track}</p>
                     </div>
-                    <div className="flex gap-1.5 shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1 text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 h-8 px-2.5"
-                        onClick={() => {
-                          setSelectedStudent(student);
-                          setForm({ ...emptyForm(), isAbsent: true });
-                          setAutoFilled(false);
-                          setDialogOpen(true);
-                        }}
-                        data-testid={`button-absent-${student.studentId}`}
-                      >
-                        غائبة
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => openEntry(student)}
-                        className="gap-1.5 h-8"
-                        data-testid={`button-enter-${student.studentId}`}
-                      >
-                        <PenSquare className="w-3.5 h-3.5" />
-                        إدخال
-                      </Button>
-                    </div>
+                    {student.onLeave ? (
+                      <span className="text-xs text-blue-500 font-medium shrink-0">لا يُحاسب بالحضور</span>
+                    ) : (
+                      <div className="flex gap-1.5 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 h-8 px-2.5"
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setForm({ ...emptyForm(), isAbsent: true });
+                            setAutoFilled(false);
+                            setDialogOpen(true);
+                          }}
+                          data-testid={`button-absent-${student.studentId}`}
+                        >
+                          غائبة
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => openEntry(student)}
+                          className="gap-1.5 h-8"
+                          data-testid={`button-enter-${student.studentId}`}
+                        >
+                          <PenSquare className="w-3.5 h-3.5" />
+                          إدخال
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

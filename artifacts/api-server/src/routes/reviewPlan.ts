@@ -536,6 +536,10 @@ router.get("/students/:id/review-plan", authenticate, async (req, res): Promise<
   const planTime = plan.updatedAt ? new Date(plan.updatedAt).getTime() : new Date(plan.createdAt).getTime();
   const isLocked = Date.now() - planTime > planLockedMs;
 
+  const [studentForLeave] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
+  const isOnLeave = !!(studentForLeave?.leaveStart && studentForLeave?.leaveEnd &&
+    studentForLeave.leaveStart <= today && today <= studentForLeave.leaveEnd);
+
   res.json(fmtPlan(plan, {
     dayInCycle, cycleStart, todayEntry,
     plannedPagesForToday: Math.round(plannedPagesForToday * 10) / 10,
@@ -549,6 +553,7 @@ router.get("/students/:id/review-plan", authenticate, async (req, res): Promise<
     history: (plan.previousPlans ?? []) as PlanSnapshot[],
     dayPerformance,
     isLocked,
+    isOnLeave,
   }));
 });
 

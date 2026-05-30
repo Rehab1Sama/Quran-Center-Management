@@ -45,6 +45,7 @@ import DeputyTasksPage from "@/pages/deputy-tasks";
 import DeputyBoardPage from "@/pages/deputy-board";
 import DeputyCirclesPage from "@/pages/deputy-circles";
 import PendingRegistrationsPage from "@/pages/pending-registrations";
+import StudentLeavesPage from "@/pages/student-leaves";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 
@@ -222,6 +223,9 @@ function AppRoutes() {
         </Route>
         <Route path="/deputy-board">
           {isLeader ? <DeputyBoardPage /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/student-leaves">
+          {(isLeader || isDeputy || isTrackSupervisor) ? <StudentLeavesPage /> : <Redirect to="/" />}
         </Route>
 
         <Route path="/students/:id">

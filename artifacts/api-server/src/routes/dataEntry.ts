@@ -39,14 +39,18 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
 
   const students = await studentsQuery;
 
-  const missing = students.filter(s => {
-    if (recordedStudentIds.has(s.studentId)) return false;
-    if (user?.role === "data_entry" && user.track && s.track !== user.track) return false;
-    if (s.leaveStart && s.leaveEnd && s.leaveStart <= today && today <= s.leaveEnd) return false;
-    return true;
-  });
+  const result = students
+    .filter(s => {
+      if (recordedStudentIds.has(s.studentId)) return false;
+      if (user?.role === "data_entry" && user.track && s.track !== user.track) return false;
+      return true;
+    })
+    .map(s => {
+      const onLeave = !!(s.leaveStart && s.leaveEnd && s.leaveStart <= today && today <= s.leaveEnd);
+      return { ...s, onLeave };
+    });
 
-  res.json(missing);
+  res.json(result);
 });
 
 // Returns dates in current week (Sun–Sat) where the circle already has records or teacher absence
