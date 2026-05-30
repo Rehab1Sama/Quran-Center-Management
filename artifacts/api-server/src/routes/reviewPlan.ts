@@ -91,11 +91,42 @@ function wajhOf(surahName: string, ayah: number): number {
   return result;
 }
 
-// حساب عدد الأوجه الدقيق بين نطاقين بناءً على مصحف المدينة المنورة
+// حساب عدد الأوجه الدقيق بين نطاقين بناءً على عدّ الأوجه الكاملة من مصحف المدينة المنورة
 function pagesBetween(s1: string, a1: number, s2: string, a2: number): number {
-  const w1 = wajhOf(s1, a1);
-  const w2 = wajhOf(s2, a2);
-  return Math.max(0.5, Math.abs(w2 - w1) + 0.5);
+  const idx1 = SURAHS.findIndex(s => s.name === s1);
+  const idx2 = SURAHS.findIndex(s => s.name === s2);
+  if (idx1 === -1 || idx2 === -1) return 0.5;
+  const surah1 = idx1 + 1, surah2 = idx2 + 1;
+
+  // ابحث عن مؤشر الوجه الأول
+  let startIdx = 0;
+  for (let i = 0; i < MUSHAF_PAGES.length; i++) {
+    const [s, a] = MUSHAF_PAGES[i];
+    if (s < surah1 || (s === surah1 && a <= a1)) startIdx = i;
+    else break;
+  }
+
+  // عدّ الأوجه الكاملة
+  let count = 0;
+  for (let i = startIdx; i < MUSHAF_PAGES.length; i++) {
+    let lastS: number, lastA: number;
+    if (i + 1 >= MUSHAF_PAGES.length) {
+      lastS = 114; lastA = 6;
+    } else {
+      const [nextS, nextA] = MUSHAF_PAGES[i + 1];
+      if (nextA > 1) {
+        lastS = nextS; lastA = nextA - 1;
+      } else {
+        const prevSurah = SURAHS.find(s => s.n === nextS - 1);
+        lastS = nextS - 1; lastA = prevSurah?.ayahs ?? 3;
+      }
+    }
+    if (surah2 > lastS || (surah2 === lastS && a2 >= lastA)) count++;
+    else break;
+  }
+
+  // كل وجه كامل في البيانات = 0.5 وجه بمنطق المستخدم (2 إدخالات = وجه واحد)
+  return Math.max(0.5, count * 0.5);
 }
 
 function posFromAbs(abs: number): { surah: string; ayah: number } {

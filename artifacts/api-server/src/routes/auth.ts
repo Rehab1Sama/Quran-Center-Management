@@ -172,12 +172,8 @@ router.post("/auth/staff-register", async (req, res): Promise<void> => {
     return;
   }
   const targetRole = role ?? "data_entry";
-  const existing = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase()));
-  const conflicting = existing.find(u => u.role === targetRole && !u.isArchived);
-  if (conflicting) {
-    res.status(409).json({ error: "هذا البريد الإلكتروني مسجل مسبقًا بنفس الدور" });
-    return;
-  }
+  // يُسمح بتكرار نفس البريد مع نفس الدور (مثلاً: أم لها طفلتان في نفس الحلقة)
+
   const passwordHash = hashPassword(password);
   const { country, track, circleId, extraData } = req.body ?? {};
   const [user] = await db.insert(usersTable).values({

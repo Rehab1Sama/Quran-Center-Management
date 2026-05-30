@@ -1,4 +1,4 @@
-import { MUSHAF_PAGES } from "./mushaf-pages";
+import { MUSHAF_PAGES, AYAH_COUNTS } from "./mushaf-pages";
 
 export interface Surah {
   number: number;
@@ -128,23 +128,36 @@ export function getSurahByName(name: string): Surah | undefined {
   return SURAHS.find(s => s.name === name);
 }
 
-// Find which wajh (half-page) a given (surahNum, ayahNum) falls on.
-// Scans MUSHAF_PAGES and returns the last entry where we haven't yet passed the ayah.
-function findWajh(surahNum: number, ayahNum: number): number {
-  let result = MUSHAF_PAGES[0][2];
-  for (const [s, a, w] of MUSHAF_PAGES) {
-    if (s < surahNum || (s === surahNum && a <= ayahNum)) {
-      result = w;
-    } else {
-      break;
-    }
+// إيجاد مؤشر الوجه في MUSHAF_PAGES الذي يحتوي على (surahNum, ayahNum)
+function findWajhIdx(surahNum: number, ayahNum: number): number {
+  let result = 0;
+  for (let i = 0; i < MUSHAF_PAGES.length; i++) {
+    const [s, a] = MUSHAF_PAGES[i];
+    if (s < surahNum || (s === surahNum && a <= ayahNum)) result = i;
+    else break;
   }
   return result;
 }
 
-// Calculate the number of pages (in 0.5 increments = awjuh) between two positions.
-// Uses the Medina Mushaf database for exact page boundaries.
-// Formula: (endWajh - startWajh + 0.5) so that a single-ayah range counts as 1 wajh (0.5 page).
+// التحقق من أن الوجه عند مؤشر idx مكتمل بالكامل ضمن النطاق المنتهي عند (endSurahNum, endAyah)
+// الوجه مكتمل إذا كان النطاق يصل إلى آخر آية في ذلك الوجه أو يتجاوزها
+function isWajhComplete(idx: number, endSurahNum: number, endAyah: number): boolean {
+  if (idx + 1 >= MUSHAF_PAGES.length) return true;
+  const [nextS, nextA] = MUSHAF_PAGES[idx + 1];
+  let lastS: number, lastA: number;
+  if (nextA > 1) {
+    lastS = nextS; lastA = nextA - 1;
+  } else {
+    // الوجه ينتهي بآخر آية من السورة السابقة
+    lastS = nextS - 1;
+    lastA = AYAH_COUNTS[nextS - 2] ?? 3;
+  }
+  return endSurahNum > lastS || (endSurahNum === lastS && endAyah >= lastA);
+}
+
+// حساب عدد الأوجه بناءً على عدّ الأوجه الكاملة من مصحف المدينة المنورة.
+// كل إدخالَين في MUSHAF_PAGES = وجه واحد بمنطق المستخدم (نتيجة * 0.5)
+// أمثلة: البقرة 1-12 → 1.5، 1-16 → 2، 1-20 → 2.5، 1-21 → 2.5
 export function calculatePages(
   startSurahName: string | null | undefined,
   startAyah: number | null | undefined,
@@ -160,10 +173,15 @@ export function calculatePages(
   const startSurahNum = startIdx + 1;
   const endSurahNum   = endIdx + 1;
 
-  const startWajh = findWajh(startSurahNum, startAyah);
-  const endWajh   = findWajh(endSurahNum, endAyah);
+  const startWajhIdx = findWajhIdx(startSurahNum, startAyah);
 
-  return Math.abs(endWajh - startWajh) + 0.5;
+  let count = 0;
+  for (let i = startWajhIdx; i < MUSHAF_PAGES.length; i++) {
+    if (isWajhComplete(i, endSurahNum, endAyah)) count++;
+    else break;
+  }
+
+  return count * 0.5;
 }
 
 export function formatPages(pages: number | null | undefined): string {

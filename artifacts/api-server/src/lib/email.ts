@@ -16,7 +16,7 @@ export async function sendEmailOTP(to: string, otp: string): Promise<void> {
     throw new Error("لم يتم ضبط EMAIL_USER و EMAIL_PASS في متغيرات البيئة");
   }
   await transporter.sendMail({
-    from: `"مقرأة سنا القرآن" <${process.env.EMAIL_USER}>`,
+    from: `"مقرأة سَنا الآي" <${process.env.EMAIL_USER}>`,
     to,
     subject: "رمز التحقق — مقرأة سنا القرآن",
     html: `
@@ -26,7 +26,7 @@ export async function sendEmailOTP(to: string, otp: string): Promise<void> {
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
   <div style="max-width:480px;margin:40px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08)">
     <div style="background:linear-gradient(135deg,#1e3a5f,#2d7d6f);padding:28px 32px;text-align:center">
-      <h1 style="margin:0;color:#fff;font-size:22px;font-weight:800">مقرأة سنا القرآن</h1>
+      <h1 style="margin:0;color:#fff;font-size:22px;font-weight:800">مقرأة سَنا الآي</h1>
       <p style="margin:6px 0 0;color:rgba(255,255,255,.8);font-size:13px">التحقق من البريد الإلكتروني</p>
     </div>
     <div style="padding:32px">

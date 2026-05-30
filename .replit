@@ -60,3 +60,5 @@ externalPort = 3000
 
 [userenv.shared]
 DATABASE_URL = "postgresql://postgres.uqlshjldemwyygrplowi:Rrehabfall66@aws-0-eu-west-3.pooler.supabase.com:6543/postgres"
+EMAIL_USER = "sana.qur3n@gmail.com"
+EMAIL_PASS = "mkrstiewylmppfwu"
