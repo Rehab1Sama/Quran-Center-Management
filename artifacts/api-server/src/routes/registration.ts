@@ -5,7 +5,8 @@ import { authenticate, requireRole } from "../middlewares/authenticate";
 import { hashPassword } from "../lib/auth";
 import { OpenRegistrationBody, SubmitRegistrationBody } from "@workspace/api-zod";
 import { appendStudentToSheet } from "../lib/sheets";
-import { sendEmailOTP } from "../lib/email";
+import { sendEmailOTP, sendActivationEmail } from "../lib/email";
+import { randomBytes } from "crypto";
 
 const router: IRouter = Router();
 
@@ -227,6 +228,47 @@ router.post("/registration/save-questions", authenticate, requireRole("leader"),
   res.json({ success: true });
 });
 
+router.get("/registration/activate", async (req, res): Promise<void> => {
+  const { token } = req.query as { token?: string };
+  if (!token) { res.status(400).json({ error: "رمز التفعيل مفقود" }); return; }
+
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.emailVerificationToken, token));
+
+  if (!user) {
+    res.status(400).json({ error: "رمز التفعيل غير صحيح أو انتهت صلاحيته" });
+    return;
+  }
+
+  await db
+    .update(usersTable)
+    .set({ emailVerificationToken: null, registrationStatus: "approved" })
+    .where(eq(usersTable.id, user.id));
+
+  res.json({ success: true, name: user.name });
+});
+
+router.post("/registration/resend-activation", async (req, res): Promise<void> => {
+  const { email } = req.body as { email?: string };
+  if (!email) { res.status(400).json({ error: "البريد مطلوب" }); return; }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase()));
+  if (!user) { res.status(404).json({ error: "البريد غير مسجل" }); return; }
+  if (!user.emailVerificationToken) { res.json({ success: true, alreadyActivated: true }); return; }
+
+  const appUrl = process.env.APP_URL ?? `https://${req.get("host")}`;
+  const activationUrl = `${appUrl}/activate?token=${user.emailVerificationToken}`;
+
+  try {
+    await sendActivationEmail(email.toLowerCase(), activationUrl);
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "فشل إرسال البريد — تأكدي من صحة عنوان بريدك" });
+  }
+});
+
 router.post("/registration/submit", async (req, res): Promise<void> => {
   const settings = await getSettings();
   if (!settings.isOpen) {
@@ -247,6 +289,8 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
   const autoApprove = (settings as any).autoApproveStudents === true;
   const registrationStatus = autoApprove ? "approved" : "pending";
 
+  const emailVerificationToken = autoApprove ? null : randomBytes(32).toString("hex");
+
   await db.insert(usersTable).values({
     email: email.toLowerCase(),
     name: fullName,
@@ -259,6 +303,7 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
     ageRange: ageRange ?? null,
     educationLevel: educationLevel ?? null,
     registrationStatus,
+    emailVerificationToken,
   }).returning();
 
   if (!role || role === "student") {
@@ -300,7 +345,13 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
     }).catch(() => {});
   }
 
-  res.status(201).json({ success: true, autoApproved: autoApprove });
+  if (!autoApprove && emailVerificationToken) {
+    const appUrl = process.env.APP_URL ?? `https://${req.get("host")}`;
+    const activationUrl = `${appUrl}/activate?token=${emailVerificationToken}`;
+    sendActivationEmail(email.toLowerCase(), activationUrl).catch(() => {});
+  }
+
+  res.status(201).json({ success: true, autoApproved: autoApprove, emailSent: !autoApprove });
 });
 
 export default router;

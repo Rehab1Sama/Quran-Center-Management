@@ -8,9 +8,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle, XCircle, Search, ChevronDown } from "lucide-react";
+import { CheckCircle, XCircle, Search, ChevronDown, Mail } from "lucide-react";
 import logoUrl from "@/assets/logo.jpg";
 import { Link } from "wouter";
+import { COUNTRIES } from "@/lib/countries";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -31,66 +32,6 @@ const SURAHS = [
 ];
 
 const JUZ_LIST = Array.from({ length: 30 }, (_, i) => `الجزء ${i + 1}`);
-
-// ── Countries with dial codes ─────────────────────────────────────────────────
-const COUNTRIES: { name: string; dialCode: string }[] = [
-  { name: "السعودية", dialCode: "+966" },
-  { name: "الإمارات", dialCode: "+971" },
-  { name: "الكويت", dialCode: "+965" },
-  { name: "قطر", dialCode: "+974" },
-  { name: "البحرين", dialCode: "+973" },
-  { name: "عُمان", dialCode: "+968" },
-  { name: "الأردن", dialCode: "+962" },
-  { name: "مصر", dialCode: "+20" },
-  { name: "السودان", dialCode: "+249" },
-  { name: "اليمن", dialCode: "+967" },
-  { name: "العراق", dialCode: "+964" },
-  { name: "سوريا", dialCode: "+963" },
-  { name: "لبنان", dialCode: "+961" },
-  { name: "فلسطين", dialCode: "+970" },
-  { name: "ليبيا", dialCode: "+218" },
-  { name: "تونس", dialCode: "+216" },
-  { name: "الجزائر", dialCode: "+213" },
-  { name: "المغرب", dialCode: "+212" },
-  { name: "موريتانيا", dialCode: "+222" },
-  { name: "الصومال", dialCode: "+252" },
-  { name: "جيبوتي", dialCode: "+253" },
-  { name: "جزر القمر", dialCode: "+269" },
-  { name: "تركيا", dialCode: "+90" },
-  { name: "ماليزيا", dialCode: "+60" },
-  { name: "إندونيسيا", dialCode: "+62" },
-  { name: "باكستان", dialCode: "+92" },
-  { name: "الهند", dialCode: "+91" },
-  { name: "بنغلاديش", dialCode: "+880" },
-  { name: "أمريكا", dialCode: "+1" },
-  { name: "كندا", dialCode: "+1" },
-  { name: "المملكة المتحدة", dialCode: "+44" },
-  { name: "فرنسا", dialCode: "+33" },
-  { name: "ألمانيا", dialCode: "+49" },
-  { name: "إيطاليا", dialCode: "+39" },
-  { name: "إسبانيا", dialCode: "+34" },
-  { name: "هولندا", dialCode: "+31" },
-  { name: "بلجيكا", dialCode: "+32" },
-  { name: "السويد", dialCode: "+46" },
-  { name: "النرويج", dialCode: "+47" },
-  { name: "الدنمارك", dialCode: "+45" },
-  { name: "سويسرا", dialCode: "+41" },
-  { name: "النمسا", dialCode: "+43" },
-  { name: "أستراليا", dialCode: "+61" },
-  { name: "نيوزيلندا", dialCode: "+64" },
-  { name: "روسيا", dialCode: "+7" },
-  { name: "الصين", dialCode: "+86" },
-  { name: "اليابان", dialCode: "+81" },
-  { name: "كوريا الجنوبية", dialCode: "+82" },
-  { name: "البرازيل", dialCode: "+55" },
-  { name: "الأرجنتين", dialCode: "+54" },
-  { name: "المكسيك", dialCode: "+52" },
-  { name: "جنوب أفريقيا", dialCode: "+27" },
-  { name: "نيجيريا", dialCode: "+234" },
-  { name: "إثيوبيا", dialCode: "+251" },
-  { name: "كينيا", dialCode: "+254" },
-  { name: "دولة أخرى", dialCode: "" },
-];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Circle {
@@ -333,6 +274,41 @@ function CustomQuestionField({
   );
 }
 
+// ── Resend Activation Button ──────────────────────────────────────────────────
+function ResendButton({ email }: { email: string }) {
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  const resend = async () => {
+    setState("sending");
+    try {
+      const res = await fetch(`${BASE}/api/registration/resend-activation`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "خطأ");
+      setState("sent");
+    } catch {
+      setState("error");
+      setTimeout(() => setState("idle"), 3000);
+    }
+  };
+
+  if (state === "sent") return <p className="text-xs text-emerald-600 font-semibold">✓ أُعيد إرسال البريد</p>;
+  if (state === "error") return <p className="text-xs text-rose-600">تعذّر إرسال البريد، حاولي مجدداً</p>;
+
+  return (
+    <Button
+      type="button" variant="outline" size="sm"
+      onClick={resend}
+      disabled={state === "sending"}
+      className="text-xs h-8"
+    >
+      {state === "sending" ? "جاري الإرسال..." : "إعادة إرسال رابط التفعيل"}
+    </Button>
+  );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function validate4PartName(name: string): string | null {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -373,9 +349,7 @@ export default function RegisterPage() {
   const [circles, setCircles] = useState<Circle[]>([]);
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
   const [hasMemorized, setHasMemorized] = useState<"" | "yes" | "no">("");
-  const [emailOtp, setEmailOtp] = useState({
-    sent: false, verified: false, code: "", sending: false, verifying: false, error: "",
-  });
+  const [submittedEmail, setSubmittedEmail] = useState("");
 
   useEffect(() => {
     fetch(`${BASE}/api/registration/circles-new-students`)
@@ -396,47 +370,6 @@ export default function RegisterPage() {
       return Array.isArray(parsed) ? parsed : [];
     } catch { return []; }
   })();
-
-  const sendOTP = async () => {
-    if (!form.email || !form.email.includes("@")) {
-      toast({ title: "أدخلي البريد الإلكتروني أولاً", variant: "destructive" }); return;
-    }
-    setEmailOtp(s => ({ ...s, sending: true, error: "" }));
-    try {
-      const res = await fetch(`${BASE}/api/registration/send-email-otp`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: form.email }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "فشل إرسال الرمز");
-      setEmailOtp(s => ({ ...s, sent: true, sending: false, code: data.devOtp ?? "" }));
-      if (data.devOtp) {
-        toast({ title: `[وضع التطوير] رمز التحقق: ${data.devOtp}` });
-      } else {
-        toast({ title: "تم إرسال رمز التحقق إلى بريدك الإلكتروني" });
-      }
-    } catch (err: any) {
-      setEmailOtp(s => ({ ...s, sending: false, error: err.message ?? "خطأ" }));
-      toast({ title: err.message ?? "خطأ في إرسال الرمز", variant: "destructive" });
-    }
-  };
-
-  const verifyOTP = async () => {
-    if (!emailOtp.code.trim()) return;
-    setEmailOtp(s => ({ ...s, verifying: true, error: "" }));
-    try {
-      const res = await fetch(`${BASE}/api/registration/verify-email-otp`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: form.email, otp: emailOtp.code.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "رمز غير صحيح");
-      setEmailOtp(s => ({ ...s, verified: true, verifying: false }));
-      toast({ title: "✓ تم التحقق من البريد الإلكتروني بنجاح" });
-    } catch (err: any) {
-      setEmailOtp(s => ({ ...s, verifying: false, error: err.message ?? "خطأ" }));
-    }
-  };
 
   const set = (field: string, val: string) => {
     setForm(f => ({ ...f, [field]: val }));
@@ -461,15 +394,6 @@ export default function RegisterPage() {
       if (q.required && !customAnswers[q.id]?.trim()) {
         newErrors[`custom_${q.id}`] = `يرجى الإجابة على: ${q.label}`;
       }
-    }
-
-    if (!emailOtp.verified) {
-      if (!emailOtp.sent) {
-        toast({ title: "يرجى التحقق من البريد الإلكتروني أولاً — اضغطي «تحقق» بجانب البريد", variant: "destructive" });
-      } else {
-        toast({ title: "يرجى إدخال رمز التحقق المرسل إلى بريدك", variant: "destructive" });
-      }
-      return;
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -513,6 +437,7 @@ export default function RegisterPage() {
         throw new Error(data?.error ?? "خطأ في التسجيل");
       }
       setSubmitted(true);
+      setSubmittedEmail(form.email);
     } catch (err: any) {
       const msg: string = err.message ?? "يرجى التحقق من البيانات";
       toast({ title: "خطأ في التسجيل", description: msg, variant: "destructive" });
@@ -554,12 +479,24 @@ export default function RegisterPage() {
             </Card>
           ) : submitted ? (
             <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm" data-testid="card-registration-success">
-              <CardContent className="py-12 text-center">
-                <CheckCircle className="w-14 h-14 text-emerald-500 mx-auto mb-3" />
-                <p className="text-lg font-bold text-foreground">تم التسجيل بنجاح</p>
-                <p className="text-muted-foreground text-sm mt-2">يمكنك الآن تسجيل الدخول</p>
-                <div className="mt-6">
-                  <Link href="/login" className="text-sm text-primary font-semibold hover:underline">تسجيل الدخول</Link>
+              <CardContent className="py-10 text-center">
+                <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+                  <Mail className="w-8 h-8 text-emerald-600" />
+                </div>
+                <p className="text-xl font-bold text-foreground mb-2">تم التسجيل بنجاح! 🎉</p>
+                <p className="text-muted-foreground text-sm leading-relaxed mb-1">
+                  أُرسل إليكِ رابط التفعيل على:
+                </p>
+                <p className="font-semibold text-primary text-sm mb-4 dir-ltr" dir="ltr">{submittedEmail}</p>
+                <p className="text-muted-foreground text-xs leading-relaxed mb-6">
+                  اضغطي على الرابط في البريد لتفعيل حسابك والدخول إلى المنصة.<br />
+                  إذا لم يصلك البريد، تحققي من مجلد الـ Spam.
+                </p>
+                <div className="space-y-2">
+                  <ResendButton email={submittedEmail} />
+                  <div className="mt-4">
+                    <Link href="/login" className="text-sm text-muted-foreground hover:underline">تسجيل الدخول</Link>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -595,60 +532,15 @@ export default function RegisterPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-sm font-semibold">البريد الإلكتروني *</Label>
-                      <div className="flex gap-1.5">
-                        <Input
-                          required type="email"
-                          value={form.email}
-                          onChange={e => {
-                            set("email", e.target.value);
-                            setEmailOtp(s => ({ ...s, sent: false, verified: false, code: "", error: "" }));
-                          }}
-                          placeholder="email@example.com"
-                          className={`text-left flex-1 min-w-0 ${emailOtp.verified ? "border-emerald-400 bg-emerald-50" : ""}`}
-                          dir="ltr"
-                          disabled={emailOtp.verified}
-                          data-testid="input-email"
-                        />
-                        {emailOtp.verified ? (
-                          <span className="flex items-center gap-1 text-emerald-600 text-xs font-bold shrink-0 px-1.5">
-                            <CheckCircle className="w-4 h-4" />
-                          </span>
-                        ) : (
-                          <Button
-                            type="button" size="sm" variant="outline"
-                            className="text-xs shrink-0 h-10 px-2"
-                            onClick={sendOTP}
-                            disabled={emailOtp.sending || !form.email.includes("@")}
-                          >
-                            {emailOtp.sending ? "..." : emailOtp.sent ? "إعادة" : "تحقق"}
-                          </Button>
-                        )}
-                      </div>
-                      {emailOtp.sent && !emailOtp.verified && (
-                        <div className="space-y-1 mt-1">
-                          <p className="text-xs text-muted-foreground">أدخلي رمز التحقق المرسل للبريد (٦ أرقام)</p>
-                          <div className="flex gap-1.5">
-                            <Input
-                              value={emailOtp.code}
-                              onChange={e => setEmailOtp(s => ({ ...s, code: e.target.value.replace(/\D/g, ""), error: "" }))}
-                              placeholder="000000"
-                              className="text-center text-base font-mono tracking-widest"
-                              dir="ltr" maxLength={6}
-                              onKeyDown={e => e.key === "Enter" && verifyOTP()}
-                              autoFocus
-                            />
-                            <Button
-                              type="button" size="sm"
-                              className="shrink-0 h-10 px-3"
-                              onClick={verifyOTP}
-                              disabled={emailOtp.verifying || emailOtp.code.length < 6}
-                            >
-                              {emailOtp.verifying ? "..." : "تأكيد"}
-                            </Button>
-                          </div>
-                          {emailOtp.error && <p className="text-xs text-rose-600">{emailOtp.error}</p>}
-                        </div>
-                      )}
+                      <Input
+                        required type="email"
+                        value={form.email}
+                        onChange={e => set("email", e.target.value)}
+                        placeholder="email@example.com"
+                        className="text-left"
+                        dir="ltr"
+                        data-testid="input-email"
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm font-semibold">كلمة المرور *</Label>

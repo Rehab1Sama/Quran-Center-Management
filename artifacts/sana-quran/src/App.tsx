@@ -46,6 +46,7 @@ import DeputyBoardPage from "@/pages/deputy-board";
 import DeputyCirclesPage from "@/pages/deputy-circles";
 import PendingRegistrationsPage from "@/pages/pending-registrations";
 import StudentLeavesPage from "@/pages/student-leaves";
+import ActivatePage from "@/pages/activate";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 
@@ -91,6 +92,7 @@ function AppRoutes() {
         <Route path="/register" component={RegisterPage} />
         <Route path="/register-existing" component={RegisterExistingPage} />
         <Route path="/staff-register" component={StaffRegisterPage} />
+        <Route path="/activate" component={ActivatePage} />
         <Route path="/store" component={StorePage} />
         <Route path="/login" component={LoginPage} />
         <Route>

@@ -9,10 +9,49 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { UserPlus, CheckCircle } from "lucide-react";
+import { UserPlus, CheckCircle, Search, ChevronDown } from "lucide-react";
 import { useLocation } from "wouter";
+import { COUNTRIES } from "@/lib/countries";
 
 const AGE_RANGES = ["أقل من 10 سنوات", "10-15", "16-20", "21-30", "31-40", "41-50", "51+"];
+
+function CountrySelector({ value, onChange }: { value: string; onChange: (name: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const filtered = COUNTRIES.filter(c => c.name.includes(search));
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-2 h-10 px-3 rounded-md border border-input bg-background text-sm text-right hover:bg-muted/30 transition-colors"
+      >
+        <span className={value ? "text-foreground" : "text-muted-foreground"}>{value || "اختاري الدولة"}</span>
+        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full mt-1 w-full bg-white border border-border rounded-xl shadow-xl overflow-hidden" dir="rtl">
+          <div className="p-2 border-b">
+            <div className="relative">
+              <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="ابحثي..." className="pr-8 h-8 text-xs text-right" />
+            </div>
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.map(c => (
+              <button key={c.name} type="button" onClick={() => { onChange(c.name); setOpen(false); setSearch(""); }}
+                className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-muted/40 text-right ${value === c.name ? "bg-primary/5 font-semibold" : ""}`}>
+                <span>{c.name}</span>
+                {c.dialCode && <span className="text-xs text-muted-foreground font-mono">{c.dialCode}</span>}
+              </button>
+            ))}
+            {filtered.length === 0 && <p className="text-xs text-muted-foreground text-center py-3">لا توجد نتائج</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const ROLES = [
   { value: "student", label: "طالبة" },
@@ -231,11 +270,9 @@ export default function OnboardPage() {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-sm font-semibold">الدولة</Label>
-                    <Input
+                    <CountrySelector
                       value={form.country}
-                      onChange={e => setForm(f => ({ ...f, country: e.target.value }))}
-                      placeholder="السعودية"
-                      data-testid="input-country"
+                      onChange={v => setForm(f => ({ ...f, country: v }))}
                     />
                   </div>
                 </div>
