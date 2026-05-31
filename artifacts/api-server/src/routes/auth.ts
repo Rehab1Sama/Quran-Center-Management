@@ -222,7 +222,7 @@ router.post("/auth/forgot-password", async (req, res): Promise<void> => {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase()));
 
   if (!user || user.isArchived) {
-    res.json({ success: true });
+    res.status(404).json({ error: "هذا البريد الإلكتروني غير مسجل في المنصة" });
     return;
   }
 
@@ -239,6 +239,8 @@ router.post("/auth/forgot-password", async (req, res): Promise<void> => {
   try {
     await sendPasswordResetEmail(email.toLowerCase(), resetUrl);
   } catch {
+    res.status(500).json({ error: "تعذّر إرسال البريد الإلكتروني — تأكدي من صحة عنوان بريدك" });
+    return;
   }
 
   res.json({ success: true });
