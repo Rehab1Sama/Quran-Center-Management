@@ -17,6 +17,8 @@ export const usersTable = pgTable("users", {
   isArchived: boolean("is_archived").notNull().default(false),
   registrationStatus: text("registration_status"),
   emailVerificationToken: text("email_verification_token"),
+  passwordResetToken: text("password_reset_token"),
+  passwordResetTokenExpiry: timestamp("password_reset_token_expiry", { withTimezone: true }),
   extraData: text("extra_data"),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

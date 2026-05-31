@@ -35,6 +35,43 @@ export async function sendEmailOTP(to: string, otp: string): Promise<void> {
   });
 }
 
+export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
+  const transporter = createTransporter();
+  if (!transporter) throw new Error("لم يتم ضبط EMAIL_USER و EMAIL_PASS في متغيرات البيئة");
+  await transporter.sendMail({
+    from: `"مقرأة سَنا الآي" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: "إعادة تعيين كلمة المرور — مقرأة سنا القرآن",
+    html: `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
+  <div style="max-width:480px;margin:40px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08)">
+    <div style="background:linear-gradient(135deg,#1e3a5f,#2d7d6f);padding:28px 32px;text-align:center">
+      <h1 style="margin:0;color:#fff;font-size:22px;font-weight:800">مقرأة سَنا الآي</h1>
+      <p style="margin:6px 0 0;color:rgba(255,255,255,.8);font-size:13px">إعادة تعيين كلمة المرور</p>
+    </div>
+    <div style="padding:32px">
+      <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6">
+        تلقينا طلبًا لإعادة تعيين كلمة مرور حسابك.<br>
+        اضغطي على الزر أدناه لاختيار كلمة مرور جديدة.
+      </p>
+      <div style="text-align:center;margin:24px 0">
+        <a href="${resetUrl}"
+           style="display:inline-block;background:linear-gradient(135deg,#1e3a5f,#2d7d6f);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:16px;font-weight:700;letter-spacing:0.5px">
+          إعادة تعيين كلمة المرور
+        </a>
+      </div>
+      <p style="margin:0 0 8px;color:#64748b;font-size:12px;text-align:center">أو انسخي هذا الرابط في متصفحك:</p>
+      <p style="margin:0;color:#94a3b8;font-size:11px;text-align:center;word-break:break-all;direction:ltr">${resetUrl}</p>
+      <p style="margin:20px 0 0;color:#cbd5e1;font-size:11px;text-align:center">هذا الرابط صالح لمدة <strong>ساعة واحدة</strong> فقط<br>إذا لم تطلبي هذا الرابط تجاهلي هذه الرسالة</p>
+    </div>
+  </div>
+</body>
+</html>`,
+  });
+}
+
 export async function sendActivationEmail(to: string, activationUrl: string): Promise<void> {
   const transporter = createTransporter();
   if (!transporter) throw new Error("لم يتم ضبط EMAIL_USER و EMAIL_PASS في متغيرات البيئة");

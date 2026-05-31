@@ -47,6 +47,8 @@ import DeputyCirclesPage from "@/pages/deputy-circles";
 import PendingRegistrationsPage from "@/pages/pending-registrations";
 import StudentLeavesPage from "@/pages/student-leaves";
 import ActivatePage from "@/pages/activate";
+import ForgotPasswordPage from "@/pages/forgot-password";
+import ResetPasswordPage from "@/pages/reset-password";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 
@@ -93,6 +95,8 @@ function AppRoutes() {
         <Route path="/register-existing" component={RegisterExistingPage} />
         <Route path="/staff-register" component={StaffRegisterPage} />
         <Route path="/activate" component={ActivatePage} />
+        <Route path="/forgot-password" component={ForgotPasswordPage} />
+        <Route path="/reset-password" component={ResetPasswordPage} />
         <Route path="/store" component={StorePage} />
         <Route path="/login" component={LoginPage} />
         <Route>

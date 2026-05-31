@@ -5,6 +5,8 @@ import { hashPassword, verifyPassword, generateToken } from "../lib/auth";
 import { authenticate } from "../middlewares/authenticate";
 import { LoginBody, LoginSelectAccountBody } from "@workspace/api-zod";
 import { appendVolunteerToSheet } from "../lib/sheets";
+import { sendPasswordResetEmail } from "../lib/email";
+import { randomBytes } from "crypto";
 
 const router: IRouter = Router();
 
@@ -209,6 +211,67 @@ router.post("/auth/staff-register", async (req, res): Promise<void> => {
   }).catch(() => {});
 
   res.status(201).json(safeUser);
+});
+
+router.post("/auth/forgot-password", async (req, res): Promise<void> => {
+  const { email } = req.body as { email?: string };
+  if (!email || !email.includes("@")) {
+    res.status(400).json({ error: "البريد الإلكتروني غير صحيح" }); return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase()));
+
+  if (!user || user.isArchived) {
+    res.json({ success: true });
+    return;
+  }
+
+  const token = randomBytes(32).toString("hex");
+  const expiry = new Date(Date.now() + 60 * 60 * 1000);
+
+  await db.update(usersTable)
+    .set({ passwordResetToken: token, passwordResetTokenExpiry: expiry })
+    .where(eq(usersTable.id, user.id));
+
+  const appUrl = process.env.APP_URL ?? `https://${req.get("host")}`;
+  const resetUrl = `${appUrl}/reset-password?token=${token}`;
+
+  try {
+    await sendPasswordResetEmail(email.toLowerCase(), resetUrl);
+  } catch {
+  }
+
+  res.json({ success: true });
+});
+
+router.post("/auth/reset-password", async (req, res): Promise<void> => {
+  const { token, password } = req.body as { token?: string; password?: string };
+  if (!token || !password) {
+    res.status(400).json({ error: "بيانات ناقصة" }); return;
+  }
+  if (password.length < 6) {
+    res.status(400).json({ error: "كلمة المرور قصيرة جدًا (٦ أحرف على الأقل)" }); return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.passwordResetToken, token));
+
+  if (!user) {
+    res.status(400).json({ error: "رابط إعادة التعيين غير صحيح أو انتهت صلاحيته" }); return;
+  }
+
+  if (!user.passwordResetTokenExpiry || user.passwordResetTokenExpiry < new Date()) {
+    res.status(400).json({ error: "انتهت صلاحية الرابط — اطلبي رابطًا جديدًا" }); return;
+  }
+
+  await db.update(usersTable)
+    .set({
+      passwordHash: hashPassword(password),
+      passwordResetToken: null,
+      passwordResetTokenExpiry: null,
+    })
+    .where(eq(usersTable.id, user.id));
+
+  res.json({ success: true });
 });
 
 router.post("/auth/logout", (_req, res): void => {

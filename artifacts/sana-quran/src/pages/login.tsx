@@ -191,6 +191,14 @@ export default function LoginPage() {
                   >
                     {login.isPending ? "جاري التحقق..." : "دخول"}
                   </Button>
+                  <div className="text-center">
+                    <a
+                      href={import.meta.env.BASE_URL.replace(/\/$/, "") + "/forgot-password"}
+                      className="text-xs text-muted-foreground hover:text-foreground hover:underline transition-colors"
+                    >
+                      نسيت كلمة المرور؟
+                    </a>
+                  </div>
                 </form>
               )}
 
