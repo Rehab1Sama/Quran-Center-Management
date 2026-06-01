@@ -269,6 +269,10 @@ router.patch("/records/:id", authenticate, async (req, res): Promise<void> => {
     res.status(404).json({ error: "Record not found" });
     return;
   }
+
+  // فحص إنذار قلة الحفظ بعد التحديث أيضًا (بشكل غير متزامن)
+  checkAndCreateLowMemorizationAlert(record.studentId, req.userId!).catch(() => {});
+
   res.json(record);
 });
 

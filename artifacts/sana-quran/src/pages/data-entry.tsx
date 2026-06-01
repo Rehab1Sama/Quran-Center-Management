@@ -331,6 +331,20 @@ export default function DataEntryPage() {
     query: { queryKey: ["circles"] }
   });
 
+  // حلقات مدخلة البيانات المُسندة لها (بدلاً من جميع الحلقات)
+  const [assignedCircles, setAssignedCircles] = useState<any[]>([]);
+  useEffect(() => {
+    if (!isDataEntry) return;
+    const token = getToken();
+    if (!token) return;
+    fetch(`${BASE}/api/data-entry/my-circles`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : [])
+      .then(setAssignedCircles)
+      .catch(() => {});
+  }, [isDataEntry]);
+
   // Auto-select user's assigned track on load
   useEffect(() => {
     if ((user as any)?.track && !selectedTrack) {
@@ -358,9 +372,10 @@ export default function DataEntryPage() {
       .catch(() => setSubmittedDays([]));
   }, [selectedCircleId]);
 
-  const filteredCirclesForEntry = (circles ?? []).filter(
-    (c: any) => !selectedTrack || c.track === selectedTrack
-  );
+  // مدخلة البيانات ترى فقط الحلقات المُسندة لها، بينما القائدة ترى الكل مع فلتر المسار
+  const filteredCirclesForEntry = isDataEntry
+    ? assignedCircles
+    : (circles ?? []).filter((c: any) => !selectedTrack || c.track === selectedTrack);
 
   const { data: repeatedAbsences } = useGetRepeatedAbsences(
     { minAbsences: 2 },
@@ -797,32 +812,41 @@ export default function DataEntryPage() {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-bold flex items-center gap-2">
             <Users className="w-4 h-4 text-primary" />
-            المسار والحلقة
+            {isDataEntry ? "الحلقة" : "المسار والحلقة"}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <select
-            className="w-full border border-input rounded-xl px-3 py-2.5 text-sm bg-background text-right font-medium"
-            value={selectedTrack}
-            onChange={e => { setSelectedTrack(e.target.value); setSelectedCircleId(null); }}
-            data-testid="select-track"
-          >
-            <option value="">كل المسارات</option>
-            {(tracks ?? []).map((t: any) => (
-              <option key={t.name} value={t.name}>{t.name}</option>
-            ))}
-          </select>
-          <select
-            className="w-full border border-input rounded-xl px-3 py-2.5 text-sm bg-background text-right font-medium"
-            value={selectedCircleId?.toString() ?? ""}
-            onChange={e => setSelectedCircleId(e.target.value ? parseInt(e.target.value) : null)}
-            data-testid="select-circle"
-          >
-            <option value="">{selectedTrack ? "اختر الحلقة" : "اختر المسار أولًا"}</option>
-            {filteredCirclesForEntry.map((c: any) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          {!isDataEntry && (
+            <select
+              className="w-full border border-input rounded-xl px-3 py-2.5 text-sm bg-background text-right font-medium"
+              value={selectedTrack}
+              onChange={e => { setSelectedTrack(e.target.value); setSelectedCircleId(null); }}
+              data-testid="select-track"
+            >
+              <option value="">كل المسارات</option>
+              {(tracks ?? []).map((t: any) => (
+                <option key={t.name} value={t.name}>{t.name}</option>
+              ))}
+            </select>
+          )}
+          {isDataEntry && assignedCircles.length === 0 ? (
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-center">
+              <p className="text-sm text-amber-700 font-medium">لم تُسند لكِ حلقات بعد</p>
+              <p className="text-xs text-amber-500 mt-1">تواصلي مع القائدة لإسناد حلقاتك</p>
+            </div>
+          ) : (
+            <select
+              className="w-full border border-input rounded-xl px-3 py-2.5 text-sm bg-background text-right font-medium"
+              value={selectedCircleId?.toString() ?? ""}
+              onChange={e => setSelectedCircleId(e.target.value ? parseInt(e.target.value) : null)}
+              data-testid="select-circle"
+            >
+              <option value="">{!isDataEntry && !selectedTrack ? "اختر المسار أولًا" : "اختر الحلقة"}</option>
+              {filteredCirclesForEntry.map((c: any) => (
+                <option key={c.id} value={c.id}>{c.name}{isDataEntry && c.track ? ` — ${c.track}` : ""}</option>
+              ))}
+            </select>
+          )}
         </CardContent>
       </Card>
 

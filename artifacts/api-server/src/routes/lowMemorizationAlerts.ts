@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, lowMemorizationAlertsTable, circlesTable, studentsTable, usersTable, recordsTable, tracksTable, dataEntryCircleAssignmentsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
 const router: IRouter = Router();
@@ -25,7 +25,12 @@ export async function checkAndCreateLowMemorizationAlert(studentId: number, ente
     const [circle] = await db.select().from(circlesTable).where(eq(circlesTable.id, student.circleId));
     if (!circle) return;
 
-    const trackType = circle.trackType ?? "girls";
+    // استخدم dataEntryType من tracksTable إذا كانت الحلقة مرتبطة بمسار
+    let trackType = circle.trackType ?? "girls";
+    if (circle.trackId) {
+      const [trackRow] = await db.select().from(tracksTable).where(eq(tracksTable.id, circle.trackId));
+      if (trackRow?.dataEntryType) trackType = trackRow.dataEntryType;
+    }
     // يُطبَّق الإنذار على مسار الفتيات والتثبيت فقط
     if (trackType !== "girls" && trackType !== "fixation") return;
 

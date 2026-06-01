@@ -147,6 +147,7 @@ export default function AccountsPage() {
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [assignTarget, setAssignTarget] = useState<{ userId: number; userName: string } | null>(null);
   const [selectedAssignCircles, setSelectedAssignCircles] = useState<number[]>([]);
+  const [assignTrackFilter, setAssignTrackFilter] = useState<string>("");
   const { assignments: dataEntryAssignments, saving: assignSaving, saveAssignments } = useDataEntryAssignments(canManageAssignments);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -455,6 +456,7 @@ export default function AccountsPage() {
                             const currentAssign = dataEntryAssignments.find(a => a.userId === de.id);
                             setAssignTarget({ userId: de.id, userName: person.name });
                             setSelectedAssignCircles(currentAssign?.circleIds ?? []);
+                            setAssignTrackFilter("");
                             setAssignDialogOpen(true);
                           }}
                           className="gap-1.5 text-xs h-8 border-blue-200 text-blue-700 hover:bg-blue-50"
@@ -604,7 +606,7 @@ export default function AccountsPage() {
       </Dialog>
 
       {/* نافذة إسناد الحلقات لمدخلة البيانات */}
-      <Dialog open={assignDialogOpen} onOpenChange={v => { if (!v) { setAssignDialogOpen(false); setAssignTarget(null); } }}>
+      <Dialog open={assignDialogOpen} onOpenChange={v => { if (!v) { setAssignDialogOpen(false); setAssignTarget(null); setAssignTrackFilter(""); } }}>
         <DialogContent className="max-w-md" dir="rtl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -612,34 +614,57 @@ export default function AccountsPage() {
               إسناد حلقات — {assignTarget?.userName}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 py-2 max-h-72 overflow-y-auto">
-            {(circles ?? []).filter((c: any) => !c.isArchived).map((c: any) => {
-              const checked = selectedAssignCircles.includes(c.id);
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => setSelectedAssignCircles(prev =>
-                    prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]
-                  )}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors text-right ${
-                    checked ? "bg-blue-50 border-blue-200 text-blue-800" : "border-border hover:bg-muted/40"
-                  }`}
-                >
-                  {checked
-                    ? <CheckSquare className="w-4 h-4 text-blue-600 shrink-0" />
-                    : <Square className="w-4 h-4 text-muted-foreground shrink-0" />
-                  }
-                  <span className="text-sm font-medium">{c.name}</span>
-                  {c.track && <span className="text-xs text-muted-foreground mr-auto">{c.track}</span>}
-                </button>
-              );
-            })}
-            {(circles ?? []).filter((c: any) => !c.isArchived).length === 0 && (
-              <p className="text-center text-sm text-muted-foreground py-4">لا توجد حلقات</p>
+          <div className="space-y-3 py-2">
+            {/* فلتر المسار */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">فلتر حسب المسار</label>
+              <select
+                className="w-full border border-input rounded-xl px-3 py-2 text-sm bg-background text-right"
+                value={assignTrackFilter}
+                onChange={e => setAssignTrackFilter(e.target.value)}
+              >
+                <option value="">كل المسارات</option>
+                {[...new Set((circles ?? []).filter((c: any) => !c.isArchived).map((c: any) => c.track).filter(Boolean))].map(t => (
+                  <option key={t as string} value={t as string}>{t as string}</option>
+                ))}
+              </select>
+            </div>
+            {/* قائمة الحلقات */}
+            <div className="max-h-64 overflow-y-auto space-y-1.5 border border-border rounded-xl p-2">
+              {(() => {
+                const filtered = (circles ?? []).filter((c: any) => !c.isArchived && (!assignTrackFilter || c.track === assignTrackFilter));
+                if (filtered.length === 0) return <p className="text-center text-sm text-muted-foreground py-4">لا توجد حلقات</p>;
+                return filtered.map((c: any) => {
+                  const checked = selectedAssignCircles.includes(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setSelectedAssignCircles(prev =>
+                        prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                      )}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors text-right ${
+                        checked ? "bg-blue-50 border-blue-200 text-blue-800" : "border-border hover:bg-muted/40"
+                      }`}
+                    >
+                      {checked
+                        ? <CheckSquare className="w-4 h-4 text-blue-600 shrink-0" />
+                        : <Square className="w-4 h-4 text-muted-foreground shrink-0" />
+                      }
+                      <span className="text-sm font-medium">{c.name}</span>
+                      {c.track && <span className="text-xs text-muted-foreground mr-auto">{c.track}</span>}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+            {selectedAssignCircles.length > 0 && (
+              <p className="text-xs text-blue-600 font-medium">
+                ✓ {selectedAssignCircles.length} حلقة مُختارة من {(circles ?? []).filter((c: any) => !c.isArchived).length} إجمالاً
+              </p>
             )}
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => { setAssignDialogOpen(false); setAssignTarget(null); }}>إلغاء</Button>
+            <Button variant="outline" onClick={() => { setAssignDialogOpen(false); setAssignTarget(null); setAssignTrackFilter(""); }}>إلغاء</Button>
             <Button
               onClick={async () => {
                 if (!assignTarget) return;
@@ -647,6 +672,7 @@ export default function AccountsPage() {
                 toast({ title: `تم إسناد ${selectedAssignCircles.length} حلقة لـ ${assignTarget.userName}` });
                 setAssignDialogOpen(false);
                 setAssignTarget(null);
+                setAssignTrackFilter("");
               }}
               disabled={assignSaving}
               className="gap-1.5"
