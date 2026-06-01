@@ -3,6 +3,7 @@ import { db, recordsTable, studentsTable, usersTable, reviewPlansTable, circlesT
 import { eq, and, gte, lte, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateRecordBody, UpdateRecordBody } from "@workspace/api-zod";
+import { checkAndCreateLowMemorizationAlert } from "./lowMemorizationAlerts";
 
 const router: IRouter = Router();
 
@@ -232,6 +233,10 @@ router.post("/records", authenticate, async (req, res): Promise<void> => {
     ...parsed.data,
     enteredById: req.userId!,
   }).returning();
+
+  // فحص إنذار قلة الحفظ بعد الإدخال (بشكل غير متزامن لئلا يعيق الاستجابة)
+  checkAndCreateLowMemorizationAlert(parsed.data.studentId, req.userId!).catch(() => {});
+
   res.status(201).json(record);
 });
 

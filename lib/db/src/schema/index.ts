@@ -16,3 +16,6 @@ export * from "./reviewPlans";
 export * from "./planNotifications";
 export * from "./deputyTasks";
 export * from "./deputyCircleVisits";
+export * from "./lowMemorizationAlerts";
+export * from "./dataEntryAssignments";
+export * from "./dataEntrySessions";

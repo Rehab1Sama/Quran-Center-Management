@@ -28,6 +28,9 @@ import deputyTasksRouter from "./deputyTasks";
 import deputyCircleVisitsRouter from "./deputyCircleVisits";
 import setupRouter from "./setup";
 import registrationApprovalRouter from "./registrationApproval";
+import lowMemorizationAlertsRouter from "./lowMemorizationAlerts";
+import dataEntryAssignmentsRouter from "./dataEntryAssignments";
+import dataEntrySessionsRouter from "./dataEntrySessions";
 
 const router: IRouter = Router();
 
@@ -60,5 +63,8 @@ router.use(reviewPlanStatsRouter);
 router.use(deputyTasksRouter);
 router.use(deputyCircleVisitsRouter);
 router.use(registrationApprovalRouter);
+router.use(lowMemorizationAlertsRouter);
+router.use(dataEntryAssignmentsRouter);
+router.use(dataEntrySessionsRouter);
 
 export default router;

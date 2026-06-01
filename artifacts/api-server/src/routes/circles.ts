@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, circlesTable, usersTable, studentsTable, tracksTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, circlesTable, usersTable, studentsTable, tracksTable, dataEntryCircleAssignmentsTable } from "@workspace/db";
+import { eq, and, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateCircleBody, UpdateCircleBody } from "@workspace/api-zod";
 
@@ -28,9 +28,22 @@ router.get("/circles", authenticate, async (req, res): Promise<void> => {
     circles = circles.filter(c => c.isArchived === archived);
   }
 
-  // Track supervisors and data entry can only see their track's circles
-  if (req.userRole === "track_supervisor" || req.userRole === "data_entry") {
+  // Track supervisors: only their track's circles
+  if (req.userRole === "track_supervisor") {
     circles = circles.filter(c => c.track === req.userTrack);
+  }
+
+  // Data entry: فقط الحلقات المُسندة لها من قِبل القائدة/النائبة
+  if (req.userRole === "data_entry") {
+    const assignments = await db.select().from(dataEntryCircleAssignmentsTable)
+      .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId!));
+    if (assignments.length > 0) {
+      const assignedIds = new Set(assignments.map(a => a.circleId));
+      circles = circles.filter(c => assignedIds.has(c.id));
+    } else {
+      // لا يوجد إسناد — لا ترى شيئًا
+      circles = [];
+    }
   }
 
   // Teachers/supervisors can only see their circle

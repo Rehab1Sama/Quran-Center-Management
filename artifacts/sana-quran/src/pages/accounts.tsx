@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useListUsers,
   useCreateUser,
@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, UserPlus, Search, KeyRound, Ban, CheckCircle2, Archive } from "lucide-react";
+import { Plus, Pencil, Trash2, UserPlus, Search, KeyRound, Ban, CheckCircle2, Archive, CheckSquare, Square, Users } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -88,9 +88,48 @@ function groupByEmail(users: UserRow[]): PersonGroup[] {
   return [...map.values()];
 }
 
+function useDataEntryAssignments(canManage: boolean) {
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const fetchAssignments = () => {
+    if (!canManage) return;
+    const token = localStorage.getItem("sana_auth_token");
+    if (!token) return;
+    fetch(`${BASE}/api/data-entry/assignments`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : [])
+      .then(setAssignments)
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchAssignments();
+  }, [canManage]);
+
+  const saveAssignments = async (userId: number, circleIds: number[]) => {
+    setSaving(true);
+    try {
+      const token = localStorage.getItem("sana_auth_token");
+      await fetch(`${BASE}/api/data-entry/assignments/${userId}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ circleIds }),
+      });
+      fetchAssignments();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return { assignments, saving, saveAssignments };
+}
+
 export default function AccountsPage() {
   const { data: currentUser } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const isLeader = currentUser?.role === "leader";
+  const canManageAssignments = currentUser?.role === "leader" || currentUser?.role === "deputy";
   const { data: users, isLoading } = useListUsers(undefined, { query: { queryKey: ["users"] } });
   const { data: circles } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
   const { data: tracks, isLoading: tracksLoading } = useListTracks({ query: { queryKey: ["tracks"] } });
@@ -105,6 +144,10 @@ export default function AccountsPage() {
   const [permDeleteOpen, setPermDeleteOpen] = useState(false);
   const [permDeleteTarget, setPermDeleteTarget] = useState<{ id: number; label: string } | null>(null);
   const [permDeleting, setPermDeleting] = useState(false);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [assignTarget, setAssignTarget] = useState<{ userId: number; userName: string } | null>(null);
+  const [selectedAssignCircles, setSelectedAssignCircles] = useState<number[]>([]);
+  const { assignments: dataEntryAssignments, saving: assignSaving, saveAssignments } = useDataEntryAssignments(canManageAssignments);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
@@ -391,16 +434,37 @@ export default function AccountsPage() {
                         ))}
                       </div>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openAddRole(person)}
-                      className="shrink-0 gap-1.5 text-xs h-8"
-                      title="إضافة دور لنفس الشخص"
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      إضافة دور
-                    </Button>
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openAddRole(person)}
+                        className="gap-1.5 text-xs h-8"
+                        title="إضافة دور لنفس الشخص"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        إضافة دور
+                      </Button>
+                      {canManageAssignments && person.accounts.some(a => a.role === "data_entry") && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const de = person.accounts.find(a => a.role === "data_entry");
+                            if (!de) return;
+                            const currentAssign = dataEntryAssignments.find(a => a.userId === de.id);
+                            setAssignTarget({ userId: de.id, userName: person.name });
+                            setSelectedAssignCircles(currentAssign?.circleIds ?? []);
+                            setAssignDialogOpen(true);
+                          }}
+                          className="gap-1.5 text-xs h-8 border-blue-200 text-blue-700 hover:bg-blue-50"
+                          title="إسناد حلقات لمدخلة البيانات"
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                          إسناد حلقات
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -534,6 +598,60 @@ export default function AccountsPage() {
             <Button variant="outline" onClick={() => setResetPwdOpen(false)}>إلغاء</Button>
             <Button onClick={handleResetPwd} disabled={!newPassword.trim() || resetPwd.isPending}>
               تغيير كلمة المرور
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* نافذة إسناد الحلقات لمدخلة البيانات */}
+      <Dialog open={assignDialogOpen} onOpenChange={v => { if (!v) { setAssignDialogOpen(false); setAssignTarget(null); } }}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-blue-600" />
+              إسناد حلقات — {assignTarget?.userName}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2 max-h-72 overflow-y-auto">
+            {(circles ?? []).filter((c: any) => !c.isArchived).map((c: any) => {
+              const checked = selectedAssignCircles.includes(c.id);
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setSelectedAssignCircles(prev =>
+                    prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                  )}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors text-right ${
+                    checked ? "bg-blue-50 border-blue-200 text-blue-800" : "border-border hover:bg-muted/40"
+                  }`}
+                >
+                  {checked
+                    ? <CheckSquare className="w-4 h-4 text-blue-600 shrink-0" />
+                    : <Square className="w-4 h-4 text-muted-foreground shrink-0" />
+                  }
+                  <span className="text-sm font-medium">{c.name}</span>
+                  {c.track && <span className="text-xs text-muted-foreground mr-auto">{c.track}</span>}
+                </button>
+              );
+            })}
+            {(circles ?? []).filter((c: any) => !c.isArchived).length === 0 && (
+              <p className="text-center text-sm text-muted-foreground py-4">لا توجد حلقات</p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setAssignDialogOpen(false); setAssignTarget(null); }}>إلغاء</Button>
+            <Button
+              onClick={async () => {
+                if (!assignTarget) return;
+                await saveAssignments(assignTarget.userId, selectedAssignCircles);
+                toast({ title: `تم إسناد ${selectedAssignCircles.length} حلقة لـ ${assignTarget.userName}` });
+                setAssignDialogOpen(false);
+                setAssignTarget(null);
+              }}
+              disabled={assignSaving}
+              className="gap-1.5"
+            >
+              {assignSaving ? "جاري الحفظ..." : `حفظ (${selectedAssignCircles.length} حلقة)`}
             </Button>
           </DialogFooter>
         </DialogContent>

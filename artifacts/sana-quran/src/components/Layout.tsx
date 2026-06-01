@@ -9,7 +9,7 @@ import {
   CalendarCheck, PenSquare, Headphones, BookUser, FileDown,
   BarChart2, MessageSquare, Search, Clock, Archive, Layers,
   Calendar, ShoppingBag, Award, Shuffle, GraduationCap, AlertTriangle,
-  ArrowLeftRight, Loader2, BookOpen, PlaneTakeoff,
+  ArrowLeftRight, Loader2, BookOpen, PlaneTakeoff, Bell, CheckCheck,
 } from "lucide-react";
 import logoUrl from "@/assets/logo.jpg";
 import { Button } from "@/components/ui/button";
@@ -208,6 +208,145 @@ function StudentSearch({ onNavigate }: { onNavigate: (path: string) => void }) {
       {open && debouncedQ.length >= 2 && results && results.length === 0 && (
         <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl shadow-xl z-50 px-3 py-3 text-xs text-muted-foreground text-center">
           لا توجد نتائج
+        </div>
+      )}
+    </div>
+  );
+}
+
+const ALERT_ROLES = ["leader", "deputy", "track_supervisor"];
+
+function useLowMemorizationAlerts(userId: number, role: string) {
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [open, setOpen] = useState(false);
+  const enabled = ALERT_ROLES.includes(role);
+
+  const fetchAlerts = () => {
+    if (!enabled) return;
+    const token = getToken();
+    if (!token) return;
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    fetch(`${base}/api/alerts/low-memorization`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : [])
+      .then(setAlerts)
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchAlerts();
+    const t = setInterval(fetchAlerts, 5 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [userId, role, enabled]);
+
+  const markAllRead = async () => {
+    const token = getToken();
+    if (!token) return;
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    await fetch(`${base}/api/alerts/low-memorization/read-all`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    setAlerts([]);
+    setOpen(false);
+  };
+
+  const markOneRead = async (id: number) => {
+    const token = getToken();
+    if (!token) return;
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    await fetch(`${base}/api/alerts/low-memorization/${id}/read`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    setAlerts(prev => prev.filter(a => a.id !== id));
+  };
+
+  return { alerts, open, setOpen, markAllRead, markOneRead, enabled };
+}
+
+function LowMemorizationAlertBell({ userId, role }: { userId: number; role: string }) {
+  const { alerts, open, setOpen, markAllRead, markOneRead, enabled } = useLowMemorizationAlerts(userId, role);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  if (!enabled) return null;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 transition-colors"
+        title="تنبيهات قلة الحفظ"
+      >
+        <Bell className="w-4 h-4 text-white/80" />
+        {alerts.length > 0 && (
+          <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-[16px] flex items-center justify-center px-0.5 leading-none">
+            {alerts.length > 99 ? "99+" : alerts.length}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-2 w-80 bg-white rounded-2xl shadow-2xl z-50 overflow-hidden border border-border"
+          style={{ right: "auto" }}>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-rose-50">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600" />
+              <span className="font-bold text-sm text-rose-800">تنبيهات قلة الحفظ</span>
+              {alerts.length > 0 && (
+                <span className="bg-rose-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+                  {alerts.length}
+                </span>
+              )}
+            </div>
+            {alerts.length > 0 && (
+              <button
+                onClick={markAllRead}
+                className="flex items-center gap-1 text-xs text-rose-600 hover:text-rose-800 font-medium"
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                قراءة الكل
+              </button>
+            )}
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            {alerts.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                لا توجد تنبيهات حالية
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {alerts.slice(0, 15).map((a: any) => (
+                  <div key={a.id} className="px-4 py-3 hover:bg-muted/30 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-sm text-foreground truncate">{a.studentName}</p>
+                        <p className="text-xs text-muted-foreground">{a.circleName} · {a.track}</p>
+                        <p className="text-xs text-rose-600 font-medium mt-0.5">
+                          {a.totalPages} وجه في آخر {a.periodDays} يومًا
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => markOneRead(a.id)}
+                        className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
+                        title="تعليم كمقروء"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -451,6 +590,14 @@ export default function Layout({ user, children }: LayoutProps) {
               </div>
             )}
           </div>
+
+          {/* Alert Bell — leader, deputy, track_supervisor */}
+          {ALERT_ROLES.includes(user.role) && (
+            <div className="px-4 pt-2 pb-1 flex items-center gap-2">
+              <LowMemorizationAlertBell userId={user.id} role={user.role} />
+              <span className="text-white/50 text-xs">تنبيهات قلة الحفظ</span>
+            </div>
+          )}
 
           {/* Student Search — leader & track_supervisor only */}
           {SEARCH_ROLES.includes(user.role) && (

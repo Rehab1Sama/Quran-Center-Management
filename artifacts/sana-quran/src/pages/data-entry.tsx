@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   useGetMissingDataEntry,
   useCreateRecord,
@@ -26,7 +26,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { SURAHS, calculatePages, formatPages } from "@/lib/quran";
-import { PenSquare, CheckCircle, AlertCircle, BookOpen, Users, CalendarDays, Search, UserX, Undo2, XCircle, Zap } from "lucide-react";
+import { PenSquare, CheckCircle, AlertCircle, BookOpen, Users, CalendarDays, Search, UserX, Undo2, XCircle, Zap, Clock, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -259,8 +259,56 @@ const emptyForm = (): FormState => ({
   noReview: false,
 });
 
+function useDataEntryHeartbeat(isDataEntry: boolean) {
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!isDataEntry) return;
+
+    const sendHeartbeat = () => {
+      const token = getToken();
+      if (!token) return;
+      fetch(`${BASE}/api/data-entry/session/heartbeat`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    };
+
+    sendHeartbeat();
+    timerRef.current = setInterval(sendHeartbeat, 2 * 60 * 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isDataEntry]);
+}
+
+function useDataEntryMyStats(isDataEntry: boolean) {
+  const [stats, setStats] = useState<any>(null);
+
+  const fetchStats = useCallback(() => {
+    if (!isDataEntry) return;
+    const token = getToken();
+    if (!token) return;
+    fetch(`${BASE}/api/data-entry/my-stats`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(setStats)
+      .catch(() => {});
+  }, [isDataEntry]);
+
+  useEffect(() => {
+    fetchStats();
+    const t = setInterval(fetchStats, 3 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [fetchStats]);
+
+  return stats;
+}
+
 export default function DataEntryPage() {
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
+  const isDataEntry = (user as any)?.role === "data_entry";
   const [selectedDate, setSelectedDate] = useState(() => getCurrentWeekWorkingDays()[0].value);
   const [selectedTrack, setSelectedTrack] = useState<string>("");
   const [selectedCircleId, setSelectedCircleId] = useState<number | null>(null);
@@ -275,6 +323,9 @@ export default function DataEntryPage() {
   const [thursdayLoading, setThursdayLoading] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
   const [submittedDays, setSubmittedDays] = useState<string[]>([]);
+
+  useDataEntryHeartbeat(isDataEntry);
+  const myStats = useDataEntryMyStats(isDataEntry);
 
   const { data: circles } = useListCircles(undefined, {
     query: { queryKey: ["circles"] }
@@ -656,6 +707,58 @@ export default function DataEntryPage() {
           {user?.track && `مسار ${user.track} · `}اختر اليوم والحلقة لإدخال بيانات الطالبات
         </p>
       </div>
+
+      {/* لوحة إحصائيات مدخلة البيانات اليومية */}
+      {isDataEntry && myStats && (
+        <Card className="border-0 shadow-sm bg-gradient-to-l from-blue-50 to-indigo-50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold flex items-center gap-2 text-indigo-800">
+              <Clock className="w-4 h-4" />
+              نشاطي اليوم
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div className="bg-white rounded-xl p-2.5 text-center shadow-sm">
+                <p className="text-lg font-bold text-indigo-700">{myStats.assignedCircles?.length ?? 0}</p>
+                <p className="text-[10px] text-muted-foreground">حلقة مُسندة</p>
+              </div>
+              <div className="bg-white rounded-xl p-2.5 text-center shadow-sm">
+                <p className="text-lg font-bold text-emerald-600">{myStats.enteredToday?.length ?? 0}</p>
+                <p className="text-[10px] text-muted-foreground">أُدخلت</p>
+              </div>
+              <div className="bg-white rounded-xl p-2.5 text-center shadow-sm">
+                <p className="text-lg font-bold text-amber-600">{myStats.notEnteredToday?.length ?? 0}</p>
+                <p className="text-[10px] text-muted-foreground">لم تُدخَل</p>
+              </div>
+            </div>
+            {myStats.assignedCircles && myStats.assignedCircles.length > 0 && (
+              <div className="space-y-1">
+                {myStats.assignedCircles.map((c: any) => (
+                  <div key={c.circleId} className="flex items-center gap-2 text-xs">
+                    {c.entered ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    ) : c.teacherAbsent ? (
+                      <span className="w-3.5 h-3.5 text-orange-400 shrink-0 flex items-center">✕</span>
+                    ) : (
+                      <span className="w-3.5 h-3.5 border border-gray-300 rounded-full shrink-0 flex" />
+                    )}
+                    <span className={c.entered ? "text-emerald-700 font-medium" : c.teacherAbsent ? "text-orange-500 line-through" : "text-foreground"}>
+                      {c.circleName}
+                    </span>
+                    {c.teacherAbsent && <span className="text-orange-400 text-[10px]">(غائبة)</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {(!myStats.assignedCircles || myStats.assignedCircles.length === 0) && (
+              <p className="text-sm text-muted-foreground text-center py-2">
+                لم تُسند لكِ حلقات بعد — تواصلي مع القائدة
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Step 1: Date */}
       <Card className="border-0 shadow-sm">

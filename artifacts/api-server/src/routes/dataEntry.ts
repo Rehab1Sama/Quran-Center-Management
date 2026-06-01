@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, recordsTable, circlesTable, studentsTable, teacherAbsencesTable } from "@workspace/db";
-import { eq, and, gte } from "drizzle-orm";
+import { db, recordsTable, circlesTable, studentsTable, teacherAbsencesTable, dataEntryCircleAssignmentsTable } from "@workspace/db";
+import { eq, and, gte, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
 const router: IRouter = Router();
@@ -39,10 +39,18 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
 
   const students = await studentsQuery;
 
+  // للمدخلة: فقط الحلقات المُسندة لها
+  let assignedCircleIds: Set<number> | null = null;
+  if (user?.role === "data_entry") {
+    const assignments = await db.select().from(dataEntryCircleAssignmentsTable)
+      .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, user.id));
+    assignedCircleIds = new Set(assignments.map((a: any) => a.circleId));
+  }
+
   const result = students
     .filter(s => {
       if (recordedStudentIds.has(s.studentId)) return false;
-      if (user?.role === "data_entry" && user.track && s.track !== user.track) return false;
+      if (assignedCircleIds !== null && !assignedCircleIds.has(s.circleId)) return false;
       return true;
     })
     .map(s => {
