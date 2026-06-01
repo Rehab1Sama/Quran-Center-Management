@@ -53,6 +53,7 @@ import ReportsPage from "@/pages/reports";
 import WhiteLabelPage from "@/pages/white-label";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
+import { canEnterData } from "@/lib/schoolConfig";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -151,7 +152,7 @@ function AppRoutes() {
           {canViewStats ? <StatisticsPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/data-entry">
-          {(isLeader || isDataEntry) ? <DataEntryPage /> : <Redirect to="/" />}
+          {(isLeader || isDataEntry || canEnterData(user.role)) ? <DataEntryPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/registration">
           {isLeader ? <RegistrationManagePage /> : <Redirect to="/" />}

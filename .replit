@@ -45,6 +45,10 @@ localPort = 5000
 externalPort = 5000
 
 [[ports]]
+localPort = 5001
+externalPort = 3002
+
+[[ports]]
 localPort = 8080
 externalPort = 8080
 
@@ -56,12 +60,18 @@ externalPort = 80
 localPort = 18327
 externalPort = 3000
 
+[[ports]]
+localPort = 18328
+externalPort = 3003
+
 [userenv]
 
 [userenv.shared]
 DATABASE_URL = "postgresql://postgres.uqlshjldemwyygrplowi:Rrehabfall66@aws-0-eu-west-3.pooler.supabase.com:6543/postgres"
 EMAIL_USER = "sana.qur3n@gmail.com"
 EMAIL_PASS = "mkrstiewylmppfwu"
+RENDER_API_KEY = "rnd_GVBOUh6Hg2UIjUslXUd0rgcKOmig"
+RENDER_GITHUB_REPO_URL = "https://github.com/Rehab1Sama/Quran-Center-Management"
 
 [nix]
 channel = "stable-25_05"
