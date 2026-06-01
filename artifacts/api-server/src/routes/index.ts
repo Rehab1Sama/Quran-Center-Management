@@ -31,6 +31,8 @@ import registrationApprovalRouter from "./registrationApproval";
 import lowMemorizationAlertsRouter from "./lowMemorizationAlerts";
 import dataEntryAssignmentsRouter from "./dataEntryAssignments";
 import dataEntrySessionsRouter from "./dataEntrySessions";
+import reportsRouter from "./reports";
+import whiteLabelRouter from "./whiteLabel";
 
 const router: IRouter = Router();
 
@@ -66,5 +68,7 @@ router.use(registrationApprovalRouter);
 router.use(lowMemorizationAlertsRouter);
 router.use(dataEntryAssignmentsRouter);
 router.use(dataEntrySessionsRouter);
+router.use(reportsRouter);
+router.use(whiteLabelRouter);
 
 export default router;

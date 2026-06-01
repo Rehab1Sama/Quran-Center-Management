@@ -49,6 +49,8 @@ import StudentLeavesPage from "@/pages/student-leaves";
 import ActivatePage from "@/pages/activate";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
+import ReportsPage from "@/pages/reports";
+import WhiteLabelPage from "@/pages/white-label";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 
@@ -232,6 +234,13 @@ function AppRoutes() {
         </Route>
         <Route path="/student-leaves">
           {(isLeader || isDeputy || isTrackSupervisor) ? <StudentLeavesPage /> : <Redirect to="/" />}
+        </Route>
+
+        <Route path="/reports">
+          {isLeaderOrDeputy ? <ReportsPage /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/white-label">
+          {isLeader ? <WhiteLabelPage /> : <Redirect to="/" />}
         </Route>
 
         <Route path="/students/:id">

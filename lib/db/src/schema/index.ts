@@ -19,3 +19,4 @@ export * from "./deputyCircleVisits";
 export * from "./lowMemorizationAlerts";
 export * from "./dataEntryAssignments";
 export * from "./dataEntrySessions";
+export * from "./whitelabelConfigs";

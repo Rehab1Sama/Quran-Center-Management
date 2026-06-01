@@ -10,6 +10,7 @@ import {
   BarChart2, MessageSquare, Search, Clock, Archive, Layers,
   Calendar, ShoppingBag, Award, Shuffle, GraduationCap, AlertTriangle,
   ArrowLeftRight, Loader2, BookOpen, PlaneTakeoff, Bell, CheckCheck,
+  TrendingUp, Globe,
 } from "lucide-react";
 import logoUrl from "@/assets/logo.jpg";
 import { Button } from "@/components/ui/button";
@@ -708,6 +709,8 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
       { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList },
       { href: "/onboard", label: "إضافة عضو مباشرة", icon: BookUser },
       { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
+      { href: "/reports", label: "التقارير الأسبوعية", icon: TrendingUp },
+      { href: "/white-label", label: "نسخ للبيع", icon: Globe },
       { href: "/export", label: "تصدير البيانات", icon: FileDown },
     ];
   }
@@ -737,6 +740,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null) {
       { href: "/export", label: "تصدير البيانات", icon: FileDown },
       { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
       { href: "/deputy-tasks", label: "مهامي", icon: ClipboardList },
+      { href: "/reports", label: "التقارير الأسبوعية", icon: TrendingUp },
     ];
   }
   if (role === "data_entry") {
