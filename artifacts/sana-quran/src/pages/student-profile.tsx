@@ -620,7 +620,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  {shortcomings.map(({ r, reasons }) => (
+                  {shortcomings.map(({ r, reasons }: { r: any; reasons: string[] }) => (
                     <div key={r.id} className="rounded-xl px-3 py-2 bg-amber-50/80 border border-amber-100">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-xs font-medium text-amber-800">

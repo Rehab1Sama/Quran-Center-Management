@@ -12,7 +12,7 @@ export default function StorePage() {
     window.open(`https://wa.me/${cleaned}?text=${msg}`, "_blank");
   }
 
-  const categories = Array.from(new Set(products.map(p => p.category ?? "عام"))).filter(Boolean);
+  const categories: string[] = Array.from(new Set(products.map(p => ((p.category as string | null | undefined) ?? "عام")))).filter(Boolean) as string[];
 
   return (
     <div className="min-h-screen" style={{ background: "linear-gradient(135deg, #f0f4ff 0%, #faf5ff 100%)" }} dir="rtl">

@@ -140,7 +140,9 @@ export default function CirclesPage() {
   const [saving, setSaving] = useState(false);
   const [expandedCircle, setExpandedCircle] = useState<number | null>(null);
 
-  const tracks = Array.from(new Set(circles?.map(c => c.track).filter((t): t is string => !!t))).sort();
+  const tracks = Array.from(new Set(
+    (circles ?? []).flatMap(c => (typeof c.track === "string" && c.track) ? [c.track] : [])
+  )).sort();
 
   const filtered = circles?.filter(c => {
     const matchSearch = !search || c.name.includes(search) || (c as { teacherName?: string }).teacherName?.includes(search);
@@ -211,7 +213,7 @@ export default function CirclesPage() {
           >
             الكل
           </button>
-          {tracks.map(t => (
+          {tracks.map((t: string) => (
             <button
               key={t}
               onClick={() => setSelectedTrack(t)}
