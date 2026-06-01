@@ -25,6 +25,7 @@ export type UserRole = typeof UserRole[keyof typeof UserRole];
 
 export const UserRole = {
   leader: 'leader',
+  deputy: 'deputy',
   data_entry: 'data_entry',
   teacher: 'teacher',
   supervisor: 'supervisor',

@@ -617,13 +617,6 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
 
   const sections = body.memorizedSections ?? [];
 
-  // طالبة جديدة تمامًا بدون أي سجلات ولا نطاق محدد يدويًا → اشترط تحديد ما حفظته
-  if (!existing && allRecords.length === 0 && sections.length === 0 && !body.memorizedUpToSurah && !body.startSurah) {
-    res.status(400).json({
-      error: "الطالبة ليس لديها سجلات حفظ بعد. يرجى تحديد النطاق المحفوظ يدويًا (من سورة كذا إلى سورة كذا) أو إدخال بيانات الحفظ أولاً ثم إنشاء الخطة",
-    });
-    return;
-  }
   // حساب عدد الأوجه بدقة باستخدام مصحف المدينة
   const totalPagesFromSections = sections.length
     ? Math.max(1, Math.round(sections.reduce((s, sec) =>
