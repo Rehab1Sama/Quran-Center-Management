@@ -51,6 +51,7 @@ import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
 import ReportsPage from "@/pages/reports";
 import WhiteLabelPage from "@/pages/white-label";
+import FirstSetupPage from "@/pages/first-setup";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 import { canEnterData } from "@/lib/schoolConfig";
@@ -242,6 +243,9 @@ function AppRoutes() {
         </Route>
         <Route path="/white-label">
           {isLeader ? <WhiteLabelPage /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/first-setup">
+          {isLeader ? <FirstSetupPage /> : <Redirect to="/" />}
         </Route>
 
         <Route path="/students/:id">

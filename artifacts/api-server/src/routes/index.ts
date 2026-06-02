@@ -34,6 +34,7 @@ import dataEntrySessionsRouter from "./dataEntrySessions";
 import reportsRouter from "./reports";
 import whiteLabelRouter from "./whiteLabel";
 import schoolConfigRouter from "./schoolConfig";
+import firstSetupRouter from "./firstSetup";
 
 const router: IRouter = Router();
 
@@ -72,5 +73,6 @@ router.use(dataEntrySessionsRouter);
 router.use(reportsRouter);
 router.use(whiteLabelRouter);
 router.use(schoolConfigRouter);
+router.use(firstSetupRouter);
 
 export default router;

@@ -87,6 +87,40 @@ const ALL_FEATURES = [
   { key: "leaves", label: "إجازات الطالبات", icon: PlaneTakeoff },
 ];
 
+// ── Packages ────────────────────────────────────────────────────────────────
+const PACKAGES = [
+  {
+    key: "starter",
+    name: "الأساسية",
+    tagline: "للمقرأة الصغيرة",
+    features: ["messages", "registration"],
+    badge: "🌱",
+    color: "border-slate-300 bg-slate-50",
+    activeColor: "border-slate-500 bg-slate-100",
+    textColor: "text-slate-700",
+  },
+  {
+    key: "pro",
+    name: "المتقدمة",
+    tagline: "للمقرأة المتوسطة",
+    features: ["messages", "registration", "badges", "store", "calendar", "review_plans", "shortcomings", "leaves"],
+    badge: "⭐",
+    color: "border-primary/30 bg-primary/5",
+    activeColor: "border-primary bg-primary/10",
+    textColor: "text-primary",
+  },
+  {
+    key: "enterprise",
+    name: "الكاملة",
+    tagline: "كل المميزات",
+    features: ALL_FEATURES.map(f => f.key),
+    badge: "👑",
+    color: "border-amber-300 bg-amber-50",
+    activeColor: "border-amber-500 bg-amber-100",
+    textColor: "text-amber-700",
+  },
+] as const;
+
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   draft: { label: "مسودة", color: "bg-gray-100 text-gray-600" },
   deploying: { label: "جارٍ النشر...", color: "bg-amber-100 text-amber-700" },
@@ -143,6 +177,13 @@ export default function WhiteLabelPage() {
   const [expandedConfig, setExpandedConfig] = useState<number | null>(null);
   const [customTrackInput, setCustomTrackInput] = useState("");
   const [customTrackType, setCustomTrackType] = useState("girls");
+
+  const [selectedPackage, setSelectedPackage] = useState<string>("custom");
+
+  const applyPackage = (pkg: typeof PACKAGES[number]) => {
+    setSelectedPackage(pkg.key);
+    setField("enabledFeatures", [...pkg.features]);
+  };
 
   const [form, setForm] = useState({
     schoolName: "",
@@ -507,23 +548,59 @@ export default function WhiteLabelPage() {
           </div>
         </Section>
 
-        {/* Section 6: Features */}
-        <Section title="المميزات المتاحة" icon={Zap}>
-          <p className="text-xs text-muted-foreground">فعّلي أو أوقفي كل وحدة وظيفية للنسخة الجديدة</p>
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-            {ALL_FEATURES.map(({ key, label, icon: Icon }) => {
-              const enabled = form.enabledFeatures.includes(key);
-              return (
-                <button key={key} onClick={() => toggleFeature(key)}
-                  className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border text-xs font-medium transition-colors text-right ${
-                    enabled ? "bg-primary/5 border-primary/20 text-primary" : "border-border text-muted-foreground hover:bg-muted/30"
-                  }`}>
-                  {enabled ? <CheckSquare className="w-3.5 h-3.5 shrink-0 text-primary" /> : <Square className="w-3.5 h-3.5 shrink-0" />}
-                  <Icon className="w-3 h-3 shrink-0" />
-                  {label}
-                </button>
-              );
-            })}
+        {/* Section 6: Package / Features */}
+        <Section title="الباقة والمميزات" icon={Zap}>
+          <div>
+            <p className="text-xs font-semibold mb-2">اختاري الباقة التي تمنحينها للمقرأة</p>
+            <div className="grid grid-cols-3 gap-2">
+              {PACKAGES.map(pkg => {
+                const isActive = selectedPackage === pkg.key;
+                return (
+                  <button key={pkg.key} onClick={() => applyPackage(pkg)}
+                    className={`flex flex-col items-center gap-1 p-3 rounded-2xl border-2 transition-all text-center ${
+                      isActive ? pkg.activeColor + " shadow-sm" : pkg.color + " hover:opacity-80"
+                    }`}>
+                    <span className="text-2xl">{pkg.badge}</span>
+                    <span className={`text-sm font-bold ${pkg.textColor}`}>{pkg.name}</span>
+                    <span className="text-[10px] text-muted-foreground">{pkg.tagline}</span>
+                    <span className={`text-[10px] font-semibold mt-0.5 ${pkg.textColor}`}>
+                      {pkg.features.length} ميزة
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={() => setSelectedPackage("custom")}
+              className={`mt-2 w-full text-xs py-1.5 rounded-xl border transition-colors ${
+                selectedPackage === "custom"
+                  ? "border-primary/30 bg-primary/5 text-primary font-semibold"
+                  : "border-border text-muted-foreground hover:bg-muted/30"
+              }`}>
+              تخصيص يدوي
+            </button>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground mb-2">
+              {selectedPackage !== "custom"
+                ? `مميزات باقة "${PACKAGES.find(p => p.key === selectedPackage)?.name}" — يمكنكِ التعديل اليدوي بعد الاختيار`
+                : "فعّلي أو أوقفي كل وحدة وظيفية يدوياً"
+              }
+            </p>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {ALL_FEATURES.map(({ key, label, icon: Icon }) => {
+                const enabled = form.enabledFeatures.includes(key);
+                return (
+                  <button key={key} onClick={() => { toggleFeature(key); setSelectedPackage("custom"); }}
+                    className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border text-xs font-medium transition-colors text-right ${
+                      enabled ? "bg-primary/5 border-primary/20 text-primary" : "border-border text-muted-foreground hover:bg-muted/30"
+                    }`}>
+                    {enabled ? <CheckSquare className="w-3.5 h-3.5 shrink-0 text-primary" /> : <Square className="w-3.5 h-3.5 shrink-0" />}
+                    <Icon className="w-3 h-3 shrink-0" />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </Section>
 
