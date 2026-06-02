@@ -67,10 +67,13 @@ const ALL_ROLES = [
 const DATA_ENTRY_ROLES = ["teacher", "supervisor", "data_entry", "student"];
 
 const STANDARD_TRACK_TYPES = [
-  { key: "girls", name: "حفظ بنات", description: "حفظ + مراجعة قريبة وبعيدة + غياب" },
-  { key: "recitation", name: "تلاوة / مشكاة", description: "تلاوة فقط + غياب" },
-  { key: "simple_review", name: "مراجعة عامة", description: "مراجعة بسيطة + غياب" },
-  { key: "fixation", name: "تثبيت", description: "تثبيت المحفوظ + مراجعة قريبة وبعيدة" },
+  { key: "girls",           name: "حفظ بنات — قريبة + بعيدة",  description: "حفظ + مراجعة قريبة وبعيدة + غياب" },
+  { key: "girls_near",      name: "حفظ بنات — قريبة فقط",       description: "حفظ + مراجعة قريبة فقط + غياب" },
+  { key: "girls_far",       name: "حفظ بنات — بعيدة فقط",       description: "حفظ + مراجعة بعيدة فقط + غياب" },
+  { key: "girls_no_review", name: "حفظ بنات — بدون مراجعة",     description: "حفظ فقط + غياب (بدون مراجعة)" },
+  { key: "recitation",      name: "تلاوة / مشكاة",              description: "تلاوة فقط + غياب" },
+  { key: "simple_review",   name: "مراجعة عامة",                 description: "مراجعة بسيطة + غياب" },
+  { key: "fixation",        name: "تثبيت",                       description: "تثبيت المحفوظ + مراجعة قريبة وبعيدة" },
 ];
 
 const FEATURE_GROUPS = [
@@ -738,17 +741,33 @@ export default function WhiteLabelPage() {
                           </div>
                         </div>
                       )}
-                      {parsedFeatures.length > 0 && (
-                        <div>
-                          <p className="font-semibold text-muted-foreground mb-1.5">المميزات:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {parsedFeatures.map(k => {
-                              const f = ALL_FEATURES.find(ff => ff.key === k);
-                              return f ? <span key={k} className="bg-muted px-2 py-0.5 rounded-full text-[10px]">{f.label}</span> : null;
-                            })}
-                          </div>
+                      <div>
+                        <p className="font-semibold text-muted-foreground mb-1.5">المميزات:</p>
+                        <div className="space-y-1.5">
+                          {FEATURE_GROUPS.map(group => {
+                            const groupEnabled = group.features.filter(f => parsedFeatures.includes(f.key));
+                            const groupDisabled = group.features.filter(f => !parsedFeatures.includes(f.key));
+                            if (groupEnabled.length === 0 && groupDisabled.length === 0) return null;
+                            return (
+                              <div key={group.label}>
+                                <p className="text-[10px] font-bold text-muted-foreground/70 mb-1">{group.label}</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {groupEnabled.map(f => (
+                                    <span key={f.key} className="flex items-center gap-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[10px]">
+                                      <span>✓</span> {f.label}
+                                    </span>
+                                  ))}
+                                  {groupDisabled.map(f => (
+                                    <span key={f.key} className="flex items-center gap-0.5 bg-muted/40 text-muted-foreground/50 border border-border/30 px-2 py-0.5 rounded-full text-[10px] line-through">
+                                      {f.label}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      )}
+                      </div>
                       {cfg.logoUrl && (
                         <div className="flex items-center gap-2">
                           <img src={cfg.logoUrl} alt="" className="w-10 h-10 object-contain rounded-lg border border-border" onError={e => e.currentTarget.style.display = "none"} />

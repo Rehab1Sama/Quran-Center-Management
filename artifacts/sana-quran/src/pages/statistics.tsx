@@ -3,10 +3,16 @@ import { useGetStatsSummary, useGetCirclesStats, useGetCurrentUser, useListRecor
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatPages } from "@/lib/quran";
+import { schoolConfig } from "@/lib/schoolConfig";
 import {
   BarChart2, Users, BookOpen, GraduationCap, TrendingUp,
   Award, Calendar, BookMarked, Eye, Layers, CheckCircle2
 } from "lucide-react";
+
+function getTrackLabel(dataEntryType: string, fallback: string): string {
+  const found = schoolConfig.defaultTrackTypes.find(t => t.dataEntryType === dataEntryType);
+  return found ? found.name : fallback;
+}
 
 function StatCard({
   label, value, color, icon: Icon, sub,
@@ -240,10 +246,10 @@ function LeaderStats({ summary, circleStats, periodDays }: { summary: any; circl
         </div>
       </div>
       {(summary.totalReviewPages > 0) && (
-        <StatCard label="المراجعة (ألق/سراج/مهج)" value={formatPages(summary.totalReviewPages)} color="text-cyan-600" icon={BookMarked} />
+        <StatCard label={getTrackLabel("simple_review", "المراجعة العامة")} value={formatPages(summary.totalReviewPages)} color="text-cyan-600" icon={BookMarked} />
       )}
       {((summary as any).totalFixationPages > 0) && (
-        <StatCard label="التثبيت الجديد (سُنى)" value={formatPages((summary as any).totalFixationPages)} color="text-amber-600" icon={BookOpen} />
+        <StatCard label={getTrackLabel("fixation", "التثبيت")} value={formatPages((summary as any).totalFixationPages)} color="text-amber-600" icon={BookOpen} />
       )}
 
       {/* Absences + Deficiencies */}

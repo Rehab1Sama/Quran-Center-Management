@@ -32,15 +32,22 @@ import { Input } from "@/components/ui/input";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
 
-function resolveTrackType(dataEntryType?: string | null): "girls" | "simple" | "mishkah" | "fixation" {
+function resolveTrackType(dataEntryType?: string | null): "girls" | "girls_near" | "girls_far" | "girls_no_review" | "simple" | "mishkah" | "fixation" {
   if (dataEntryType === "recitation") return "mishkah";
   if (dataEntryType === "simple_review") return "simple";
   if (dataEntryType === "fixation") return "fixation";
+  if (dataEntryType === "girls_near") return "girls_near";
+  if (dataEntryType === "girls_far") return "girls_far";
+  if (dataEntryType === "girls_no_review") return "girls_no_review";
   return "girls";
 }
 
+function isGirlsVariant(trackType: string) {
+  return trackType === "girls" || trackType === "girls_near" || trackType === "girls_far" || trackType === "girls_no_review";
+}
+
 function hasListenToReciter(trackType: string) {
-  return trackType === "girls" || trackType === "fixation" || trackType === "mishkah";
+  return isGirlsVariant(trackType) || trackType === "fixation" || trackType === "mishkah";
 }
 
 function getMeccaToday(): string {
@@ -569,7 +576,7 @@ export default function DataEntryPage() {
     };
 
     if (!form.isAbsent) {
-      if (trackType === "girls") {
+      if (isGirlsVariant(trackType)) {
         if (form.memorize.surahStart && form.memorize.surahEnd) {
           payload.memorizeSurahStart = form.memorize.surahStart;
           payload.memorizeAyahStart = Number(form.memorize.ayahStart) || 1;
@@ -577,14 +584,14 @@ export default function DataEntryPage() {
           payload.memorizeAyahEnd = Number(form.memorize.ayahEnd) || 1;
           payload.memorizePages = calcSectionPages(form.memorize);
         }
-        if (form.reviewNear.surahStart && form.reviewNear.surahEnd) {
+        if ((trackType === "girls" || trackType === "girls_near") && form.reviewNear.surahStart && form.reviewNear.surahEnd) {
           payload.reviewNearSurahStart = form.reviewNear.surahStart;
           payload.reviewNearAyahStart = Number(form.reviewNear.ayahStart) || 1;
           payload.reviewNearSurahEnd = form.reviewNear.surahEnd;
           payload.reviewNearAyahEnd = Number(form.reviewNear.ayahEnd) || 1;
           payload.reviewNearPages = calcSectionPages(form.reviewNear);
         }
-        if (form.reviewFar.surahStart && form.reviewFar.surahEnd) {
+        if ((trackType === "girls" || trackType === "girls_far") && form.reviewFar.surahStart && form.reviewFar.surahEnd) {
           payload.reviewFarSurahStart = form.reviewFar.surahStart;
           payload.reviewFarAyahStart = Number(form.reviewFar.ayahStart) || 1;
           payload.reviewFarSurahEnd = form.reviewFar.surahEnd;
@@ -1095,8 +1102,8 @@ export default function DataEntryPage() {
 
             {!form.isAbsent && (
               <>
-                {/* حلقات الفتيات: حفظ + مراجعة قريبة + مراجعة بعيدة */}
-                {trackType === "girls" && (
+                {/* حلقات الفتيات: حفظ + مراجعة حسب النوع */}
+                {isGirlsVariant(trackType) && (
                   <>
                     <SurahSection
                       title="الحفظ"
@@ -1105,32 +1112,36 @@ export default function DataEntryPage() {
                       onChange={(f, v) => updateSection("memorize", f, v)}
                       autoSuggested={autoFilled && !!form.memorize.surahStart}
                     />
-                    <SurahSection
-                      title="المراجعة القريبة"
-                      color="border-blue-200 bg-blue-50/40"
-                      section={form.reviewNear}
-                      onChange={(f, v) => updateSection("reviewNear", f, v)}
-                      autoSuggested={autoFilled && !!form.reviewNear.surahStart}
-                      locked={form.noReviewNear}
-                      onToggleLock={() => setForm(f => ({
-                        ...f,
-                        noReviewNear: !f.noReviewNear,
-                        reviewNear: !f.noReviewNear ? emptySection() : f.reviewNear,
-                      }))}
-                    />
-                    <SurahSection
-                      title="المراجعة البعيدة"
-                      color="border-teal-200 bg-teal-100/40"
-                      section={form.reviewFar}
-                      onChange={(f, v) => updateSection("reviewFar", f, v)}
-                      autoSuggested={autoFilled && !!form.reviewFar.surahStart}
-                      locked={form.noReviewFar}
-                      onToggleLock={() => setForm(f => ({
-                        ...f,
-                        noReviewFar: !f.noReviewFar,
-                        reviewFar: !f.noReviewFar ? emptySection() : f.reviewFar,
-                      }))}
-                    />
+                    {(trackType === "girls" || trackType === "girls_near") && (
+                      <SurahSection
+                        title="المراجعة القريبة"
+                        color="border-blue-200 bg-blue-50/40"
+                        section={form.reviewNear}
+                        onChange={(f, v) => updateSection("reviewNear", f, v)}
+                        autoSuggested={autoFilled && !!form.reviewNear.surahStart}
+                        locked={form.noReviewNear}
+                        onToggleLock={() => setForm(f => ({
+                          ...f,
+                          noReviewNear: !f.noReviewNear,
+                          reviewNear: !f.noReviewNear ? emptySection() : f.reviewNear,
+                        }))}
+                      />
+                    )}
+                    {(trackType === "girls" || trackType === "girls_far") && (
+                      <SurahSection
+                        title="المراجعة البعيدة"
+                        color="border-teal-200 bg-teal-100/40"
+                        section={form.reviewFar}
+                        onChange={(f, v) => updateSection("reviewFar", f, v)}
+                        autoSuggested={autoFilled && !!form.reviewFar.surahStart}
+                        locked={form.noReviewFar}
+                        onToggleLock={() => setForm(f => ({
+                          ...f,
+                          noReviewFar: !f.noReviewFar,
+                          reviewFar: !f.noReviewFar ? emptySection() : f.reviewFar,
+                        }))}
+                      />
+                    )}
                   </>
                 )}
 
