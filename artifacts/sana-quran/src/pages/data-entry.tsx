@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { schoolConfig } from "@/lib/schoolConfig";
 import {
   useGetMissingDataEntry,
   useCreateRecord,
@@ -48,6 +49,22 @@ function isGirlsVariant(trackType: string) {
 
 function hasListenToReciter(trackType: string) {
   return isGirlsVariant(trackType) || trackType === "fixation" || trackType === "mishkah";
+}
+
+function getInputFields(dataEntryType?: string | null): string[] {
+  const configured = (schoolConfig.defaultTrackTypes as any[]).find(
+    t => t.dataEntryType === dataEntryType || t.name === dataEntryType
+  );
+  if (configured?.inputFields?.length) return configured.inputFields as string[];
+  const trackType = resolveTrackType(dataEntryType);
+  if (trackType === "girls")          return ["memorize","review_near","review_far","listen"];
+  if (trackType === "girls_near")     return ["memorize","review_near","listen"];
+  if (trackType === "girls_far")      return ["memorize","review_far","listen"];
+  if (trackType === "girls_no_review") return ["memorize","listen"];
+  if (trackType === "simple")         return ["memorize","review"];
+  if (trackType === "mishkah")        return ["recitation","listen"];
+  if (trackType === "fixation")       return ["memorize","repetitions","review","listen"];
+  return ["memorize","review_near","review_far","listen"];
 }
 
 function getMeccaToday(): string {
@@ -562,7 +579,7 @@ export default function DataEntryPage() {
   };
 
   const handleSave = () => {
-    const trackType = resolveTrackType(selectedCircle?.dataEntryType);
+    const inputFields = getInputFields(selectedCircle?.dataEntryType);
     const payload: any = {
       studentId: selectedStudent.studentId,
       circleId: selectedStudent.circleId,
@@ -576,69 +593,45 @@ export default function DataEntryPage() {
     };
 
     if (!form.isAbsent) {
-      if (isGirlsVariant(trackType)) {
-        if (form.memorize.surahStart && form.memorize.surahEnd) {
-          payload.memorizeSurahStart = form.memorize.surahStart;
-          payload.memorizeAyahStart = Number(form.memorize.ayahStart) || 1;
-          payload.memorizeSurahEnd = form.memorize.surahEnd;
-          payload.memorizeAyahEnd = Number(form.memorize.ayahEnd) || 1;
-          payload.memorizePages = calcSectionPages(form.memorize);
-        }
-        if ((trackType === "girls" || trackType === "girls_near") && form.reviewNear.surahStart && form.reviewNear.surahEnd) {
-          payload.reviewNearSurahStart = form.reviewNear.surahStart;
-          payload.reviewNearAyahStart = Number(form.reviewNear.ayahStart) || 1;
-          payload.reviewNearSurahEnd = form.reviewNear.surahEnd;
-          payload.reviewNearAyahEnd = Number(form.reviewNear.ayahEnd) || 1;
-          payload.reviewNearPages = calcSectionPages(form.reviewNear);
-        }
-        if ((trackType === "girls" || trackType === "girls_far") && form.reviewFar.surahStart && form.reviewFar.surahEnd) {
-          payload.reviewFarSurahStart = form.reviewFar.surahStart;
-          payload.reviewFarAyahStart = Number(form.reviewFar.ayahStart) || 1;
-          payload.reviewFarSurahEnd = form.reviewFar.surahEnd;
-          payload.reviewFarAyahEnd = Number(form.reviewFar.ayahEnd) || 1;
-          payload.reviewFarPages = calcSectionPages(form.reviewFar);
-        }
-      } else if (trackType === "simple") {
-        if (form.memorize.surahStart && form.memorize.surahEnd) {
-          payload.memorizeSurahStart = form.memorize.surahStart;
-          payload.memorizeAyahStart = Number(form.memorize.ayahStart) || 1;
-          payload.memorizeSurahEnd = form.memorize.surahEnd;
-          payload.memorizeAyahEnd = Number(form.memorize.ayahEnd) || 1;
-          payload.memorizePages = calcSectionPages(form.memorize);
-        }
-        if (form.review.surahStart && form.review.surahEnd) {
-          payload.reviewSurahStart = form.review.surahStart;
-          payload.reviewAyahStart = Number(form.review.ayahStart) || 1;
-          payload.reviewSurahEnd = form.review.surahEnd;
-          payload.reviewAyahEnd = Number(form.review.ayahEnd) || 1;
-          payload.reviewPages = calcSectionPages(form.review);
-        }
-      } else if (trackType === "mishkah") {
-        if (form.recitation.surahStart && form.recitation.surahEnd) {
-          payload.recitationSurahStart = form.recitation.surahStart;
-          payload.recitationAyahStart = Number(form.recitation.ayahStart) || 1;
-          payload.recitationSurahEnd = form.recitation.surahEnd;
-          payload.recitationAyahEnd = Number(form.recitation.ayahEnd) || 1;
-          payload.recitationPages = calcSectionPages(form.recitation);
-        }
-      } else if (trackType === "fixation") {
-        if (form.memorize.surahStart && form.memorize.surahEnd) {
-          payload.memorizeSurahStart = form.memorize.surahStart;
-          payload.memorizeAyahStart = Number(form.memorize.ayahStart) || 1;
-          payload.memorizeSurahEnd = form.memorize.surahEnd;
-          payload.memorizeAyahEnd = Number(form.memorize.ayahEnd) || 1;
-          payload.memorizePages = calcSectionPages(form.memorize);
-        }
-        payload.repetitions = Number(form.repetitions) || null;
-        if (form.review.surahStart && form.review.surahEnd) {
-          payload.reviewSurahStart = form.review.surahStart;
-          payload.reviewAyahStart = Number(form.review.ayahStart) || 1;
-          payload.reviewSurahEnd = form.review.surahEnd;
-          payload.reviewAyahEnd = Number(form.review.ayahEnd) || 1;
-          payload.reviewPages = calcSectionPages(form.review);
-        }
+      if (inputFields.includes("memorize") && form.memorize.surahStart && form.memorize.surahEnd) {
+        payload.memorizeSurahStart = form.memorize.surahStart;
+        payload.memorizeAyahStart = Number(form.memorize.ayahStart) || 1;
+        payload.memorizeSurahEnd = form.memorize.surahEnd;
+        payload.memorizeAyahEnd = Number(form.memorize.ayahEnd) || 1;
+        payload.memorizePages = calcSectionPages(form.memorize);
       }
-      if (hasListenToReciter(trackType)) {
+      if (inputFields.includes("review_near") && form.reviewNear.surahStart && form.reviewNear.surahEnd) {
+        payload.reviewNearSurahStart = form.reviewNear.surahStart;
+        payload.reviewNearAyahStart = Number(form.reviewNear.ayahStart) || 1;
+        payload.reviewNearSurahEnd = form.reviewNear.surahEnd;
+        payload.reviewNearAyahEnd = Number(form.reviewNear.ayahEnd) || 1;
+        payload.reviewNearPages = calcSectionPages(form.reviewNear);
+      }
+      if (inputFields.includes("review_far") && form.reviewFar.surahStart && form.reviewFar.surahEnd) {
+        payload.reviewFarSurahStart = form.reviewFar.surahStart;
+        payload.reviewFarAyahStart = Number(form.reviewFar.ayahStart) || 1;
+        payload.reviewFarSurahEnd = form.reviewFar.surahEnd;
+        payload.reviewFarAyahEnd = Number(form.reviewFar.ayahEnd) || 1;
+        payload.reviewFarPages = calcSectionPages(form.reviewFar);
+      }
+      if (inputFields.includes("review") && form.review.surahStart && form.review.surahEnd) {
+        payload.reviewSurahStart = form.review.surahStart;
+        payload.reviewAyahStart = Number(form.review.ayahStart) || 1;
+        payload.reviewSurahEnd = form.review.surahEnd;
+        payload.reviewAyahEnd = Number(form.review.ayahEnd) || 1;
+        payload.reviewPages = calcSectionPages(form.review);
+      }
+      if (inputFields.includes("recitation") && form.recitation.surahStart && form.recitation.surahEnd) {
+        payload.recitationSurahStart = form.recitation.surahStart;
+        payload.recitationAyahStart = Number(form.recitation.ayahStart) || 1;
+        payload.recitationSurahEnd = form.recitation.surahEnd;
+        payload.recitationAyahEnd = Number(form.recitation.ayahEnd) || 1;
+        payload.recitationPages = calcSectionPages(form.recitation);
+      }
+      if (inputFields.includes("repetitions")) {
+        payload.repetitions = Number(form.repetitions) || null;
+      }
+      if (inputFields.includes("listen")) {
         payload.listenedToReciter = form.listenedToReciter;
       }
     }
@@ -703,6 +696,7 @@ export default function DataEntryPage() {
 
   const selectedCircle = circles?.find((c: any) => c.id === selectedCircleId);
   const trackType = resolveTrackType(selectedCircle?.dataEntryType);
+  const inputFields = getInputFields(selectedCircle?.dataEntryType);
 
   // أيام العمل لإدخال البيانات: أحد–خميس دائمًا (الجمعة والسبت مستثنيان)
   // إذا كانت الحلقة محددة، تُخفى الأيام التي أُدخلت بياناتها بالفعل
@@ -1102,77 +1096,70 @@ export default function DataEntryPage() {
 
             {!form.isAbsent && (
               <>
-                {/* حلقات الفتيات: حفظ + مراجعة حسب النوع */}
-                {isGirlsVariant(trackType) && (
-                  <>
-                    <SurahSection
-                      title="الحفظ"
-                      color="border-teal-200 bg-teal-50/40"
-                      section={form.memorize}
-                      onChange={(f, v) => updateSection("memorize", f, v)}
-                      autoSuggested={autoFilled && !!form.memorize.surahStart}
-                    />
-                    {(trackType === "girls" || trackType === "girls_near") && (
-                      <SurahSection
-                        title="المراجعة القريبة"
-                        color="border-blue-200 bg-blue-50/40"
-                        section={form.reviewNear}
-                        onChange={(f, v) => updateSection("reviewNear", f, v)}
-                        autoSuggested={autoFilled && !!form.reviewNear.surahStart}
-                        locked={form.noReviewNear}
-                        onToggleLock={() => setForm(f => ({
-                          ...f,
-                          noReviewNear: !f.noReviewNear,
-                          reviewNear: !f.noReviewNear ? emptySection() : f.reviewNear,
-                        }))}
-                      />
-                    )}
-                    {(trackType === "girls" || trackType === "girls_far") && (
-                      <SurahSection
-                        title="المراجعة البعيدة"
-                        color="border-teal-200 bg-teal-100/40"
-                        section={form.reviewFar}
-                        onChange={(f, v) => updateSection("reviewFar", f, v)}
-                        autoSuggested={autoFilled && !!form.reviewFar.surahStart}
-                        locked={form.noReviewFar}
-                        onToggleLock={() => setForm(f => ({
-                          ...f,
-                          noReviewFar: !f.noReviewFar,
-                          reviewFar: !f.noReviewFar ? emptySection() : f.reviewFar,
-                        }))}
-                      />
-                    )}
-                  </>
+                {/* الحفظ */}
+                {inputFields.includes("memorize") && (
+                  <SurahSection
+                    title="الحفظ"
+                    color="border-teal-200 bg-teal-50/40"
+                    section={form.memorize}
+                    onChange={(f, v) => updateSection("memorize", f, v)}
+                    autoSuggested={autoFilled && !!form.memorize.surahStart}
+                  />
                 )}
 
-                {/* ألق وسراج ومهج: حفظ + مراجعة */}
-                {trackType === "simple" && (
-                  <>
-                    <SurahSection
-                      title="الحفظ"
-                      color="border-teal-200 bg-teal-50/40"
-                      section={form.memorize}
-                      onChange={(f, v) => updateSection("memorize", f, v)}
-                      autoSuggested={autoFilled && !!form.memorize.surahStart}
-                    />
-                    <SurahSection
-                      title="المراجعة"
-                      color="border-blue-200 bg-blue-50/40"
-                      section={form.review}
-                      onChange={(f, v) => updateSection("review", f, v)}
-                      autoSuggested={autoFilled && !!form.review.surahStart}
-                      locked={form.noReview}
-                      onToggleLock={() => setForm(f => ({
-                        ...f,
-                        noReview: !f.noReview,
-                        review: !f.noReview ? emptySection() : f.review,
-                      }))}
-                    />
-                  </>
+                {/* المراجعة القريبة */}
+                {inputFields.includes("review_near") && (
+                  <SurahSection
+                    title="المراجعة القريبة"
+                    color="border-blue-200 bg-blue-50/40"
+                    section={form.reviewNear}
+                    onChange={(f, v) => updateSection("reviewNear", f, v)}
+                    autoSuggested={autoFilled && !!form.reviewNear.surahStart}
+                    locked={form.noReviewNear}
+                    onToggleLock={() => setForm(f => ({
+                      ...f,
+                      noReviewNear: !f.noReviewNear,
+                      reviewNear: !f.noReviewNear ? emptySection() : f.reviewNear,
+                    }))}
+                  />
                 )}
 
-                {/* مشكاة نور: تلاوة فقط */}
-                {trackType === "mishkah" && (
+                {/* المراجعة البعيدة */}
+                {inputFields.includes("review_far") && (
+                  <SurahSection
+                    title="المراجعة البعيدة"
+                    color="border-teal-200 bg-teal-100/40"
+                    section={form.reviewFar}
+                    onChange={(f, v) => updateSection("reviewFar", f, v)}
+                    autoSuggested={autoFilled && !!form.reviewFar.surahStart}
+                    locked={form.noReviewFar}
+                    onToggleLock={() => setForm(f => ({
+                      ...f,
+                      noReviewFar: !f.noReviewFar,
+                      reviewFar: !f.noReviewFar ? emptySection() : f.reviewFar,
+                    }))}
+                  />
+                )}
+
+                {/* المراجعة العامة */}
+                {inputFields.includes("review") && (
+                  <SurahSection
+                    title="المراجعة"
+                    color="border-blue-200 bg-blue-50/40"
+                    section={form.review}
+                    onChange={(f, v) => updateSection("review", f, v)}
+                    autoSuggested={autoFilled && !!form.review.surahStart}
+                    locked={form.noReview}
+                    onToggleLock={() => setForm(f => ({
+                      ...f,
+                      noReview: !f.noReview,
+                      review: !f.noReview ? emptySection() : f.review,
+                    }))}
+                  />
+                )}
+
+                {/* التلاوة */}
+                {inputFields.includes("recitation") && (
                   <SurahSection
                     title="التلاوة"
                     color="border-emerald-200 bg-emerald-50/40"
@@ -1182,49 +1169,27 @@ export default function DataEntryPage() {
                   />
                 )}
 
-                {/* التثبيت: تثبيت جديد + عدد التكرار + مراجعة */}
-                {trackType === "fixation" && (
-                  <>
-                    <SurahSection
-                      title="التثبيت الجديد"
-                      color="border-amber-200 bg-amber-50/40"
-                      section={form.memorize}
-                      onChange={(f, v) => updateSection("memorize", f, v)}
-                      autoSuggested={autoFilled && !!form.memorize.surahStart}
-                    />
-                    <div className="border border-amber-200 bg-amber-50/40 rounded-xl p-4">
-                      <p className="font-semibold text-sm flex items-center gap-2 mb-3">
-                        <BookOpen className="w-4 h-4" />
-                        عدد مرات التكرار
-                      </p>
-                      <select
-                        className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background text-right"
-                        value={form.repetitions}
-                        onChange={e => setForm(f => ({ ...f, repetitions: e.target.value }))}
-                      >
-                        {Array.from({ length: 100 }, (_, i) => i + 1).map(n => (
-                          <option key={n} value={n.toString()}>{n} {n === 7 ? "(افتراضي)" : ""}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <SurahSection
-                      title="المراجعة"
-                      color="border-blue-200 bg-blue-50/40"
-                      section={form.review}
-                      onChange={(f, v) => updateSection("review", f, v)}
-                      autoSuggested={autoFilled && !!form.review.surahStart}
-                      locked={form.noReview}
-                      onToggleLock={() => setForm(f => ({
-                        ...f,
-                        noReview: !f.noReview,
-                        review: !f.noReview ? emptySection() : f.review,
-                      }))}
-                    />
-                  </>
+                {/* عدد التكرار */}
+                {inputFields.includes("repetitions") && (
+                  <div className="border border-amber-200 bg-amber-50/40 rounded-xl p-4">
+                    <p className="font-semibold text-sm flex items-center gap-2 mb-3">
+                      <BookOpen className="w-4 h-4" />
+                      عدد مرات التكرار
+                    </p>
+                    <select
+                      className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background text-right"
+                      value={form.repetitions}
+                      onChange={e => setForm(f => ({ ...f, repetitions: e.target.value }))}
+                    >
+                      {Array.from({ length: 100 }, (_, i) => i + 1).map(n => (
+                        <option key={n} value={n.toString()}>{n} {n === 7 ? "(افتراضي)" : ""}</option>
+                      ))}
+                    </select>
+                  </div>
                 )}
 
-                {/* سماع القارئ — الفتيات + التثبيت + التصحيح */}
-                {hasListenToReciter(trackType) && (
+                {/* سماع القارئ */}
+                {inputFields.includes("listen") && (
                   <div className="border border-teal-200 bg-teal-50/40 rounded-xl p-4">
                     <p className="font-semibold text-sm mb-3 flex items-center gap-2">
                       <span>🎧</span>

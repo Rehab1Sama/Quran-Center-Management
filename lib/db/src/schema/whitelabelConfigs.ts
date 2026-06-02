@@ -19,6 +19,7 @@ export const whitelabelConfigsTable = pgTable("whitelabel_configs", {
   renderServiceUrl: text("render_service_url"),
   deployStatus: text("deploy_status").notNull().default("draft"),
   deployError: text("deploy_error"),
+  customDatabaseUrl: text("custom_database_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

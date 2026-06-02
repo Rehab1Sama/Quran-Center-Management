@@ -42,6 +42,7 @@ router.post("/white-label/configs", authenticate, requireRole("leader"), async (
     roleNames: b.roleNames ?? "{}",
     trackTypes: b.trackTypes ?? "[]",
     circleGenders: b.circleGenders ?? '["girls"]',
+    customDatabaseUrl: b.customDatabaseUrl ?? null,
   }).returning();
   res.json(config);
 });
@@ -62,6 +63,7 @@ router.patch("/white-label/configs/:id", authenticate, requireRole("leader"), as
     ...(b.roleNames !== undefined && { roleNames: b.roleNames }),
     ...(b.trackTypes !== undefined && { trackTypes: b.trackTypes }),
     ...(b.circleGenders !== undefined && { circleGenders: b.circleGenders }),
+    ...(b.customDatabaseUrl !== undefined && { customDatabaseUrl: b.customDatabaseUrl }),
   }).where(eq(whitelabelConfigsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   res.json(updated);
@@ -124,16 +126,22 @@ router.post("/white-label/configs/:id/deploy", authenticate, requireRole("leader
     if (!ownerId) throw new Error("تعذّر الحصول على معرّف الحساب من Render");
 
     const slug = config.schoolName.replace(/\s+/g, "-").replace(/[^\w-]/g, "").toLowerCase();
-    const dbName = `sana-db-${slug}-${id}`;
 
-    const dbResp = await renderFetch("/postgres", "POST", {
-      name: dbName, ownerId, plan: "starter", region: "oregon",
-      databaseName: "sana_quran", databaseUser: "sana_user",
-    }) as any;
-    const dbId = dbResp?.id as string;
-    const dbConnStr = dbResp?.databaseUrl ?? dbResp?.connectionString ?? "postgres://pending";
+    let dbId: string | null = null;
+    let dbConnStr: string;
 
-    await db.update(whitelabelConfigsTable).set({ renderDbId: dbId }).where(eq(whitelabelConfigsTable.id, id));
+    if (config.customDatabaseUrl) {
+      dbConnStr = config.customDatabaseUrl;
+    } else {
+      const dbName = `sana-db-${slug}-${id}`;
+      const dbResp = await renderFetch("/postgres", "POST", {
+        name: dbName, ownerId, plan: "starter", region: "oregon",
+        databaseName: "sana_quran", databaseUser: "sana_user",
+      }) as any;
+      dbId = dbResp?.id as string;
+      dbConnStr = dbResp?.databaseUrl ?? dbResp?.connectionString ?? "postgres://pending";
+      await db.update(whitelabelConfigsTable).set({ renderDbId: dbId }).where(eq(whitelabelConfigsTable.id, id));
+    }
 
     const features: string[] = (() => { try { return JSON.parse(config.enabledFeatures); } catch { return []; } })();
     const trackTypes: { name: string; dataEntryType: string }[] = (() => { try { return JSON.parse(config.trackTypes); } catch { return []; } })();

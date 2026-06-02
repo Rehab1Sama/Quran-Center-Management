@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useGetTodayBanner, useLogout, useGetMyMessages, useListStudents } from "@workspace/api-client-react";
 import { clearToken, getToken, setToken } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
+import { isFeatureEnabled } from "@/lib/schoolConfig";
 import {
   Users, ClipboardList, BarChart3,
   UserCheck, Home, LogOut, Menu, X,
@@ -679,129 +680,135 @@ function getRoleLabel(role: string): string {
   return labels[role] ?? role;
 }
 
-function getNavItems(role: string, unreadCount = 0, track?: string | null) {
+type NavItem = { href: string; label: string; icon: React.ElementType; badge?: number; feature?: string };
+
+function filterNav(items: NavItem[]): NavItem[] {
+  return items.filter(item => !item.feature || isFeatureEnabled(item.feature));
+}
+
+function getNavItems(role: string, unreadCount = 0, track?: string | null): NavItem[] {
   const hideReviewPlan = !!track && NO_REVIEW_PLAN_TRACKS.includes(track);
 
   if (role === "leader") {
-    return [
+    return filterNav([
       { href: "/", label: "الرئيسية", icon: Home },
       { href: "/data-entry-status", label: "المدخلات", icon: ClipboardList },
       { href: "/accounts", label: "الحسابات", icon: UserCheck },
-      { href: "/statistics", label: "الإحصائيات", icon: BarChart3 },
+      { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
       { href: "/attendance", label: "الغيابات", icon: CalendarCheck },
-      { href: "/monthly-report", label: "تقرير الحضور", icon: BarChart2 },
+      { href: "/monthly-report", label: "تقرير الحضور", icon: BarChart2, feature: "stats_monthly" },
       { href: "/archived-students", label: "المؤرشفات", icon: Archive },
       { href: "/circles", label: "الحلقات", icon: Users },
       { href: "/manage-tracks", label: "المسارات والحلقات", icon: Layers },
       { href: "/leader-tasks", label: "متابعة المهام اليومية", icon: ClipboardList },
-      { href: "/deputy-board", label: "مهام النائبة", icon: ClipboardList },
-      { href: "/volunteer", label: "الاختبارات", icon: GraduationCap },
-      { href: "/teacher-rotation", label: "شقلبة المعلمات", icon: Shuffle },
-      { href: "/badges", label: "الأوسمة", icon: Award },
-      { href: "/calendar", label: "التقويم", icon: Calendar },
-      { href: "/shortcomings", label: "التقصير", icon: AlertTriangle },
-      { href: "/stumbling-stats", label: "إحصائيات التعثر", icon: AlertTriangle },
-      { href: "/review-plans", label: "خطط المراجعة", icon: BookOpen },
+      { href: "/deputy-board", label: "مهام النائبة", icon: ClipboardList, feature: "deputy_tasks" },
+      { href: "/volunteer", label: "الاختبارات", icon: GraduationCap, feature: "exam" },
+      { href: "/teacher-rotation", label: "شقلبة المعلمات", icon: Shuffle, feature: "teacher_rotation" },
+      { href: "/badges", label: "الأوسمة", icon: Award, feature: "badges" },
+      { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
+      { href: "/shortcomings", label: "التقصير", icon: AlertTriangle, feature: "shortcomings" },
+      { href: "/stumbling-stats", label: "إحصائيات التعثر", icon: AlertTriangle, feature: "stats_stumbling" },
+      { href: "/review-plans", label: "خطط المراجعة", icon: BookOpen, feature: "review_plans" },
       { href: "/thursday-review", label: "مراجعة الخميس", icon: CalendarCheck },
-      { href: "/store-manage", label: "المتجر", icon: ShoppingBag },
-      { href: "/messages", label: "الرسائل", icon: MessageSquare },
-      { href: "/registration", label: "التسجيل", icon: PenSquare },
-      { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList },
+      { href: "/store-manage", label: "المتجر", icon: ShoppingBag, feature: "store" },
+      { href: "/messages", label: "الرسائل", icon: MessageSquare, feature: "messages" },
+      { href: "/registration", label: "التسجيل", icon: PenSquare, feature: "registration" },
+      { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList, feature: "registration" },
       { href: "/onboard", label: "إضافة عضو مباشرة", icon: BookUser },
-      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
-      { href: "/reports", label: "التقارير الأسبوعية", icon: TrendingUp },
+      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff, feature: "leaves" },
+      { href: "/reports", label: "التقارير الأسبوعية", icon: TrendingUp, feature: "stats_weekly" },
       { href: "/white-label", label: "نسخ للبيع", icon: Globe },
       { href: "/export", label: "تصدير البيانات", icon: FileDown },
-    ];
+    ]);
   }
   if (role === "deputy") {
-    return [
+    return filterNav([
       { href: "/", label: "الرئيسية", icon: Home },
       { href: "/data-entry-status", label: "المدخلات", icon: ClipboardList },
       { href: "/accounts", label: "الحسابات", icon: UserCheck },
-      { href: "/statistics", label: "الإحصائيات", icon: BarChart3 },
+      { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
       { href: "/attendance", label: "الغيابات", icon: CalendarCheck },
-      { href: "/monthly-report", label: "تقرير الحضور", icon: BarChart2 },
+      { href: "/monthly-report", label: "تقرير الحضور", icon: BarChart2, feature: "stats_monthly" },
       { href: "/archived-students", label: "المؤرشفات", icon: Archive },
       { href: "/deputy-circles", label: "الحلقات", icon: Users },
       { href: "/manage-tracks", label: "المسارات والحلقات", icon: Layers },
       { href: "/leader-tasks", label: "متابعة المهام اليومية", icon: ClipboardList },
-      { href: "/volunteer", label: "الاختبارات", icon: GraduationCap },
-      { href: "/teacher-rotation", label: "شقلبة المعلمات", icon: Shuffle },
-      { href: "/badges", label: "الأوسمة", icon: Award },
-      { href: "/calendar", label: "التقويم", icon: Calendar },
-      { href: "/shortcomings", label: "التقصير", icon: AlertTriangle },
-      { href: "/stumbling-stats", label: "إحصائيات التعثر", icon: AlertTriangle },
-      { href: "/review-plans", label: "خطط المراجعة", icon: BookOpen },
-      { href: "/messages", label: "الرسائل", icon: MessageSquare },
-      { href: "/registration", label: "التسجيل", icon: PenSquare },
-      { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList },
+      { href: "/volunteer", label: "الاختبارات", icon: GraduationCap, feature: "exam" },
+      { href: "/teacher-rotation", label: "شقلبة المعلمات", icon: Shuffle, feature: "teacher_rotation" },
+      { href: "/badges", label: "الأوسمة", icon: Award, feature: "badges" },
+      { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
+      { href: "/shortcomings", label: "التقصير", icon: AlertTriangle, feature: "shortcomings" },
+      { href: "/stumbling-stats", label: "إحصائيات التعثر", icon: AlertTriangle, feature: "stats_stumbling" },
+      { href: "/review-plans", label: "خطط المراجعة", icon: BookOpen, feature: "review_plans" },
+      { href: "/messages", label: "الرسائل", icon: MessageSquare, feature: "messages" },
+      { href: "/registration", label: "التسجيل", icon: PenSquare, feature: "registration" },
+      { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList, feature: "registration" },
       { href: "/onboard", label: "إضافة عضو مباشرة", icon: BookUser },
       { href: "/export", label: "تصدير البيانات", icon: FileDown },
-      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
-      { href: "/deputy-tasks", label: "مهامي", icon: ClipboardList },
-      { href: "/reports", label: "التقارير الأسبوعية", icon: TrendingUp },
-    ];
+      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff, feature: "leaves" },
+      { href: "/deputy-tasks", label: "مهامي", icon: ClipboardList, feature: "deputy_tasks" },
+      { href: "/reports", label: "التقارير الأسبوعية", icon: TrendingUp, feature: "stats_weekly" },
+    ]);
   }
   if (role === "data_entry") {
-    return [
+    return filterNav([
       { href: "/", label: "إدخال البيانات", icon: PenSquare },
-      { href: "/calendar", label: "التقويم", icon: Calendar },
-    ];
+      { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
+    ]);
   }
   if (role === "teacher" || role === "supervisor") {
-    return [
+    return filterNav([
       { href: "/", label: "حلقتي", icon: Users },
-      { href: "/statistics", label: "الإحصائيات", icon: BarChart3 },
-      ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen }] : []),
-      { href: "/badges", label: "أوسمتي", icon: Award },
-      { href: "/calendar", label: "التقويم", icon: Calendar },
-      { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount },
-    ];
+      { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
+      ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen, feature: "review_plans" }] : []),
+      { href: "/badges", label: "أوسمتي", icon: Award, feature: "badges" },
+      { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
+      { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount, feature: "messages" },
+    ]);
   }
   if (role === "student") {
-    return [
+    return filterNav([
       { href: "/", label: "تقدمي", icon: BarChart3 },
-      { href: "/statistics", label: "إحصائياتي", icon: BarChart3 },
-      { href: "/badges", label: "أوسمتي", icon: Award },
-      ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen }] : []),
-      { href: "/calendar", label: "التقويم", icon: Calendar },
-      { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount },
-      { href: "/audio", label: "صوتيات المصحف", icon: Headphones },
-    ];
+      { href: "/statistics", label: "إحصائياتي", icon: BarChart3, feature: "stats_general" },
+      { href: "/badges", label: "أوسمتي", icon: Award, feature: "badges" },
+      ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen, feature: "review_plans" }] : []),
+      { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
+      { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount, feature: "messages" },
+      { href: "/audio", label: "صوتيات المصحف", icon: Headphones, feature: "audio" },
+    ]);
   }
   if (role === "track_supervisor") {
-    return [
+    return filterNav([
       { href: "/", label: "مساري", icon: Users },
       { href: "/circles", label: "الحلقات", icon: BookOpen },
       { href: "/daily-tasks", label: "المهام اليومية", icon: ClipboardList },
-      { href: "/statistics", label: "الإحصائيات", icon: BarChart3 },
+      { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
       { href: "/attendance", label: "الغيابات", icon: CalendarCheck },
-      { href: "/monthly-report", label: "تقرير الحضور", icon: BarChart2 },
+      { href: "/monthly-report", label: "تقرير الحضور", icon: BarChart2, feature: "stats_monthly" },
       { href: "/archived-students", label: "المؤرشفات", icon: Archive },
-      { href: "/badges", label: "الأوسمة", icon: Award },
-      { href: "/calendar", label: "التقويم", icon: Calendar },
-      { href: "/shortcomings", label: "التقصير", icon: AlertTriangle },
-      { href: "/stumbling-stats", label: "إحصائيات التعثر", icon: AlertTriangle },
-      ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen }] : []),
-      { href: "/messages", label: "الرسائل", icon: MessageSquare },
-      { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount },
-      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff },
-      { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList },
-    ];
+      { href: "/badges", label: "الأوسمة", icon: Award, feature: "badges" },
+      { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
+      { href: "/shortcomings", label: "التقصير", icon: AlertTriangle, feature: "shortcomings" },
+      { href: "/stumbling-stats", label: "إحصائيات التعثر", icon: AlertTriangle, feature: "stats_stumbling" },
+      ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen, feature: "review_plans" }] : []),
+      { href: "/messages", label: "الرسائل", icon: MessageSquare, feature: "messages" },
+      { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount, feature: "messages" },
+      { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff, feature: "leaves" },
+      { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList, feature: "registration" },
+    ]);
   }
   if (role === "volunteer") {
-    return [
+    return filterNav([
       { href: "/", label: "الاختبارات", icon: GraduationCap },
-      { href: "/calendar", label: "التقويم", icon: Calendar },
-    ];
+      { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
+    ]);
   }
   if (role === "exam_supervisor") {
-    return [
+    return filterNav([
       { href: "/", label: "الاختبارات", icon: GraduationCap },
-      { href: "/statistics", label: "الإحصائيات", icon: BarChart3 },
-      { href: "/calendar", label: "التقويم", icon: Calendar },
-    ];
+      { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
+      { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
+    ]);
   }
   return [];
 }

@@ -66,14 +66,34 @@ const ALL_ROLES = [
 
 const DATA_ENTRY_ROLES = ["teacher", "supervisor", "data_entry", "student"];
 
-const STANDARD_TRACK_TYPES = [
-  { key: "girls",           name: "حفظ بنات — قريبة + بعيدة",  description: "حفظ + مراجعة قريبة وبعيدة + غياب" },
-  { key: "girls_near",      name: "حفظ بنات — قريبة فقط",       description: "حفظ + مراجعة قريبة فقط + غياب" },
-  { key: "girls_far",       name: "حفظ بنات — بعيدة فقط",       description: "حفظ + مراجعة بعيدة فقط + غياب" },
-  { key: "girls_no_review", name: "حفظ بنات — بدون مراجعة",     description: "حفظ فقط + غياب (بدون مراجعة)" },
-  { key: "recitation",      name: "تلاوة / مشكاة",              description: "تلاوة فقط + غياب" },
-  { key: "simple_review",   name: "مراجعة عامة",                 description: "مراجعة بسيطة + غياب" },
-  { key: "fixation",        name: "تثبيت",                       description: "تثبيت المحفوظ + مراجعة قريبة وبعيدة" },
+const AVAILABLE_INPUT_FIELDS = [
+  { key: "memorize",    label: "الحفظ",             emoji: "📖", description: "حفظ آيات جديدة" },
+  { key: "review_near", label: "مراجعة قريبة",      emoji: "🔄", description: "مراجعة الحفظ الجديد" },
+  { key: "review_far",  label: "مراجعة بعيدة",      emoji: "📚", description: "مراجعة الحفظ القديم" },
+  { key: "review",      label: "مراجعة عامة",       emoji: "📝", description: "مراجعة دون تفصيل" },
+  { key: "recitation",  label: "تلاوة",              emoji: "🎙️", description: "تلاوة بدون حفظ" },
+  { key: "listen",      label: "سماع للقارئ",        emoji: "🎧", description: "الاستماع لشيخ / قارئ" },
+  { key: "repetitions", label: "عدد التكرار",        emoji: "🔁", description: "عدد مرات التكرار" },
+  { key: "tafsir",      label: "تفسير / ملاحظات",   emoji: "✏️", description: "ملاحظات وتفسير" },
+];
+
+const TRACK_CATEGORIES = ["فتيات", "أمهات", "أطفال", "رجال", "مختلط"];
+
+const STANDARD_TRACK_PRESETS = [
+  { name: "حفظ (قريبة + بعيدة)", category: "فتيات", dataEntryType: "girls",
+    inputFields: ["memorize","review_near","review_far","listen"] },
+  { name: "حفظ (قريبة فقط)",     category: "فتيات", dataEntryType: "girls_near",
+    inputFields: ["memorize","review_near","listen"] },
+  { name: "حفظ (بعيدة فقط)",     category: "فتيات", dataEntryType: "girls_far",
+    inputFields: ["memorize","review_far","listen"] },
+  { name: "حفظ (بدون مراجعة)",   category: "فتيات", dataEntryType: "girls_no_review",
+    inputFields: ["memorize","listen"] },
+  { name: "تلاوة / مشكاة",       category: "فتيات", dataEntryType: "recitation",
+    inputFields: ["recitation","listen"] },
+  { name: "مراجعة عامة",         category: "فتيات", dataEntryType: "simple_review",
+    inputFields: ["memorize","review"] },
+  { name: "تثبيت",               category: "فتيات", dataEntryType: "fixation",
+    inputFields: ["memorize","repetitions","review","listen"] },
 ];
 
 const FEATURE_GROUPS = [
@@ -166,13 +186,14 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   failed: { label: "فشل النشر", color: "bg-red-100 text-red-700" },
 };
 
-interface TrackTypeEntry { name: string; dataEntryType: string; }
+interface TrackTypeEntry { name: string; dataEntryType: string; category?: string; inputFields?: string[]; }
 interface Config {
   id: number; schoolName: string; schoolTagline: string | null;
   logoUrl: string | null; adminEmail: string | null;
   primaryHsl: string; secondaryHsl: string; sidebarHsl: string;
   enabledFeatures: string; dataEntryRoles: string; roleNames: string;
   trackTypes: string; circleGenders: string;
+  customDatabaseUrl: string | null;
   renderServiceId: string | null; renderServiceUrl: string | null;
   deployStatus: string; deployError: string | null; createdAt: string;
 }
@@ -213,8 +234,9 @@ export default function WhiteLabelPage() {
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [expandedConfig, setExpandedConfig] = useState<number | null>(null);
-  const [customTrackInput, setCustomTrackInput] = useState("");
-  const [customTrackType, setCustomTrackType] = useState("girls");
+  const [newTrackName, setNewTrackName] = useState("");
+  const [newTrackCategory, setNewTrackCategory] = useState("فتيات");
+  const [newTrackFields, setNewTrackFields] = useState<string[]>(["memorize", "review_near", "review_far", "listen"]);
 
   const [selectedPackage, setSelectedPackage] = useState<string>("custom");
 
@@ -234,8 +256,9 @@ export default function WhiteLabelPage() {
     enabledFeatures: ALL_FEATURES.map(f => f.key),
     dataEntryRoles: ["teacher", "supervisor", "data_entry"] as string[],
     roleNames: {} as Record<string, string>,
-    trackTypes: STANDARD_TRACK_TYPES.map(t => ({ name: t.name, dataEntryType: t.key })) as TrackTypeEntry[],
+    trackTypes: STANDARD_TRACK_PRESETS.map(t => ({ name: t.name, dataEntryType: t.dataEntryType, category: t.category, inputFields: t.inputFields })) as TrackTypeEntry[],
     circleGenders: ["girls"] as string[],
+    customDatabaseUrl: "",
   });
 
   const role = (user as any)?.role ?? "";
@@ -264,20 +287,29 @@ export default function WhiteLabelPage() {
       ? form.dataEntryRoles.filter(k => k !== key)
       : [...form.dataEntryRoles, key]);
 
-  const toggleTrackType = (entry: TrackTypeEntry) => {
-    const exists = form.trackTypes.some(t => t.dataEntryType === entry.dataEntryType && t.name === entry.name);
+  const togglePresetTrack = (preset: typeof STANDARD_TRACK_PRESETS[number]) => {
+    const exists = form.trackTypes.some(t => t.dataEntryType === preset.dataEntryType && t.name === preset.name);
     setField("trackTypes", exists
-      ? form.trackTypes.filter(t => !(t.dataEntryType === entry.dataEntryType && t.name === entry.name))
-      : [...form.trackTypes, entry]);
+      ? form.trackTypes.filter(t => !(t.dataEntryType === preset.dataEntryType && t.name === preset.name))
+      : [...form.trackTypes, { name: preset.name, dataEntryType: preset.dataEntryType, category: preset.category, inputFields: preset.inputFields }]);
+  };
+
+  const toggleNewTrackField = (key: string) => {
+    setNewTrackFields(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
   };
 
   const addCustomTrack = () => {
-    if (!customTrackInput.trim()) return;
-    const entry: TrackTypeEntry = { name: customTrackInput.trim(), dataEntryType: customTrackType };
-    if (!form.trackTypes.some(t => t.name === entry.name && t.dataEntryType === entry.dataEntryType)) {
+    if (!newTrackName.trim() || newTrackFields.length === 0) return;
+    const entry: TrackTypeEntry = {
+      name: newTrackName.trim(),
+      dataEntryType: "custom",
+      category: newTrackCategory,
+      inputFields: newTrackFields,
+    };
+    if (!form.trackTypes.some(t => t.name === entry.name)) {
       setField("trackTypes", [...form.trackTypes, entry]);
     }
-    setCustomTrackInput("");
+    setNewTrackName("");
   };
 
   const handlePreview = () => {
@@ -302,6 +334,7 @@ export default function WhiteLabelPage() {
         roleNames: JSON.stringify(form.roleNames),
         trackTypes: JSON.stringify(form.trackTypes),
         circleGenders: JSON.stringify(form.circleGenders),
+        customDatabaseUrl: form.customDatabaseUrl || null,
       };
       const r = await fetch(`${BASE}/api/white-label/configs`, {
         method: "POST", headers: apiHeaders(), body: JSON.stringify(body),
@@ -532,58 +565,130 @@ export default function WhiteLabelPage() {
           </div>
         </Section>
 
-        {/* Section 5: Track Types */}
-        <Section title="أنواع الحلقات والإدخال" icon={BookOpen}>
-          <p className="text-xs text-muted-foreground">حددي أنواع الحلقات المتاحة ونوع الإدخال لكل منها</p>
+        {/* Section 5: Track Types - Flexible Builder */}
+        <Section title="أنواع الحلقات ونظام الإدخال" icon={BookOpen}>
+          <p className="text-xs text-muted-foreground">حددي لكل نوع حلقة: الاسم والفئة وحقول الإدخال الظاهرة لمُدخلة البيانات</p>
+
+          {/* Quick Presets */}
           <div className="space-y-2">
-            <Label className="text-xs font-semibold">الأنواع المعيارية</Label>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {STANDARD_TRACK_TYPES.map(t => {
-                const entry: TrackTypeEntry = { name: t.name, dataEntryType: t.key };
-                const enabled = form.trackTypes.some(tt => tt.dataEntryType === t.key && tt.name === t.name);
+            <Label className="text-xs font-semibold">أنواع جاهزة — اختاري المناسبة</Label>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {STANDARD_TRACK_PRESETS.map(preset => {
+                const enabled = form.trackTypes.some(t => t.dataEntryType === preset.dataEntryType && t.name === preset.name);
+                const fieldLabels = preset.inputFields.map(k => AVAILABLE_INPUT_FIELDS.find(f => f.key === k)?.label).filter(Boolean);
                 return (
-                  <button key={t.key} onClick={() => toggleTrackType(entry)}
+                  <button key={preset.dataEntryType} onClick={() => togglePresetTrack(preset)}
                     className={`flex items-start gap-2.5 px-3 py-2.5 rounded-xl border text-xs text-right transition-colors ${
                       enabled ? "bg-primary/5 border-primary/30" : "border-border hover:bg-muted/30"
                     }`}>
                     {enabled ? <CheckSquare className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" /> : <Square className="w-3.5 h-3.5 mt-0.5 shrink-0 text-muted-foreground" />}
                     <div>
-                      <p className={`font-semibold ${enabled ? "text-primary" : "text-foreground"}`}>{t.name}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{t.description}</p>
+                      <p className={`font-semibold ${enabled ? "text-primary" : "text-foreground"}`}>{preset.name}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-4">{fieldLabels.join(" · ")}</p>
                     </div>
                   </button>
                 );
               })}
             </div>
           </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold">إضافة نوع مخصص</Label>
-            <div className="flex gap-2">
-              <Input value={customTrackInput} onChange={e => setCustomTrackInput(e.target.value)}
-                placeholder="اسم الحلقة مثال: حلقة التجويد" dir="rtl" className="flex-1 h-8 text-sm" />
-              <select value={customTrackType} onChange={e => setCustomTrackType(e.target.value)}
-                className="border border-input rounded-xl px-2 py-1 text-xs bg-background">
-                {STANDARD_TRACK_TYPES.map(t => <option key={t.key} value={t.key}>{t.name} (نموذج الإدخال)</option>)}
-              </select>
-              <button onClick={addCustomTrack}
-                className="px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold flex items-center gap-1">
-                <Plus className="w-3.5 h-3.5" /> إضافة
-              </button>
+
+          {/* Custom Builder */}
+          <div className="border border-border/60 rounded-xl p-3 space-y-3 bg-muted/10">
+            <Label className="text-xs font-bold">🔧 بناء نوع مخصص</Label>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-[10px] text-muted-foreground mb-1 block">اسم النوع</Label>
+                <Input value={newTrackName} onChange={e => setNewTrackName(e.target.value)}
+                  placeholder="مثال: حلقة الأمهات المتقدمة" dir="rtl" className="h-8 text-xs" />
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground mb-1 block">الفئة المستهدفة</Label>
+                <div className="flex flex-wrap gap-1">
+                  {TRACK_CATEGORIES.map(cat => (
+                    <button key={cat} onClick={() => setNewTrackCategory(cat)}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors ${
+                        newTrackCategory === cat ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted/30"
+                      }`}>{cat}</button>
+                  ))}
+                </div>
+              </div>
             </div>
-            {form.trackTypes.length > 0 && (
+
+            <div>
+              <Label className="text-[10px] text-muted-foreground mb-1.5 block">حقول الإدخال — اختاري ما يظهر في نموذج إدخال البيانات</Label>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                {AVAILABLE_INPUT_FIELDS.map(field => {
+                  const on = newTrackFields.includes(field.key);
+                  return (
+                    <button key={field.key} onClick={() => toggleNewTrackField(field.key)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-medium transition-colors ${
+                        on ? "bg-primary/5 border-primary/30 text-primary" : "border-border text-muted-foreground hover:bg-muted/30"
+                      }`}>
+                      {on ? <CheckSquare className="w-3 h-3 shrink-0" /> : <Square className="w-3 h-3 shrink-0" />}
+                      <span>{field.emoji} {field.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {newTrackFields.length > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-1.5">
+                  الحقول المختارة: {newTrackFields.map(k => AVAILABLE_INPUT_FIELDS.find(f => f.key === k)?.label).join(" · ")}
+                </p>
+              )}
+            </div>
+
+            <button onClick={addCustomTrack} disabled={!newTrackName.trim() || newTrackFields.length === 0}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-40">
+              <Plus className="w-3.5 h-3.5" /> إضافة النوع المخصص
+            </button>
+          </div>
+
+          {/* Selected track types summary */}
+          {form.trackTypes.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">أنواع الحلقات المحددة ({form.trackTypes.length})</Label>
               <div className="flex flex-wrap gap-1.5">
                 {form.trackTypes.map((t, i) => (
                   <div key={i} className="flex items-center gap-1.5 bg-primary/5 text-primary border border-primary/20 px-2.5 py-1 rounded-full text-xs font-medium">
+                    {t.category && <span className="text-[9px] bg-primary/10 px-1.5 py-0.5 rounded-full">{t.category}</span>}
                     <span>{t.name}</span>
-                    <span className="opacity-50 text-[10px]">({t.dataEntryType})</span>
+                    {t.inputFields && <span className="opacity-40 text-[9px]">({t.inputFields.length} حقل)</span>}
                     <button onClick={() => setField("trackTypes", form.trackTypes.filter((_, j) => j !== i))}>
                       <X className="w-3 h-3 text-primary/60 hover:text-primary" />
                     </button>
                   </div>
                 ))}
               </div>
-            )}
+            </div>
+          )}
+        </Section>
+
+        {/* Section 5b: Database */}
+        <Section title="قاعدة البيانات (Supabase)" icon={Globe}>
+          <p className="text-xs text-muted-foreground">
+            افتراضياً يُنشئ النظام قاعدة بيانات PostgreSQL مستقلة على Render.
+            إذا كنتِ تريدين استخدام Supabase الخاص بك، ضعي رابط الاتصال هنا.
+          </p>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">رابط Supabase (اختياري)</Label>
+            <Input
+              value={form.customDatabaseUrl}
+              onChange={e => setField("customDatabaseUrl", e.target.value)}
+              placeholder="postgresql://postgres:[password]@[host]:5432/postgres"
+              dir="ltr"
+              className="h-8 text-xs font-mono"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              تجدين الرابط في: Supabase → Settings → Database → Connection string (URI mode)
+            </p>
           </div>
+          {form.customDatabaseUrl && (
+            <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700 space-y-0.5">
+              <p className="font-semibold">✓ سيُستخدم هذا الرابط كـ DATABASE_URL بدلاً من إنشاء قاعدة بيانات جديدة</p>
+              <p>تأكدي من أن قاعدة البيانات متاحة ولها صلاحيات الكتابة</p>
+            </div>
+          )}
         </Section>
 
         {/* Section 6: Package / Features */}
@@ -707,13 +812,18 @@ export default function WhiteLabelPage() {
                     <div className="space-y-3 pt-2 border-t border-border text-xs">
                       {parsedTrackTypes.length > 0 && (
                         <div>
-                          <p className="font-semibold text-muted-foreground mb-1.5">أنواع الحلقات:</p>
+                          <p className="font-semibold text-muted-foreground mb-1.5">أنواع الحلقات ({parsedTrackTypes.length}):</p>
                           <div className="flex flex-wrap gap-1">
-                            {parsedTrackTypes.map((t, i) => (
-                              <span key={i} className="bg-muted px-2 py-0.5 rounded-full text-[10px]">
-                                {t.name} ({STANDARD_TRACK_TYPES.find(s => s.key === t.dataEntryType)?.name ?? t.dataEntryType})
-                              </span>
-                            ))}
+                            {parsedTrackTypes.map((t, i) => {
+                              const fieldLabels = (t.inputFields ?? []).map((k: string) => AVAILABLE_INPUT_FIELDS.find(f => f.key === k)?.label).filter(Boolean);
+                              return (
+                                <span key={i} className="flex items-center gap-1 bg-muted px-2 py-0.5 rounded-full text-[10px]">
+                                  {t.category && <span className="text-[9px] opacity-60">{t.category}</span>}
+                                  <span>{t.name}</span>
+                                  {fieldLabels.length > 0 && <span className="opacity-40">({fieldLabels.join("·")})</span>}
+                                </span>
+                              );
+                            })}
                           </div>
                         </div>
                       )}

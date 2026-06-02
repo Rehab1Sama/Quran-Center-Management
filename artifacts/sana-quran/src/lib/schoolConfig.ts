@@ -32,7 +32,7 @@ export const schoolConfig = {
   logoUrl: env.VITE_LOGO_URL ?? null as string | null,
   dataEntryRoles: parse<string[]>(env.VITE_DATA_ENTRY_ROLES, ["teacher", "supervisor", "data_entry", "leader"]),
   roleNames: { ...DEFAULT_ROLE_NAMES, ...parse<Record<string, string>>(env.VITE_ROLE_NAMES, {}) },
-  defaultTrackTypes: parse<{ name: string; dataEntryType: string }[]>(env.VITE_DEFAULT_TRACK_TYPES, []),
+  defaultTrackTypes: parse<{ name: string; dataEntryType: string; category?: string; inputFields?: string[] }[]>(env.VITE_DEFAULT_TRACK_TYPES, []),
   enabledFeatures: parse<string[]>(env.VITE_ENABLED_FEATURES, [...ALL_FEATURE_KEYS]),
   circleGenders: parse<string[]>(env.CIRCLE_GENDERS, ["girls"]),
 };
