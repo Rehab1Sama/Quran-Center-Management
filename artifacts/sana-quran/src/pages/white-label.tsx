@@ -10,6 +10,7 @@ import {
   BookOpen, Award, ShoppingBag, Headphones, Calendar, MessageSquare,
   RotateCcw, AlertTriangle, GraduationCap, PlaneTakeoff, ClipboardList,
   Users, UserCheck, ChevronDown, ChevronUp, Plus, X, Building2,
+  TrendingUp, BarChart2, BarChart, Bell,
 } from "lucide-react";
 import { applyThemeFromHex, resetTheme, hslToHex } from "@/components/ThemeProvider";
 import { useGetCurrentUser } from "@workspace/api-client-react";
@@ -72,28 +73,58 @@ const STANDARD_TRACK_TYPES = [
   { key: "fixation", name: "تثبيت", description: "تثبيت المحفوظ + مراجعة قريبة وبعيدة" },
 ];
 
-const ALL_FEATURES = [
-  { key: "badges", label: "الأوسمة والتحفيز", icon: Award },
-  { key: "store", label: "المتجر", icon: ShoppingBag },
-  { key: "audio", label: "صوتيات المصحف", icon: Headphones },
-  { key: "review_plans", label: "خطط المراجعة", icon: BookOpen },
-  { key: "teacher_rotation", label: "شقلبة المعلمات", icon: RotateCcw },
-  { key: "shortcomings", label: "إحصائيات التقصير", icon: AlertTriangle },
-  { key: "exam", label: "الاختبارات", icon: GraduationCap },
-  { key: "messages", label: "الرسائل", icon: MessageSquare },
-  { key: "calendar", label: "التقويم", icon: Calendar },
-  { key: "deputy_tasks", label: "مهام النائبة", icon: ClipboardList },
-  { key: "registration", label: "نموذج التسجيل العام", icon: Globe },
-  { key: "leaves", label: "إجازات الطالبات", icon: PlaneTakeoff },
+const FEATURE_GROUPS = [
+  {
+    label: "📊 الإحصائيات والتقارير",
+    features: [
+      { key: "stats_general",   label: "الإحصائيات العامة",          icon: BarChart2 },
+      { key: "stats_weekly",    label: "التقارير الأسبوعية",           icon: TrendingUp },
+      { key: "stats_monthly",   label: "التقرير الشهري",               icon: BarChart },
+      { key: "stats_stumbling", label: "تنبيهات التعثر والإشراف",      icon: Bell },
+      { key: "shortcomings",    label: "إحصائيات التقصير",             icon: AlertTriangle },
+    ],
+  },
+  {
+    label: "📚 الأدوات التعليمية",
+    features: [
+      { key: "review_plans",    label: "خطط المراجعة",                 icon: BookOpen },
+      { key: "exam",            label: "الاختبارات",                    icon: GraduationCap },
+      { key: "teacher_rotation",label: "شقلبة المعلمات",               icon: RotateCcw },
+    ],
+  },
+  {
+    label: "💬 التواصل والإدارة",
+    features: [
+      { key: "messages",        label: "الرسائل",                      icon: MessageSquare },
+      { key: "calendar",        label: "التقويم",                       icon: Calendar },
+      { key: "registration",    label: "نموذج التسجيل العام",          icon: Globe },
+      { key: "leaves",          label: "إجازات الطالبات",              icon: PlaneTakeoff },
+      { key: "deputy_tasks",    label: "مهام النائبة",                  icon: ClipboardList },
+    ],
+  },
+  {
+    label: "✨ مميزات إضافية",
+    features: [
+      { key: "badges",          label: "الأوسمة والتحفيز",             icon: Award },
+      { key: "audio",           label: "صوتيات المصحف",                icon: Headphones },
+      { key: "store",           label: "المتجر",                        icon: ShoppingBag },
+    ],
+  },
 ];
 
+const ALL_FEATURES = FEATURE_GROUPS.flatMap(g => g.features);
+
 // ── Packages ────────────────────────────────────────────────────────────────
+// store مستبعد من جميع الباقات — يُضاف يدوياً فقط عند الحاجة
 const PACKAGES = [
   {
     key: "starter",
     name: "الأساسية",
     tagline: "للمقرأة الصغيرة",
-    features: ["messages", "registration"],
+    features: [
+      "registration", "messages",
+      "stats_general",
+    ],
     badge: "🌱",
     color: "border-slate-300 bg-slate-50",
     activeColor: "border-slate-500 bg-slate-100",
@@ -103,7 +134,11 @@ const PACKAGES = [
     key: "pro",
     name: "المتقدمة",
     tagline: "للمقرأة المتوسطة",
-    features: ["messages", "registration", "badges", "store", "calendar", "review_plans", "shortcomings", "leaves"],
+    features: [
+      "registration", "messages",
+      "stats_general", "stats_weekly", "stats_monthly",
+      "shortcomings", "review_plans", "badges", "calendar", "leaves",
+    ],
     badge: "⭐",
     color: "border-primary/30 bg-primary/5",
     activeColor: "border-primary bg-primary/10",
@@ -112,14 +147,14 @@ const PACKAGES = [
   {
     key: "enterprise",
     name: "الكاملة",
-    tagline: "كل المميزات",
-    features: ALL_FEATURES.map(f => f.key),
+    tagline: "كل المميزات (بلا متجر)",
+    features: ALL_FEATURES.filter(f => f.key !== "store").map(f => f.key),
     badge: "👑",
     color: "border-amber-300 bg-amber-50",
     activeColor: "border-amber-500 bg-amber-100",
     textColor: "text-amber-700",
   },
-] as const;
+];
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   draft: { label: "مسودة", color: "bg-gray-100 text-gray-600" },
@@ -579,28 +614,39 @@ export default function WhiteLabelPage() {
               تخصيص يدوي
             </button>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground mb-2">
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
               {selectedPackage !== "custom"
                 ? `مميزات باقة "${PACKAGES.find(p => p.key === selectedPackage)?.name}" — يمكنكِ التعديل اليدوي بعد الاختيار`
                 : "فعّلي أو أوقفي كل وحدة وظيفية يدوياً"
               }
             </p>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-              {ALL_FEATURES.map(({ key, label, icon: Icon }) => {
-                const enabled = form.enabledFeatures.includes(key);
-                return (
-                  <button key={key} onClick={() => { toggleFeature(key); setSelectedPackage("custom"); }}
-                    className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border text-xs font-medium transition-colors text-right ${
-                      enabled ? "bg-primary/5 border-primary/20 text-primary" : "border-border text-muted-foreground hover:bg-muted/30"
-                    }`}>
-                    {enabled ? <CheckSquare className="w-3.5 h-3.5 shrink-0 text-primary" /> : <Square className="w-3.5 h-3.5 shrink-0" />}
-                    <Icon className="w-3 h-3 shrink-0" />
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
+            {FEATURE_GROUPS.map(group => (
+              <div key={group.label}>
+                <p className="text-[11px] font-bold text-muted-foreground mb-1.5">{group.label}</p>
+                <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+                  {group.features.map(({ key, label, icon: Icon }) => {
+                    const enabled = form.enabledFeatures.includes(key);
+                    const isStore = key === "store";
+                    return (
+                      <button key={key} onClick={() => { toggleFeature(key); setSelectedPackage("custom"); }}
+                        className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-medium transition-colors text-right ${
+                          enabled
+                            ? isStore
+                              ? "bg-rose-50 border-rose-200 text-rose-700"
+                              : "bg-primary/5 border-primary/20 text-primary"
+                            : "border-border text-muted-foreground hover:bg-muted/30"
+                        }`}>
+                        {enabled ? <CheckSquare className="w-3.5 h-3.5 shrink-0" /> : <Square className="w-3.5 h-3.5 shrink-0" />}
+                        <Icon className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{label}</span>
+                        {isStore && <span className="text-[9px] text-rose-400 mr-auto shrink-0">يدوي فقط</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </Section>
 

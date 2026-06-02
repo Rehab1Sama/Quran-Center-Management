@@ -17,6 +17,15 @@ export const DEFAULT_ROLE_NAMES: Record<string, string> = {
 
 const env = (import.meta as any).env as Record<string, string | undefined>;
 
+export const ALL_FEATURE_KEYS = [
+  "stats_general", "stats_weekly", "stats_monthly", "stats_stumbling",
+  "shortcomings", "review_plans", "exam", "teacher_rotation",
+  "messages", "calendar", "registration", "leaves", "deputy_tasks",
+  "badges", "audio", "store",
+] as const;
+
+export type FeatureKey = typeof ALL_FEATURE_KEYS[number];
+
 export const schoolConfig = {
   schoolName: env.VITE_SCHOOL_NAME ?? null as string | null,
   schoolTagline: env.VITE_SCHOOL_TAGLINE ?? null as string | null,
@@ -24,11 +33,7 @@ export const schoolConfig = {
   dataEntryRoles: parse<string[]>(env.VITE_DATA_ENTRY_ROLES, ["teacher", "supervisor", "data_entry", "leader"]),
   roleNames: { ...DEFAULT_ROLE_NAMES, ...parse<Record<string, string>>(env.VITE_ROLE_NAMES, {}) },
   defaultTrackTypes: parse<{ name: string; dataEntryType: string }[]>(env.VITE_DEFAULT_TRACK_TYPES, []),
-  enabledFeatures: parse<string[]>(env.VITE_ENABLED_FEATURES, [
-    "badges", "store", "audio", "review_plans", "teacher_rotation",
-    "shortcomings", "exam", "messages", "calendar", "deputy_tasks",
-    "registration", "leaves",
-  ]),
+  enabledFeatures: parse<string[]>(env.VITE_ENABLED_FEATURES, [...ALL_FEATURE_KEYS]),
   circleGenders: parse<string[]>(env.CIRCLE_GENDERS, ["girls"]),
 };
 
@@ -38,4 +43,9 @@ export function getRoleName(role: string): string {
 
 export function canEnterData(role: string): boolean {
   return role === "leader" || schoolConfig.dataEntryRoles.includes(role);
+}
+
+export function isFeatureEnabled(key: string): boolean {
+  if (!env.VITE_ENABLED_FEATURES) return true;
+  return schoolConfig.enabledFeatures.includes(key);
 }

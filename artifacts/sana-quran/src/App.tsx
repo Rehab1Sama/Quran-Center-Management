@@ -54,7 +54,7 @@ import WhiteLabelPage from "@/pages/white-label";
 import FirstSetupPage from "@/pages/first-setup";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
-import { canEnterData } from "@/lib/schoolConfig";
+import { canEnterData, isFeatureEnabled } from "@/lib/schoolConfig";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -150,7 +150,7 @@ function AppRoutes() {
           {isLeaderOrDeputy ? <AccountsPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/statistics">
-          {canViewStats ? <StatisticsPage /> : <Redirect to="/" />}
+          {(canViewStats && isFeatureEnabled("stats_general")) ? <StatisticsPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/data-entry">
           {(isLeader || isDataEntry || canEnterData(user.role)) ? <DataEntryPage /> : <Redirect to="/" />}
@@ -168,7 +168,7 @@ function AppRoutes() {
           {isLeaderOrDeputy ? <ExportPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/monthly-report">
-          {(isLeaderOrDeputy || isTrackSupervisor) ? <MonthlyReportPage /> : <Redirect to="/" />}
+          {(isLeaderOrDeputy || isTrackSupervisor) && isFeatureEnabled("stats_monthly") ? <MonthlyReportPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/archived-students">
           {(isLeaderOrDeputy || isTrackSupervisor) ? <ArchivedStudentsPage /> : <Redirect to="/" />}
@@ -183,10 +183,10 @@ function AppRoutes() {
           {(isLeaderOrDeputy || isTrackSupervisor) ? <DailyTasksPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/messages">
-          {(isLeaderOrDeputy || isTrackSupervisor) ? <MessagesPage /> : <Redirect to="/" />}
+          {(isLeaderOrDeputy || isTrackSupervisor) && isFeatureEnabled("messages") ? <MessagesPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/my-messages">
-          {(isStudent || isTeacher || isSupervisor || isTrackSupervisor)
+          {(isStudent || isTeacher || isSupervisor || isTrackSupervisor) && isFeatureEnabled("messages")
             ? <MyMessagesPage />
             : <Redirect to="/" />}
         </Route>
@@ -194,32 +194,34 @@ function AppRoutes() {
           {(isLeaderOrDeputy || isTrackSupervisor) ? <AttendancePage /> : <Redirect to="/" />}
         </Route>
         <Route path="/audio">
-          {isStudent ? <AudioPage /> : <Redirect to="/" />}
+          {isStudent && isFeatureEnabled("audio") ? <AudioPage /> : <Redirect to="/" />}
         </Route>
-        <Route path="/store" component={StorePage} />
+        <Route path="/store">
+          {isFeatureEnabled("store") ? <StorePage /> : <Redirect to="/" />}
+        </Route>
         <Route path="/store-manage">
-          {isLeaderOrDeputy ? <StoreManagePage /> : <Redirect to="/" />}
+          {isLeaderOrDeputy && isFeatureEnabled("store") ? <StoreManagePage /> : <Redirect to="/" />}
         </Route>
         <Route path="/teacher-rotation">
-          {(isLeaderOrDeputy || isTrackSupervisor) ? <TeacherRotationPage userRole={user.role} /> : <Redirect to="/" />}
+          {(isLeaderOrDeputy || isTrackSupervisor) && isFeatureEnabled("teacher_rotation") ? <TeacherRotationPage userRole={user.role} /> : <Redirect to="/" />}
         </Route>
         <Route path="/calendar">
-          <CalendarPage userRole={user.role} userId={user.id} />
+          {isFeatureEnabled("calendar") ? <CalendarPage userRole={user.role} userId={user.id} /> : <Redirect to="/" />}
         </Route>
         <Route path="/shortcomings">
-          {(isLeaderOrDeputy || isTrackSupervisor) ? <ShortcomingsPage /> : <Redirect to="/" />}
+          {(isLeaderOrDeputy || isTrackSupervisor) && isFeatureEnabled("shortcomings") ? <ShortcomingsPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/stumbling-stats">
-          {(isLeaderOrDeputy || isTrackSupervisor) ? <StumblingStatsPage /> : <Redirect to="/" />}
+          {(isLeaderOrDeputy || isTrackSupervisor) && isFeatureEnabled("stats_stumbling") ? <StumblingStatsPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/review-plans">
-          {(isLeaderOrDeputy || isTrackSupervisor || isTeacher || isSupervisor || isStudent) ? <ReviewPlansPage /> : <Redirect to="/" />}
+          {(isLeaderOrDeputy || isTrackSupervisor || isTeacher || isSupervisor || isStudent) && isFeatureEnabled("review_plans") ? <ReviewPlansPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/thursday-review">
           {isLeader ? <ThursdayReviewPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/badges">
-          <BadgesPage userRole={user.role} userId={user.id} />
+          {isFeatureEnabled("badges") ? <BadgesPage userRole={user.role} userId={user.id} /> : <Redirect to="/" />}
         </Route>
         <Route path="/volunteer">
           {(isVolunteer || isExamSupervisor || isLeaderOrDeputy || isTrackSupervisor)
@@ -229,17 +231,17 @@ function AppRoutes() {
 
         {/* Deputy specific routes */}
         <Route path="/deputy-tasks">
-          {isDeputy ? <DeputyTasksPage /> : <Redirect to="/" />}
+          {isDeputy && isFeatureEnabled("deputy_tasks") ? <DeputyTasksPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/deputy-board">
           {isLeader ? <DeputyBoardPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/student-leaves">
-          {(isLeader || isDeputy || isTrackSupervisor) ? <StudentLeavesPage /> : <Redirect to="/" />}
+          {(isLeader || isDeputy || isTrackSupervisor) && isFeatureEnabled("leaves") ? <StudentLeavesPage /> : <Redirect to="/" />}
         </Route>
 
         <Route path="/reports">
-          {isLeaderOrDeputy ? <ReportsPage /> : <Redirect to="/" />}
+          {isLeaderOrDeputy && isFeatureEnabled("stats_weekly") ? <ReportsPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/white-label">
           {isLeader ? <WhiteLabelPage /> : <Redirect to="/" />}
