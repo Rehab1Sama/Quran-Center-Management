@@ -3,7 +3,7 @@ import { useGetStatsSummary, useGetCirclesStats, useGetCurrentUser, useListRecor
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatPages } from "@/lib/quran";
-import { schoolConfig } from "@/lib/schoolConfig";
+import { schoolConfig, getFieldLabel } from "@/lib/schoolConfig";
 import {
   BarChart2, Users, BookOpen, GraduationCap, TrendingUp,
   Award, Calendar, BookMarked, Eye, Layers, CheckCircle2
@@ -239,10 +239,10 @@ function LeaderStats({ summary, circleStats, periodDays }: { summary: any; circl
           إحصائيات الأوجه
         </h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="الحفظ (وجه)" value={formatPages(summary.totalMemorizePages)} color="text-teal-600" icon={BookOpen} />
-          <StatCard label="المراجعة القريبة" value={formatPages(summary.totalReviewNearPages)} color="text-blue-600" icon={Eye} />
-          <StatCard label="المراجعة البعيدة" value={formatPages(summary.totalReviewFarPages)} color="text-teal-600" icon={Eye} />
-          <StatCard label="التلاوة" value={formatPages(summary.totalRecitationPages)} color="text-emerald-600" icon={BookMarked} />
+          <StatCard label={`${getFieldLabel("memorize")} (وجه)`} value={formatPages(summary.totalMemorizePages)} color="text-teal-600" icon={BookOpen} />
+          <StatCard label={getFieldLabel("review_near")} value={formatPages(summary.totalReviewNearPages)} color="text-blue-600" icon={Eye} />
+          <StatCard label={getFieldLabel("review_far")} value={formatPages(summary.totalReviewFarPages)} color="text-teal-600" icon={Eye} />
+          <StatCard label={getFieldLabel("recitation")} value={formatPages(summary.totalRecitationPages)} color="text-emerald-600" icon={BookMarked} />
         </div>
       </div>
       {(summary.totalReviewPages > 0) && (

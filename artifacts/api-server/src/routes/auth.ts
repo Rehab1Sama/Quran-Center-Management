@@ -188,7 +188,7 @@ router.post("/auth/staff-register", async (req, res): Promise<void> => {
     track: track ?? null,
     circleId: circleId ? parseInt(circleId) : null,
     isArchived: false,
-    registrationStatus: "pending",
+    registrationStatus: "approved",
     extraData: extraData ? JSON.stringify(extraData) : null,
   }).returning();
   const { passwordHash: _ph, ...safeUser } = user;

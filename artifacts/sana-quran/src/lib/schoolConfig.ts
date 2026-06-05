@@ -49,3 +49,40 @@ export function isFeatureEnabled(key: string): boolean {
   if (!env.VITE_ENABLED_FEATURES) return true;
   return schoolConfig.enabledFeatures.includes(key);
 }
+
+export const FIELD_LABELS: Record<string, string> = {
+  memorize:    "الحفظ",
+  review_near: "المراجعة القريبة",
+  review_far:  "المراجعة البعيدة",
+  review:      "المراجعة العامة",
+  recitation:  "التلاوة",
+  listen:      "السماع للقارئ",
+  repetitions: "عدد التكرار",
+  tafsir:      "التفسير",
+};
+
+export function getFieldLabel(key: string): string {
+  return FIELD_LABELS[key] ?? key;
+}
+
+const NO_REVIEW_PLAN_CATEGORIES = new Set(["أطفال", "أمهات"]);
+const NO_REVIEW_PLAN_DATATYPES  = new Set(["recitation", "mishkah"]);
+const LEGACY_NO_REVIEW_TRACKS   = ["ألق", "سراج", "مهج", "مشكاة نور"];
+
+export function shouldHideReviewPlans(trackName: string | null | undefined): boolean {
+  if (!trackName) return false;
+  const cfg = schoolConfig.defaultTrackTypes.find(t => t.name === trackName);
+  if (cfg) {
+    if (cfg.category && NO_REVIEW_PLAN_CATEGORIES.has(cfg.category)) return true;
+    if (NO_REVIEW_PLAN_DATATYPES.has(cfg.dataEntryType))             return true;
+    if (cfg.inputFields?.length) {
+      const hasReview = cfg.inputFields.some(f =>
+        f === "review_near" || f === "review_far" || f === "review"
+      );
+      const hasMem = cfg.inputFields.includes("memorize");
+      if (!hasMem && !hasReview) return true;
+      if (cfg.inputFields.includes("recitation") && !hasMem && !hasReview) return true;
+    }
+  }
+  return LEGACY_NO_REVIEW_TRACKS.includes(trackName);
+}

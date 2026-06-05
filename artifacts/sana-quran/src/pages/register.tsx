@@ -8,7 +8,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle, XCircle, Search, ChevronDown, Mail } from "lucide-react";
+import { CheckCircle, XCircle, Search, ChevronDown } from "lucide-react";
 import logoUrl from "@/assets/logo.jpg";
 import { Link } from "wouter";
 import { COUNTRIES } from "@/lib/countries";
@@ -274,41 +274,6 @@ function CustomQuestionField({
   );
 }
 
-// ── Resend Activation Button ──────────────────────────────────────────────────
-function ResendButton({ email }: { email: string }) {
-  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
-
-  const resend = async () => {
-    setState("sending");
-    try {
-      const res = await fetch(`${BASE}/api/registration/resend-activation`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "خطأ");
-      setState("sent");
-    } catch {
-      setState("error");
-      setTimeout(() => setState("idle"), 3000);
-    }
-  };
-
-  if (state === "sent") return <p className="text-xs text-emerald-600 font-semibold">✓ أُعيد إرسال البريد</p>;
-  if (state === "error") return <p className="text-xs text-rose-600">تعذّر إرسال البريد، حاولي مجدداً</p>;
-
-  return (
-    <Button
-      type="button" variant="outline" size="sm"
-      onClick={resend}
-      disabled={state === "sending"}
-      className="text-xs h-8"
-    >
-      {state === "sending" ? "جاري الإرسال..." : "إعادة إرسال رابط التفعيل"}
-    </Button>
-  );
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function validate4PartName(name: string): string | null {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -481,23 +446,20 @@ export default function RegisterPage() {
             <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm" data-testid="card-registration-success">
               <CardContent className="py-10 text-center">
                 <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
-                  <Mail className="w-8 h-8 text-emerald-600" />
+                  <CheckCircle className="w-8 h-8 text-emerald-600" />
                 </div>
                 <p className="text-xl font-bold text-foreground mb-2">تم التسجيل بنجاح! 🎉</p>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-1">
-                  أُرسل إليكِ رابط التفعيل على:
+                <p className="text-muted-foreground text-sm leading-relaxed mb-6">
+                  تم إنشاء حسابك. يمكنك الآن تسجيل الدخول والانضمام إلى المنصة.
                 </p>
-                <p className="font-semibold text-primary text-sm mb-4 dir-ltr" dir="ltr">{submittedEmail}</p>
-                <p className="text-muted-foreground text-xs leading-relaxed mb-6">
-                  اضغطي على الرابط في البريد لتفعيل حسابك والدخول إلى المنصة.<br />
-                  إذا لم يصلك البريد، تحققي من مجلد الـ Spam.
-                </p>
-                <div className="space-y-2">
-                  <ResendButton email={submittedEmail} />
-                  <div className="mt-4">
-                    <Link href="/login" className="text-sm text-muted-foreground hover:underline">تسجيل الدخول</Link>
-                  </div>
-                </div>
+                <Link href="/login">
+                  <button
+                    className="w-full py-2.5 rounded-xl font-bold text-white text-sm"
+                    style={{ background: "linear-gradient(135deg, hsl(210, 51%, 21%) 0%, hsl(177, 35%, 40%) 100%)" }}
+                  >
+                    تسجيل الدخول
+                  </button>
+                </Link>
               </CardContent>
             </Card>
           ) : (

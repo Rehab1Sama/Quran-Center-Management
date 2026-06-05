@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useGetTodayBanner, useLogout, useGetMyMessages, useListStudents } from "@workspace/api-client-react";
 import { clearToken, getToken, setToken } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
-import { isFeatureEnabled } from "@/lib/schoolConfig";
+import { isFeatureEnabled, shouldHideReviewPlans } from "@/lib/schoolConfig";
 import {
   Users, ClipboardList, BarChart3,
   UserCheck, Home, LogOut, Menu, X,
@@ -663,7 +663,6 @@ export default function Layout({ user, children }: LayoutProps) {
   );
 }
 
-const NO_REVIEW_PLAN_TRACKS = ["ألق", "سراج", "مهج", "مشكاة نور"];
 
 function getRoleLabel(role: string): string {
   const labels: Record<string, string> = {
@@ -687,7 +686,7 @@ function filterNav(items: NavItem[]): NavItem[] {
 }
 
 function getNavItems(role: string, unreadCount = 0, track?: string | null): NavItem[] {
-  const hideReviewPlan = !!track && NO_REVIEW_PLAN_TRACKS.includes(track);
+  const hideReviewPlan = shouldHideReviewPlans(track);
 
   if (role === "leader") {
     return filterNav([

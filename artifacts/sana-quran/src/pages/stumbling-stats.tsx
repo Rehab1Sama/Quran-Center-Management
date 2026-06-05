@@ -7,10 +7,9 @@ import {
   ChevronDown, ChevronUp, AlertTriangle, Users, BookOpen,
   ClipboardList, UserCheck, RefreshCw, Bell, CheckCircle2, RotateCcw, Shield,
 } from "lucide-react";
+import { shouldHideReviewPlans } from "@/lib/schoolConfig";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-const NO_REVIEW_PLAN_TRACKS = ["ألق", "سراج", "مهج", "مشكاة نور"];
 
 type DataEntryAlert = {
   userId: number; name: string; track: string;
@@ -171,7 +170,7 @@ export default function StumblingStatsPage() {
   const visibleNotifs = (data?.planNotifications ?? []).filter(n => !dismissedNotifs.has(n.id));
 
   const isNoReviewPlanTrackSupervisor =
-    user?.role === "track_supervisor" && NO_REVIEW_PLAN_TRACKS.includes(user.track ?? "");
+    user?.role === "track_supervisor" && shouldHideReviewPlans(user.track);
 
   const showCycleCompleted = !isNoReviewPlanTrackSupervisor;
 

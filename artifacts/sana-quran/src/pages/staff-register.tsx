@@ -154,7 +154,7 @@ export default function StaffRegisterPage() {
               </div>
               <h2 className="text-2xl font-bold text-foreground mb-2">تم التسجيل بنجاح</h2>
               <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                تم إنشاء حسابك. ستتولى القائدة مراجعة بياناتك وتفعيل حسابك قريبًا.
+                تم إنشاء حسابك بنجاح. يمكنك الآن تسجيل الدخول والانضمام إلى المنصة.
               </p>
               <Button
                 className="w-full font-bold"
