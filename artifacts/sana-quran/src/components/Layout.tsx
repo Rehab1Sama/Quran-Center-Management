@@ -515,7 +515,7 @@ export default function Layout({ user, children }: LayoutProps) {
     }
   };
 
-  const navItems = getNavItems(user.role, unreadCount, user.track);
+  const navItems = getNavItems(user.role, unreadCount, user.track, (user as any).circleDataEntryType);
 
   return (
     <div className="min-h-screen bg-background flex flex-col" dir="rtl">
@@ -685,8 +685,8 @@ function filterNav(items: NavItem[]): NavItem[] {
   return items.filter(item => !item.feature || isFeatureEnabled(item.feature));
 }
 
-function getNavItems(role: string, unreadCount = 0, track?: string | null): NavItem[] {
-  const hideReviewPlan = shouldHideReviewPlans(track);
+function getNavItems(role: string, unreadCount = 0, track?: string | null, circleDataEntryType?: string | null): NavItem[] {
+  const hideReviewPlan = shouldHideReviewPlans(track, circleDataEntryType);
 
   if (role === "leader") {
     return filterNav([

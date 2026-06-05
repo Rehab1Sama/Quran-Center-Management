@@ -36,6 +36,8 @@ const getToken = () => localStorage.getItem("sana_auth_token");
 function resolveTrackType(dataEntryType?: string | null): "girls" | "girls_near" | "girls_far" | "girls_no_review" | "simple" | "mishkah" | "fixation" {
   if (dataEntryType === "recitation") return "mishkah";
   if (dataEntryType === "simple_review") return "simple";
+  if (dataEntryType === "children") return "simple";
+  if (dataEntryType === "mothers") return "girls";
   if (dataEntryType === "fixation") return "fixation";
   if (dataEntryType === "girls_near") return "girls_near";
   if (dataEntryType === "girls_far") return "girls_far";

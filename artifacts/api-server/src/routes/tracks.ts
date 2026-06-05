@@ -20,7 +20,7 @@ router.post("/tracks", authenticate, async (req, res): Promise<void> => {
     res.status(400).json({ error: "اسم المسار مطلوب" });
     return;
   }
-  const validTypes = ["girls", "simple_review", "recitation", "fixation"];
+  const validTypes = ["girls", "girls_near", "girls_far", "girls_no_review", "simple_review", "recitation", "fixation", "children", "mothers"];
   if (!validTypes.includes(dataEntryType)) {
     res.status(400).json({ error: "نوع المسار غير صحيح" });
     return;
@@ -90,7 +90,7 @@ router.post("/tracks/:id/circles", authenticate, async (req, res): Promise<void>
     name: name.trim(),
     track: track.name,
     trackId: track.id,
-    trackType: "girls",
+    trackType: track.dataEntryType ?? "girls",
   }).returning();
   res.status(201).json(circle);
 });

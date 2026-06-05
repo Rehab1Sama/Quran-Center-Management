@@ -77,7 +77,7 @@ const AVAILABLE_INPUT_FIELDS = [
   { key: "tafsir",      label: "تفسير / ملاحظات",   emoji: "✏️", description: "ملاحظات وتفسير" },
 ];
 
-const TRACK_CATEGORIES = ["فتيات", "أمهات", "أطفال", "رجال", "مختلط"];
+const TRACK_CATEGORIES = ["فتيات", "أمهات", "أطفال", "تصحيح تلاوة", "تثبيت", "رجال", "مختلط"];
 
 const STANDARD_TRACK_PRESETS = [
   { name: "حفظ (قريبة + بعيدة)", category: "فتيات", dataEntryType: "girls",
@@ -88,11 +88,11 @@ const STANDARD_TRACK_PRESETS = [
     inputFields: ["memorize","review_far","listen"] },
   { name: "حفظ (بدون مراجعة)",   category: "فتيات", dataEntryType: "girls_no_review",
     inputFields: ["memorize","listen"] },
-  { name: "تلاوة / مشكاة",       category: "فتيات", dataEntryType: "recitation",
+  { name: "تلاوة / مشكاة",       category: "تصحيح تلاوة", dataEntryType: "recitation",
     inputFields: ["recitation","listen"] },
   { name: "مراجعة عامة",         category: "فتيات", dataEntryType: "simple_review",
     inputFields: ["memorize","review"] },
-  { name: "تثبيت",               category: "فتيات", dataEntryType: "fixation",
+  { name: "تثبيت",               category: "تثبيت", dataEntryType: "fixation",
     inputFields: ["memorize","repetitions","review","listen"] },
 ];
 

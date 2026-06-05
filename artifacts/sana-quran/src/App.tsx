@@ -218,7 +218,7 @@ function AppRoutes() {
           {isFeatureEnabled("review_plans") && (
             isLeaderOrDeputy
               ? <ReviewPlansPage />
-              : (isTrackSupervisor || isTeacher || isSupervisor || isStudent) && !shouldHideReviewPlans(user.track)
+              : (isTrackSupervisor || isTeacher || isSupervisor || isStudent) && !shouldHideReviewPlans(user.track, (user as any).circleDataEntryType)
                 ? <ReviewPlansPage />
                 : <Redirect to="/" />
           )}

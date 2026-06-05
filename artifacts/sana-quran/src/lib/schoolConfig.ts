@@ -65,11 +65,15 @@ export function getFieldLabel(key: string): string {
   return FIELD_LABELS[key] ?? key;
 }
 
-const NO_REVIEW_PLAN_CATEGORIES = new Set(["أطفال", "أمهات"]);
-const NO_REVIEW_PLAN_DATATYPES  = new Set(["recitation", "mishkah"]);
+const NO_REVIEW_PLAN_CATEGORIES = new Set(["أطفال", "أمهات", "تصحيح تلاوة", "تثبيت"]);
+const NO_REVIEW_PLAN_DATATYPES  = new Set(["recitation", "mishkah", "fixation", "children", "mothers"]);
 const LEGACY_NO_REVIEW_TRACKS   = ["ألق", "سراج", "مهج", "مشكاة نور"];
 
-export function shouldHideReviewPlans(trackName: string | null | undefined): boolean {
+export function shouldHideReviewPlans(
+  trackName: string | null | undefined,
+  dataEntryType?: string | null,
+): boolean {
+  if (dataEntryType && NO_REVIEW_PLAN_DATATYPES.has(dataEntryType)) return true;
   if (!trackName) return false;
   const cfg = schoolConfig.defaultTrackTypes.find(t => t.name === trackName);
   if (cfg) {

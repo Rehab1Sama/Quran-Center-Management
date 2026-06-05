@@ -446,26 +446,33 @@ export default function AccountsPage() {
                         <UserPlus className="w-3.5 h-3.5" />
                         إضافة دور
                       </Button>
-                      {canManageAssignments && person.accounts.some(a => a.role === "data_entry") && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const de = person.accounts.find(a => a.role === "data_entry");
-                            if (!de) return;
-                            const currentAssign = dataEntryAssignments.find(a => a.userId === de.id);
-                            setAssignTarget({ userId: de.id, userName: person.name });
-                            setSelectedAssignCircles(currentAssign?.circleIds ?? []);
-                            setAssignTrackFilter("");
-                            setAssignDialogOpen(true);
-                          }}
-                          className="gap-1.5 text-xs h-8 border-blue-200 text-blue-700 hover:bg-blue-50"
-                          title="إسناد حلقات لمدخلة البيانات"
-                        >
-                          <Users className="w-3.5 h-3.5" />
-                          إسناد حلقات
-                        </Button>
-                      )}
+                      {canManageAssignments && person.accounts.some(a => a.role === "data_entry") && (() => {
+                        const de = person.accounts.find(a => a.role === "data_entry");
+                        if (!de) return null;
+                        const currentAssign = dataEntryAssignments.find(a => a.userId === de.id);
+                        const assignedCount = currentAssign?.circleIds?.length ?? 0;
+                        return (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setAssignTarget({ userId: de.id, userName: person.name });
+                              setSelectedAssignCircles(currentAssign?.circleIds ?? []);
+                              setAssignTrackFilter("");
+                              setAssignDialogOpen(true);
+                            }}
+                            className={`gap-1.5 text-xs h-8 ${
+                              assignedCount > 0
+                                ? "border-blue-200 text-blue-700 hover:bg-blue-50"
+                                : "border-amber-200 text-amber-700 hover:bg-amber-50"
+                            }`}
+                            title="إسناد حلقات لمدخلة البيانات"
+                          >
+                            <Users className="w-3.5 h-3.5" />
+                            {assignedCount > 0 ? `إسناد حلقات (${assignedCount})` : "إسناد حلقات ⚠"}
+                          </Button>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

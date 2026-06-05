@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, studentsTable, circlesTable } from "@workspace/db";
+import { db, usersTable, studentsTable, circlesTable, tracksTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { hashPassword, verifyPassword, generateToken } from "../lib/auth";
 import { authenticate } from "../middlewares/authenticate";
@@ -300,7 +300,24 @@ router.get("/auth/me", authenticate, async (req, res): Promise<void> => {
     studentId = student?.id ?? null;
   }
 
-  res.json({ ...safeUser, studentId });
+  let circleDataEntryType: string | null = null;
+  if (user.circleId) {
+    const [circle] = await db
+      .select({ trackId: circlesTable.trackId })
+      .from(circlesTable)
+      .where(eq(circlesTable.id, user.circleId))
+      .limit(1);
+    if (circle?.trackId) {
+      const [track] = await db
+        .select({ dataEntryType: tracksTable.dataEntryType })
+        .from(tracksTable)
+        .where(eq(tracksTable.id, circle.trackId))
+        .limit(1);
+      circleDataEntryType = track?.dataEntryType ?? null;
+    }
+  }
+
+  res.json({ ...safeUser, studentId, circleDataEntryType });
 });
 
 export default router;

@@ -17,24 +17,49 @@ import { useQueryClient } from "@tanstack/react-query";
 
 const DATA_ENTRY_LABELS: Record<string, { label: string; color: string; desc: string }> = {
   girls: {
-    label: "فتيات",
+    label: "فتيات — حفظ",
     color: "bg-teal-100 text-teal-700",
+    desc: "حفظ + مراجعة قريبة + مراجعة بعيدة + سماع",
+  },
+  girls_near: {
+    label: "فتيات — قريبة فقط",
+    color: "bg-teal-100 text-teal-600",
+    desc: "حفظ + مراجعة قريبة + سماع",
+  },
+  girls_far: {
+    label: "فتيات — بعيدة فقط",
+    color: "bg-teal-100 text-teal-600",
+    desc: "حفظ + مراجعة بعيدة + سماع",
+  },
+  girls_no_review: {
+    label: "فتيات — بلا مراجعة",
+    color: "bg-teal-100 text-teal-600",
+    desc: "حفظ + سماع (بدون مراجعة)",
+  },
+  children: {
+    label: "أطفال",
+    color: "bg-sky-100 text-sky-700",
+    desc: "حفظ + مراجعة عامة",
+  },
+  mothers: {
+    label: "أمهات",
+    color: "bg-purple-100 text-purple-700",
     desc: "حفظ + مراجعة قريبة + مراجعة بعيدة",
   },
   simple_review: {
-    label: "أطفال وأمهات",
+    label: "مراجعة عامة",
     color: "bg-blue-100 text-blue-700",
-    desc: "حفظ + مراجعة",
+    desc: "حفظ + مراجعة (عام)",
   },
   fixation: {
-    label: "التثبيت",
+    label: "تثبيت",
     color: "bg-amber-100 text-amber-700",
     desc: "تثبيت جديد + تكرار + مراجعة + سماع القارئ",
   },
   recitation: {
     label: "تصحيح التلاوة",
-    color: "bg-amber-100 text-amber-700",
-    desc: "تلاوة فقط",
+    color: "bg-rose-100 text-rose-700",
+    desc: "تلاوة فقط (بدون حفظ أو مراجعة)",
   },
 };
 
@@ -54,7 +79,7 @@ export default function ManageTracksPage() {
 
   const [showNewTrack, setShowNewTrack] = useState(false);
   const [newTrackName, setNewTrackName] = useState("");
-  const [newTrackType, setNewTrackType] = useState<"girls" | "simple_review" | "recitation" | "fixation">("girls");
+  const [newTrackType, setNewTrackType] = useState<"girls" | "girls_near" | "girls_far" | "girls_no_review" | "children" | "mothers" | "simple_review" | "recitation" | "fixation">("girls");
 
   const [newCircleName, setNewCircleName] = useState<Record<number, string>>({});
   const [showNewCircle, setShowNewCircle] = useState<Record<number, boolean>>({});
@@ -256,31 +281,69 @@ export default function ManageTracksPage() {
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">نوع إدخال البيانات *</Label>
               <p className="text-[11px] text-muted-foreground">يحدد الحقول التي ستظهر لمدخلة البيانات</p>
-              <div className="grid grid-cols-1 gap-2">
-                {(["girls", "simple_review", "fixation", "recitation"] as const).map(type => {
-                  const info = DATA_ENTRY_LABELS[type];
-                  return (
-                    <button
-                      key={type}
-                      onClick={() => setNewTrackType(type)}
-                      className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all text-right ${
-                        newTrackType === type
-                          ? "border-primary bg-primary/5"
-                          : "border-border/50 hover:border-primary/30"
-                      }`}
-                    >
-                      <div className={`w-4 h-4 rounded-full border-2 mt-0.5 shrink-0 flex items-center justify-center ${
-                        newTrackType === type ? "border-primary bg-primary" : "border-muted-foreground"
-                      }`}>
-                        {newTrackType === type && <div className="w-2 h-2 rounded-full bg-white" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold">{info.label}</p>
-                        <p className="text-xs text-muted-foreground">{info.desc}</p>
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="space-y-3">
+                {/* Primary categories */}
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-1.5">الفئة الرئيسية</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {(["girls", "children", "mothers", "recitation", "fixation"] as const).map(type => {
+                      const info = DATA_ENTRY_LABELS[type];
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => setNewTrackType(type)}
+                          className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all text-right ${
+                            newTrackType === type
+                              ? "border-primary bg-primary/5"
+                              : "border-border/50 hover:border-primary/30"
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded-full border-2 mt-0.5 shrink-0 flex items-center justify-center ${
+                            newTrackType === type ? "border-primary bg-primary" : "border-muted-foreground"
+                          }`}>
+                            {newTrackType === type && <div className="w-2 h-2 rounded-full bg-white" />}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold">{info.label}</p>
+                            <p className="text-xs text-muted-foreground">{info.desc}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* Advanced variants */}
+                <details className="group">
+                  <summary className="text-[11px] font-semibold text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">
+                    ▸ خيارات متقدمة للفتيات (قريبة فقط / بعيدة فقط / بلا مراجعة)
+                  </summary>
+                  <div className="grid grid-cols-1 gap-2 mt-2 sm:grid-cols-2">
+                    {(["girls_near", "girls_far", "girls_no_review", "simple_review"] as const).map(type => {
+                      const info = DATA_ENTRY_LABELS[type];
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => setNewTrackType(type)}
+                          className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all text-right ${
+                            newTrackType === type
+                              ? "border-primary bg-primary/5"
+                              : "border-border/50 hover:border-primary/30"
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded-full border-2 mt-0.5 shrink-0 flex items-center justify-center ${
+                            newTrackType === type ? "border-primary bg-primary" : "border-muted-foreground"
+                          }`}>
+                            {newTrackType === type && <div className="w-2 h-2 rounded-full bg-white" />}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold">{info.label}</p>
+                            <p className="text-xs text-muted-foreground">{info.desc}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </details>
               </div>
             </div>
 
