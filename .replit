@@ -68,6 +68,9 @@ externalPort = 3003
 
 [userenv.shared]
 RENDER_GITHUB_REPO_URL = "https://github.com/Rehab1Sama/Quran-Center-Management"
+EMAIL_USER = "sana.qur3n@gmail.com"
+EMAIL_PASS = "mkrstiewylmppfwu"
+RENDER_API_KEY = "rnd_GVBOUh6Hg2UIjUslXUd0rgcKOmig"
 
 [nix]
 channel = "stable-25_05"
