@@ -11,8 +11,9 @@ import {
   BarChart2, MessageSquare, Search, Clock, Archive, Layers,
   Calendar, ShoppingBag, Award, Shuffle, GraduationCap, AlertTriangle,
   ArrowLeftRight, Loader2, BookOpen, PlaneTakeoff, Bell, CheckCheck,
-  TrendingUp, Globe,
+  TrendingUp, Globe, Moon, Sun,
 } from "lucide-react";
+import { useTheme } from "@/components/ThemeProvider";
 import logoUrl from "@/assets/logo.jpg";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -615,8 +616,9 @@ export default function Layout({ user, children }: LayoutProps) {
             ))}
           </nav>
 
-          {/* Logout */}
-          <div className="p-4 border-t border-white/10">
+          {/* Dark mode toggle + Logout */}
+          <div className="p-4 border-t border-white/10 space-y-1">
+            <DarkModeToggle />
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition-all duration-200 text-sm font-semibold"
@@ -663,6 +665,23 @@ export default function Layout({ user, children }: LayoutProps) {
   );
 }
 
+
+function DarkModeToggle() {
+  const { isDark, toggleDark } = useTheme();
+  return (
+    <button
+      onClick={toggleDark}
+      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition-all duration-200 text-sm font-semibold"
+      title={isDark ? "الوضع النهاري" : "الوضع الليلي"}
+    >
+      {isDark
+        ? <Sun className="w-4 h-4" />
+        : <Moon className="w-4 h-4" />
+      }
+      <span>{isDark ? "الوضع النهاري" : "الوضع الليلي"}</span>
+    </button>
+  );
+}
 
 function getRoleLabel(role: string): string {
   const labels: Record<string, string> = {

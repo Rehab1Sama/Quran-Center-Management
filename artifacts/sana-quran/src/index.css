@@ -141,6 +141,50 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
+/* DARK MODE — Navy/slate tones */
+.dark {
+  --button-outline: rgba(255,255,255, .10);
+  --badge-outline: rgba(255,255,255, .05);
+  --opaque-button-border-intensity: 6;
+  --elevate-1: rgba(255,255,255, .04);
+  --elevate-2: rgba(255,255,255, .08);
+
+  --background: 215 35% 10%;
+  --foreground: 180 20% 88%;
+  --border: 215 25% 20%;
+  --card: 215 32% 14%;
+  --card-foreground: 180 20% 88%;
+  --card-border: 215 25% 22%;
+  --sidebar: 215 40% 12%;
+  --sidebar-foreground: 177 25% 68%;
+  --sidebar-border: 215 35% 18%;
+  --sidebar-primary: 210 40% 22%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 215 36% 18%;
+  --sidebar-accent-foreground: 177 30% 80%;
+  --sidebar-ring: 177 30% 45%;
+  --popover: 215 32% 13%;
+  --popover-foreground: 180 20% 88%;
+  --popover-border: 215 25% 20%;
+  --primary: 177 35% 48%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 40%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 215 28% 18%;
+  --muted-foreground: 205 18% 55%;
+  --accent: 177 30% 18%;
+  --accent-foreground: 180 25% 85%;
+  --destructive: 0 65% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --input: 215 25% 20%;
+  --ring: 177 35% 45%;
+  --chart-1: 177 35% 52%;
+  --chart-2: 205 40% 55%;
+  --chart-3: 180 42% 55%;
+  --chart-4: 200 38% 50%;
+  --chart-5: 160 35% 50%;
+}
+
 @layer base {
   * {
     @apply border-border;

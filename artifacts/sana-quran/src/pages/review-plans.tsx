@@ -10,6 +10,7 @@ import {
   RefreshCw, TrendingUp, BarChart2, Bell, Clock,
 } from "lucide-react";
 import { calculatePages, SURAHS, getSurahByName } from "@/lib/quran";
+import { motion, AnimatePresence } from "framer-motion";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -734,6 +735,11 @@ function ProgressRing({ day, total, color }: { day: number; total: number; color
   );
 }
 
+const cardVariants = {
+  hidden: { opacity: 0, y: 14 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } },
+};
+
 function PlanCard({ s, onNavigate, onDownload, downloading }: {
   s: StudentWithPlan;
   onNavigate: (id: number) => void;
@@ -744,7 +750,8 @@ function PlanCard({ s, onNavigate, onDownload, downloading }: {
   const remaining = s.cycleLength - s.dayInCycle;
 
   return (
-    <div
+    <motion.div
+      variants={cardVariants}
       className="rounded-xl border p-3 space-y-2 hover:shadow-md transition-shadow cursor-pointer"
       style={{ borderColor: `${theme.primaryColor}33`, background: `${theme.secondaryColor}80` }}
       onClick={() => onNavigate(s.id)}
@@ -823,7 +830,7 @@ function PlanCard({ s, onNavigate, onDownload, downloading }: {
           }
         </p>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -1541,13 +1548,21 @@ function CardsView({ data, reload, onNavigate, downloadingId, downloadPDF, teach
             </div>
             {showNoPlan ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
           </button>
-          {showNoPlan && (
-            <div className="space-y-2">
-              {filteredWithoutPlan.map(s => (
-                <NoPlanCard key={s.id} s={s} onNavigate={onNavigate} />
-              ))}
-            </div>
-          )}
+          <AnimatePresence>
+            {showNoPlan && (
+              <motion.div
+                initial="hidden" animate="visible"
+                variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
+                className="space-y-2"
+              >
+                {filteredWithoutPlan.map(s => (
+                  <motion.div key={s.id} variants={cardVariants}>
+                    <NoPlanCard s={s} onNavigate={onNavigate} />
+                  </motion.div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
@@ -1561,28 +1576,42 @@ function CardsView({ data, reload, onNavigate, downloadingId, downloadPDF, teach
             </div>
             {showWithPlan ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
           </button>
-          {showWithPlan && (() => {
-            const sorted = [
-              ...filteredWithPlan.filter(s => s.isCompletedEarly),
-              ...filteredWithPlan.filter(s => !s.isCompletedEarly && s.isStumbling),
-              ...filteredWithPlan.filter(s => !s.isCompletedEarly && !s.isStumbling),
-            ];
-            return (
-              <div className="space-y-2">
-                {sorted.map(s => (
-                  <PlanCard key={s.id} s={s} onNavigate={onNavigate} onDownload={downloadPDF} downloading={downloadingId === s.id} />
-                ))}
-              </div>
-            );
-          })()}
+          <AnimatePresence>
+            {showWithPlan && (() => {
+              const sorted = [
+                ...filteredWithPlan.filter(s => s.isCompletedEarly),
+                ...filteredWithPlan.filter(s => !s.isCompletedEarly && s.isStumbling),
+                ...filteredWithPlan.filter(s => !s.isCompletedEarly && !s.isStumbling),
+              ];
+              return (
+                <motion.div
+                  initial="hidden" animate="visible"
+                  variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
+                  className="space-y-2"
+                >
+                  {sorted.map(s => (
+                    <PlanCard key={s.id} s={s} onNavigate={onNavigate} onDownload={downloadPDF} downloading={downloadingId === s.id} />
+                  ))}
+                </motion.div>
+              );
+            })()}
+          </AnimatePresence>
         </div>
       )}
 
       {total === 0 && (
-        <div className="text-center py-16 text-sm text-muted-foreground space-y-2">
-          <BookOpen className="w-10 h-10 text-muted-foreground/40 mx-auto" />
-          <p>لا توجد طالبات في مسار الفتيات</p>
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="text-center py-20"
+        >
+          <div className="w-16 h-16 rounded-2xl bg-muted/60 flex items-center justify-center mx-auto mb-4">
+            <BookOpen className="w-8 h-8 text-muted-foreground/40" />
+          </div>
+          <p className="text-base font-semibold text-foreground/60">لا توجد طالبات بعد</p>
+          <p className="text-xs text-muted-foreground mt-1">ستظهر الطالبات هنا بمجرد إضافتهن إلى المسار</p>
+        </motion.div>
       )}
     </div>
   );

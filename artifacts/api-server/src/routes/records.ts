@@ -4,6 +4,7 @@ import { eq, and, gte, lte, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateRecordBody, UpdateRecordBody } from "@workspace/api-zod";
 import { checkAndCreateLowMemorizationAlert } from "./lowMemorizationAlerts";
+import { syncPlanMemorizedUpTo } from "../lib/planSync";
 
 const router: IRouter = Router();
 
@@ -234,6 +235,13 @@ router.post("/records", authenticate, async (req, res): Promise<void> => {
     enteredById: req.userId!,
   }).returning();
 
+  // تحديث memorizedUpToSurah في خطة التثبيت تلقائيًا إذا كان الحفظ أبعد مما سجّلناه
+  syncPlanMemorizedUpTo(
+    parsed.data.studentId,
+    parsed.data.memorizeSurahEnd as string | undefined,
+    parsed.data.memorizeAyahEnd as number | undefined,
+  ).catch(() => {});
+
   // فحص إنذار قلة الحفظ بعد الإدخال (بشكل غير متزامن لئلا يعيق الاستجابة)
   checkAndCreateLowMemorizationAlert(parsed.data.studentId, req.userId!).catch(() => {});
 
@@ -268,6 +276,15 @@ router.patch("/records/:id", authenticate, async (req, res): Promise<void> => {
   if (!record) {
     res.status(404).json({ error: "Record not found" });
     return;
+  }
+
+  // تحديث memorizedUpToSurah في خطة التثبيت إذا تغيّر الحفظ
+  if (parsed.data.memorizeSurahEnd && parsed.data.memorizeAyahEnd != null) {
+    syncPlanMemorizedUpTo(
+      record.studentId,
+      parsed.data.memorizeSurahEnd as string,
+      parsed.data.memorizeAyahEnd as number,
+    ).catch(() => {});
   }
 
   // فحص إنذار قلة الحفظ بعد التحديث أيضًا (بشكل غير متزامن)

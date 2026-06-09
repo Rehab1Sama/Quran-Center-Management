@@ -2,6 +2,7 @@ import { useGetStatsSummary, useGetCirclesStats, useGetCurrentUser, useGetRepeat
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Users, Calendar, Star, TrendingUp, TrendingDown, Minus, Award, CheckCircle2, AlertTriangle, Plane, ClipboardCheck, AlertCircle, GraduationCap } from "lucide-react";
 import { formatPages } from "@/lib/quran";
+import { motion } from "framer-motion";
 
 function TrendIcon({ trend }: { trend?: string }) {
   if (trend === "up") return <TrendingUp className="w-3 h-3 text-emerald-500" />;
@@ -309,20 +310,33 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <motion.div
+        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
+        initial="hidden"
+        animate="visible"
+        variants={{ visible: { transition: { staggerChildren: 0.07 } } }}
+      >
         {stats.map((stat, i) => (
-          <Card key={i} className="border-0 shadow-sm hover:shadow-md transition-shadow overflow-hidden" data-testid={`card-stat-${i}`}>
-            <CardContent className="p-4">
-              <div className={`w-9 h-9 rounded-xl ${stat.bg} flex items-center justify-center mb-3`}>
-                <stat.icon className={`w-4 h-4 ${stat.textColor}`} />
-              </div>
-              <p className="text-2xl font-bold text-foreground truncate">{stat.value}</p>
-              {stat.sub && <p className="text-xs text-muted-foreground">{stat.sub}</p>}
-              <p className="text-xs text-muted-foreground mt-1 font-medium">{stat.label}</p>
-            </CardContent>
-          </Card>
+          <motion.div
+            key={i}
+            variants={{
+              hidden: { opacity: 0, y: 16 },
+              visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
+            }}
+          >
+            <Card className="border-0 shadow-sm hover:shadow-md transition-shadow overflow-hidden" data-testid={`card-stat-${i}`}>
+              <CardContent className="p-4">
+                <div className={`w-9 h-9 rounded-xl ${stat.bg} flex items-center justify-center mb-3`}>
+                  <stat.icon className={`w-4 h-4 ${stat.textColor}`} />
+                </div>
+                <p className="text-2xl font-bold text-foreground truncate">{stat.value}</p>
+                {stat.sub && <p className="text-xs text-muted-foreground">{stat.sub}</p>}
+                <p className="text-xs text-muted-foreground mt-1 font-medium">{stat.label}</p>
+              </CardContent>
+            </Card>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
 
       {/* Monthly Comparison */}
       {monthly && (
