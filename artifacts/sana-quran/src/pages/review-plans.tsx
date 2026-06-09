@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   BookOpen, CheckCircle2, AlertTriangle, XCircle,
   Users, Download, ChevronDown, ChevronUp, Loader2,
-  RefreshCw, TrendingUp, BarChart2, Bell, Clock,
+  RefreshCw, TrendingUp, BarChart2, Bell, Clock, Share2,
 } from "lucide-react";
 import { calculatePages, SURAHS, getSurahByName } from "@/lib/quran";
 import { motion, AnimatePresence } from "framer-motion";
@@ -83,11 +83,13 @@ type PlansData = {
 // ── Shared PDF helpers ───────────────────────────────────────────────────────
 const AR_DAYS_RP = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 
-function getWorkingDayDateRP(cycleStart: string, dayNum: number): string {
+function getWorkingDayDateRP(cycleStart: string, dayNum: number, trackType?: string): string {
   let count = 0;
   const cur = new Date(cycleStart);
   while (true) {
-    if (cur.getDay() !== 5) {
+    const dow = cur.getDay();
+    const isWorking = trackType === "fixation" ? [0, 1, 2, 3].includes(dow) : dow !== 5;
+    if (isWorking) {
       count++;
       if (count === dayNum) return cur.toISOString().slice(0, 10);
     }
@@ -98,7 +100,7 @@ function getWorkingDayDateRP(cycleStart: string, dayNum: number): string {
 function generateReviewPlanHTML(plan: any): string {
   const theme = plan.theme;
   const rows = (plan.planEntries ?? []).map((entry: any, idx: number) => {
-    const dayDate = getWorkingDayDateRP(plan.currentCycleStart, entry.dayNumber);
+    const dayDate = getWorkingDayDateRP(plan.currentCycleStart, entry.dayNumber, plan.trackType);
     const dayJs = new Date(dayDate);
     const dayName = AR_DAYS_RP[dayJs.getDay()];
     const dateLabel = dayJs.toLocaleDateString("ar-SA", { day: "numeric", month: "short", year: "numeric" });
@@ -551,7 +553,7 @@ function StudentReviewPlanView({ studentId }: { studentId: number }) {
               </thead>
               <tbody>
                 {(plan.planEntries ?? []).map((entry: any, idx: number) => {
-                  const dayDate = getWorkingDayDateRP(plan.currentCycleStart, entry.dayNumber);
+                  const dayDate = getWorkingDayDateRP(plan.currentCycleStart, entry.dayNumber, plan.trackType);
                   const dayJs = new Date(dayDate);
                   const dayName = AR_DAYS_RP[dayJs.getDay()];
                   const dateLabel = dayJs.toLocaleDateString("ar-SA", { day: "numeric", month: "short" });
@@ -1100,6 +1102,7 @@ function StatsView({ data, reload, loading, onNavigate }: {
   onNavigate: (id: number) => void;
 }) {
   const [groupBy, setGroupBy] = useState<"track" | "circle">("track");
+  const [showFixationReport, setShowFixationReport] = useState(false);
 
   const advanced: CategoryRow[] = data.withPlan
     .filter(s => s.isCompletedEarly)
@@ -1163,10 +1166,20 @@ function StatsView({ data, reload, loading, onNavigate }: {
           <h1 className="text-xl font-bold">إحصائيات خطة المراجعة</h1>
           <p className="text-xs text-muted-foreground mt-0.5">مسار الفتيات فقط</p>
         </div>
-        <button onClick={reload} disabled={loading} className="p-2 rounded-xl hover:bg-muted transition-colors">
-          <RefreshCw className={`w-4 h-4 text-muted-foreground ${loading ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowFixationReport(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-100 hover:bg-violet-200 dark:bg-violet-950/40 dark:hover:bg-violet-900/60 text-violet-700 dark:text-violet-300 transition-colors text-xs font-medium"
+          >
+            <BarChart2 className="w-3.5 h-3.5" /> تقرير التثبيت
+          </button>
+          <button onClick={reload} disabled={loading} className="p-2 rounded-xl hover:bg-muted transition-colors">
+            <RefreshCw className={`w-4 h-4 text-muted-foreground ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
+
+      {showFixationReport && <FixationWeeklyModal onClose={() => setShowFixationReport(false)} />}
 
       {/* Summary cards */}
       <div className="grid grid-cols-4 gap-2">
@@ -1388,6 +1401,167 @@ function WeeklyReportView({ data, onNavigate }: { data: PlansData; onNavigate: (
   );
 }
 
+// ── Fixation Weekly Report Modal ────────────────────────────────────────────
+type FixWeeklyDay = { date: string; hasEntry: boolean; isAbsent: boolean; pages: number };
+type FixWeeklyStudent = {
+  studentId: number; studentName: string; circleName: string;
+  dayInCycle: number; cycleLength: number; days: FixWeeklyDay[];
+  totalPages: number; daysAttended: number; daysMissed: number;
+};
+type FixWeeklyReport = { weekStart: string; weekDates: string[]; students: FixWeeklyStudent[] };
+
+const AR_SHORT_DAYS_FIX = ["أحد", "اثن", "ثلا", "أرب"];
+
+function FixationWeeklyModal({ onClose }: { onClose: () => void }) {
+  const [report, setReport] = useState<FixWeeklyReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const token = getToken();
+    fetch(`${BASE}/api/review-plans/fixation-weekly-report`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.json())
+      .then(d => { setReport(d); setLoading(false); })
+      .catch(() => { setFetchError("تعذّر تحميل التقرير"); setLoading(false); });
+  }, []);
+
+  function buildWhatsApp(): string {
+    if (!report) return "";
+    const AR_DAY_FULL = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء"];
+    const dayLabels = report.weekDates.map(d => AR_DAY_FULL[new Date(d).getUTCDay()] ?? "");
+    let text = `📊 *تقرير أسبوع التثبيت*\n`;
+    text += `🗓️ الأسبوع: ${dayLabels[0]} – ${dayLabels[3]}\n`;
+    text += `${"─".repeat(28)}\n\n`;
+    const circles = [...new Set(report.students.map(s => s.circleName))];
+    for (const circleName of circles) {
+      const group = report.students.filter(s => s.circleName === circleName);
+      text += `🔵 *${circleName}*\n`;
+      for (const s of group) {
+        const icons = s.days.map(d => d.isAbsent ? "🔴" : d.hasEntry ? "🟢" : "⚪").join("");
+        const pagesStr = s.totalPages > 0 ? ` (${s.totalPages} وجه)` : "";
+        text += `• ${s.studentName}: ${icons}${pagesStr}\n`;
+      }
+      text += "\n";
+    }
+    text += "🟢 حضور   🔴 غياب   ⚪ لا يوجد إدخال";
+    return text;
+  }
+
+  function handleCopy() {
+    navigator.clipboard.writeText(buildWhatsApp()).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="bg-background border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        dir="rtl"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b shrink-0">
+          <div className="flex items-center gap-2">
+            <BarChart2 className="w-5 h-5 text-primary" />
+            <h2 className="font-bold text-base">تقرير الأسبوع — حلقات التثبيت</h2>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground transition-colors">
+            <XCircle className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading && (
+            <div className="flex items-center justify-center py-14">
+              <Loader2 className="w-7 h-7 animate-spin text-primary" />
+            </div>
+          )}
+          {fetchError && <p className="text-destructive text-center py-10 text-sm">{fetchError}</p>}
+          {report && !loading && report.students.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground space-y-2">
+              <BookOpen className="w-10 h-10 mx-auto opacity-30" />
+              <p className="text-sm">لا توجد خطط تثبيت نشطة لهذا الأسبوع</p>
+            </div>
+          )}
+          {report && !loading && report.students.length > 0 && (
+            <>
+              <p className="text-[11px] text-muted-foreground mb-3">
+                ✓ حضور · ✕ غياب · — لا يوجد إدخال
+              </p>
+              <div className="overflow-x-auto rounded-xl border border-border/50">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-muted/40">
+                      <th className="text-right px-3 py-2.5 font-semibold text-muted-foreground sticky right-0 bg-muted/40">الطالبة</th>
+                      <th className="text-right px-2 py-2.5 font-semibold text-muted-foreground max-w-[80px]">الحلقة</th>
+                      {(report.weekDates ?? []).map((d, i) => (
+                        <th key={d} className="text-center px-2 py-2.5 font-semibold text-muted-foreground min-w-[40px]">
+                          <div>{AR_SHORT_DAYS_FIX[i]}</div>
+                          <div className="text-[9px] font-normal opacity-60">{d.slice(5)}</div>
+                        </th>
+                      ))}
+                      <th className="text-center px-2 py-2.5 font-semibold text-muted-foreground">الأوجه</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.students.map((s, i) => (
+                      <tr key={s.studentId} className={`border-t border-border/30 hover:bg-muted/20 transition-colors ${i % 2 === 1 ? "bg-muted/10" : ""}`}>
+                        <td className={`px-3 py-2 sticky right-0 ${i % 2 === 1 ? "bg-muted/10" : "bg-background"} border-l border-border/20`}>
+                          <span className="font-medium truncate block max-w-[90px]">{s.studentName}</span>
+                        </td>
+                        <td className="px-2 py-2 text-muted-foreground text-[10px] max-w-[80px] truncate">{s.circleName}</td>
+                        {s.days.map((d, di) => (
+                          <td key={di} className="text-center px-1 py-2">
+                            <span className={`inline-flex w-6 h-6 items-center justify-center font-bold text-[11px] rounded-full ${
+                              d.isAbsent ? "text-rose-500 bg-rose-50 dark:bg-rose-950/40" :
+                              d.hasEntry ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40" :
+                              "text-muted-foreground/30"
+                            }`}>
+                              {d.isAbsent ? "✕" : d.hasEntry ? "✓" : "—"}
+                            </span>
+                            {d.hasEntry && !d.isAbsent && d.pages > 0 && (
+                              <div className="text-[8px] text-muted-foreground leading-none mt-0.5">{d.pages}</div>
+                            )}
+                          </td>
+                        ))}
+                        <td className="text-center px-2 py-2 font-semibold text-xs">
+                          {s.totalPages > 0 ? s.totalPages : <span className="text-muted-foreground/30">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        {report && report.students.length > 0 && (
+          <div className="p-4 border-t shrink-0 flex justify-between items-center">
+            <p className="text-[10px] text-muted-foreground">
+              {report.students.length} طالبة · الأسبوع من {report.weekStart}
+            </p>
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-colors"
+            >
+              {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
+              {copied ? "تم النسخ!" : "نسخ للواتساب"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Cards view for teacher/supervisor ──────────────────────────────────────
 function CardsView({ data, reload, onNavigate, downloadingId, downloadPDF, teacherNotifs, onDismissNotif }: {
   data: PlansData;
@@ -1399,6 +1573,7 @@ function CardsView({ data, reload, onNavigate, downloadingId, downloadPDF, teach
   onDismissNotif?: (id: number) => void;
 }) {
   const [circleFilter, setCircleFilter] = useState("all");
+  const [showFixationReport, setShowFixationReport] = useState(false);
   const [trackFilter, setTrackFilter] = useState("all");
   const [showNoPlan, setShowNoPlan] = useState(true);
   const [showWithPlan, setShowWithPlan] = useState(true);
@@ -1428,6 +1603,7 @@ function CardsView({ data, reload, onNavigate, downloadingId, downloadPDF, teach
   if (view === "weekly") {
     return (
       <div className="max-w-2xl mx-auto space-y-5">
+        {showFixationReport && <FixationWeeklyModal onClose={() => setShowFixationReport(false)} />}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">خطط المراجعة</h1>
@@ -1436,6 +1612,12 @@ function CardsView({ data, reload, onNavigate, downloadingId, downloadPDF, teach
           <div className="flex items-center gap-2">
             <button onClick={reload} className="p-2 rounded-xl hover:bg-muted transition-colors">
               <RefreshCw className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <button
+              onClick={() => setShowFixationReport(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-100 hover:bg-violet-200 dark:bg-violet-950/40 dark:hover:bg-violet-900/60 text-violet-700 dark:text-violet-300 transition-colors text-xs font-medium"
+            >
+              <Share2 className="w-3.5 h-3.5" /> تقرير التثبيت
             </button>
             <button onClick={() => setView("cards")} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-muted hover:bg-muted/80 transition-colors text-xs font-medium">
               <Users className="w-3.5 h-3.5" /> بطاقات
@@ -1449,6 +1631,7 @@ function CardsView({ data, reload, onNavigate, downloadingId, downloadPDF, teach
 
   return (
     <div className="max-w-2xl mx-auto space-y-5">
+      {showFixationReport && <FixationWeeklyModal onClose={() => setShowFixationReport(false)} />}
       {teacherNotifs && teacherNotifs.length > 0 && onDismissNotif && (
         <TeacherNotifBanner notifs={teacherNotifs} onDismiss={onDismissNotif} />
       )}
@@ -1461,6 +1644,12 @@ function CardsView({ data, reload, onNavigate, downloadingId, downloadPDF, teach
         <div className="flex items-center gap-2">
           <button onClick={reload} className="p-2 rounded-xl hover:bg-muted transition-colors">
             <RefreshCw className="w-4 h-4 text-muted-foreground" />
+          </button>
+          <button
+            onClick={() => setShowFixationReport(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-100 hover:bg-violet-200 dark:bg-violet-950/40 dark:hover:bg-violet-900/60 text-violet-700 dark:text-violet-300 transition-colors text-xs font-medium"
+          >
+            <Share2 className="w-3.5 h-3.5" /> تقرير التثبيت
           </button>
           <button onClick={() => setView("weekly")} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary/10 hover:bg-primary/20 transition-colors text-xs font-medium text-primary">
             <BarChart2 className="w-3.5 h-3.5" /> تقرير الأسبوع

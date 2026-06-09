@@ -71,16 +71,28 @@ router.post("/registration/verify-email-otp", async (req, res): Promise<void> =>
 });
 
 async function getSettings() {
-  const [settings] = await db.select().from(registrationSettingsTable);
-  return settings ?? {
-    isOpen: false,
-    staffRegistrationOpen: true,
-    existingStudentRegOpen: false,
-    autoApproveStudents: false,
-    deadline: null,
-    customQuestions: null,
-    staffCustomQuestions: null,
-  };
+  try {
+    const [settings] = await db.select().from(registrationSettingsTable);
+    return settings ?? {
+      isOpen: false,
+      staffRegistrationOpen: true,
+      existingStudentRegOpen: false,
+      autoApproveStudents: false,
+      deadline: null,
+      customQuestions: null,
+      staffCustomQuestions: null,
+    };
+  } catch {
+    return {
+      isOpen: false,
+      staffRegistrationOpen: false,
+      existingStudentRegOpen: false,
+      autoApproveStudents: false,
+      deadline: null,
+      customQuestions: null,
+      staffCustomQuestions: null,
+    };
+  }
 }
 
 async function upsertSettings(values: Record<string, unknown>) {

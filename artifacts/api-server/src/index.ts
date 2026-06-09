@@ -1,5 +1,8 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+if (!process.env.SESSION_SECRET) {
+  logger.warn("[SECURITY] SESSION_SECRET is not set — using insecure fallback. Set it before going to production!");
+}
 import { db, usersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { hashPassword } from "./lib/auth";

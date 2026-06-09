@@ -1046,4 +1046,92 @@ router.get("/circles/:id/review-plans", authenticate, async (req, res): Promise<
   }));
 });
 
+// ── GET /api/review-plans/fixation-weekly-report ──────────────────────────
+router.get("/review-plans/fixation-weekly-report", authenticate, async (req, res): Promise<void> => {
+  const role = req.userRole;
+  if (!["leader", "deputy", "teacher", "supervisor", "track_supervisor", "data_entry"].includes(role ?? "")) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  const today = getMeccaTodayServer();
+  const todayDate = new Date(today + "T12:00:00Z");
+  const dow = todayDate.getUTCDay(); // 0=Sun
+
+  // Start of current week (last Sunday)
+  const weekStartDate = new Date(todayDate);
+  weekStartDate.setUTCDate(todayDate.getUTCDate() - dow);
+
+  // Fixation working days: Sun(0), Mon(1), Tue(2), Wed(3)
+  const weekDates = [0, 1, 2, 3].map(i => {
+    const d = new Date(weekStartDate);
+    d.setUTCDate(weekStartDate.getUTCDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+  const weekStart = weekDates[0];
+
+  // Fetch all active fixation plans with student + circle
+  let allRows = await db
+    .select({ plan: reviewPlansTable, student: studentsTable, circle: circlesTable })
+    .from(reviewPlansTable)
+    .innerJoin(studentsTable, eq(reviewPlansTable.studentId, studentsTable.id))
+    .innerJoin(circlesTable, eq(studentsTable.circleId, circlesTable.id))
+    .where(and(eq(reviewPlansTable.status, "active"), eq(reviewPlansTable.trackType, "fixation")));
+
+  // Role-based filtering
+  if (role === "teacher") {
+    const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+    allRows = allRows.filter(r => r.student.circleId === me?.circleId);
+  } else if (role === "supervisor") {
+    const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+    allRows = allRows.filter(r => r.circle.supervisorId === me?.id);
+  } else if (role === "track_supervisor") {
+    const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+    const myTracks = await db.select().from(tracksTable).where(eq(tracksTable.supervisorId, me!.id));
+    const trackIds = new Set(myTracks.map(t => t.id));
+    allRows = allRows.filter(r => r.circle.trackId != null && trackIds.has(r.circle.trackId!));
+  }
+
+  if (!allRows.length) { res.json({ weekStart, weekDates, students: [] }); return; }
+
+  // Fetch records for the week
+  const weekRecords = await db.select().from(recordsTable)
+    .where(and(gte(recordsTable.date, weekDates[0]), lte(recordsTable.date, weekDates[3])));
+
+  const studentIdSet = new Set(allRows.map(r => r.student.id));
+  const relevant = weekRecords.filter(r => r.studentId !== null && studentIdSet.has(r.studentId!));
+
+  const students = allRows.map(({ plan, student, circle }) => {
+    const srecs = relevant.filter(r => r.studentId === student.id);
+    const days = weekDates.map(date => {
+      const dayRecs = srecs.filter(r => r.date === date);
+      const isAbsent = dayRecs.some(r => r.isAbsent);
+      const pages = dayRecs.reduce((s, r) => s + (r.memorizePages ?? 0), 0);
+      return { date, hasEntry: dayRecs.length > 0, isAbsent, pages };
+    });
+    const totalPages = Math.round(days.reduce((s, d) => s + d.pages, 0) * 10) / 10;
+    const dayInCycle = Math.min(
+      workingDayNumber(plan.currentCycleStart ?? plan.startDate, today, "fixation"),
+      plan.cycleLength,
+    );
+    return {
+      studentId: student.id,
+      studentName: student.fullName,
+      circleName: circle.name,
+      dayInCycle,
+      cycleLength: plan.cycleLength,
+      days,
+      totalPages,
+      daysAttended: days.filter(d => d.hasEntry && !d.isAbsent).length,
+      daysMissed: days.filter(d => !d.hasEntry && d.date <= today).length,
+    };
+  });
+
+  students.sort((a, b) =>
+    a.circleName.localeCompare(b.circleName, "ar") ||
+    a.studentName.localeCompare(b.studentName, "ar"),
+  );
+
+  res.json({ weekStart, weekDates, students });
+});
+
 export default router;

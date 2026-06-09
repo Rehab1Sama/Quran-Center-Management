@@ -9,6 +9,7 @@ import { syncPlanMemorizedUpTo } from "../lib/planSync";
 const router: IRouter = Router();
 
 router.get("/records", authenticate, async (req, res): Promise<void> => {
+  if (req.userRole === "student") { res.status(403).json({ error: "غير مصرح" }); return; }
   const { circleId, studentId, date, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
 
   let records = await db.select().from(recordsTable);
