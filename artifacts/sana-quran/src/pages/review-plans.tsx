@@ -707,7 +707,8 @@ function TeacherNotifBanner({ notifs, onDismiss }: { notifs: TeacherNotif[]; onD
 
 function trackTypeLabel(t: string) {
   if (t === "girls") return "الفتيات";
-  if (t === "simple_review") return "التثبيت";
+  if (t === "simple_review") return "مراجعة بسيطة";
+  if (t === "fixation") return "التثبيت";
   return t;
 }
 

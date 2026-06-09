@@ -65,8 +65,8 @@ export function getFieldLabel(key: string): string {
   return FIELD_LABELS[key] ?? key;
 }
 
-const NO_REVIEW_PLAN_CATEGORIES = new Set(["أطفال", "أمهات", "تصحيح تلاوة", "تثبيت"]);
-const NO_REVIEW_PLAN_DATATYPES  = new Set(["recitation", "mishkah", "fixation", "children", "mothers"]);
+const NO_REVIEW_PLAN_CATEGORIES = new Set(["أطفال", "أمهات", "تصحيح تلاوة"]);
+const NO_REVIEW_PLAN_DATATYPES  = new Set(["recitation", "mishkah", "children", "mothers"]);
 const LEGACY_NO_REVIEW_TRACKS   = ["ألق", "سراج", "مهج", "مشكاة نور"];
 
 export function shouldHideReviewPlans(
