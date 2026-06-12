@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, dataEntrySessionsTable, usersTable } from "@workspace/db";
-import { eq, and, gte, desc } from "drizzle-orm";
+import { db, dataEntrySessionsTable, recordsTable, usersTable } from "@workspace/db";
+import { eq, and, gte } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
 const router: IRouter = Router();
@@ -68,6 +68,7 @@ router.post("/data-entry/session/heartbeat", authenticate, async (req, res): Pro
 });
 
 // GET /api/data-entry/sessions/today — إحصائيات اليوم لجميع المدخلات (للقائدة والنائبة)
+// يحسب وقت الشغل الفعلي من توقيتات السجلات المُدخلة، لا من heartbeat
 router.get("/data-entry/sessions/today", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "deputy"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" }); return;
@@ -75,21 +76,72 @@ router.get("/data-entry/sessions/today", authenticate, async (req, res): Promise
 
   const today = getMeccaTodayServer();
 
-  const sessions = await db.select().from(dataEntrySessionsTable)
-    .where(eq(dataEntrySessionsTable.date, today));
+  // جلب كل السجلات المُدخلة اليوم (enteredById + createdAt)
+  const todayRecords = await db
+    .select({ enteredById: recordsTable.enteredById, createdAt: recordsTable.createdAt })
+    .from(recordsTable)
+    .where(eq(recordsTable.date, today));
 
   const allDataEntryUsers = await db.select().from(usersTable)
     .where(and(eq(usersTable.role, "data_entry"), eq(usersTable.isArchived, false)));
 
+  // إذا مرّ أكثر من 15 دقيقة بين سجلين متتاليين → جلسة جديدة (لا نحتسب وقت الراحة)
+  const SESSION_GAP_MS = 15 * 60 * 1000;
+  // إضافة دقيقتين buffer لحساب وقت إدخال السجل الأخير في كل جلسة
+  const RECORD_BUFFER_MS = 2 * 60 * 1000;
+
+  // صباح: 6:00–13:59 بتوقيت مكة (UTC+3)
+  function isMorningTS(ts: Date): boolean {
+    const meccaHour = (ts.getUTCHours() + 3) % 24;
+    return meccaHour >= 6 && meccaHour < 14;
+  }
+
   const result = allDataEntryUsers.map(user => {
-    const session = sessions.find(s => s.userId === user.id);
+    const recs = todayRecords
+      .filter(r => r.enteredById === user.id)
+      .map(r => new Date(r.createdAt))
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    if (recs.length === 0) {
+      return { userId: user.id, userName: user.name, morningMinutes: 0, eveningMinutes: 0, totalMinutes: 0, lastActive: null };
+    }
+
+    // تجميع السجلات في جلسات عمل بناءً على الفجوة الزمنية
+    type WorkSession = { stamps: Date[]; morning: boolean };
+    const sessions: WorkSession[] = [];
+    let cur: WorkSession = { stamps: [recs[0]], morning: isMorningTS(recs[0]) };
+
+    for (let i = 1; i < recs.length; i++) {
+      const gap = recs[i].getTime() - recs[i - 1].getTime();
+      if (gap > SESSION_GAP_MS) {
+        sessions.push(cur);
+        cur = { stamps: [recs[i]], morning: isMorningTS(recs[i]) };
+      } else {
+        cur.stamps.push(recs[i]);
+      }
+    }
+    sessions.push(cur);
+
+    let morningMinutes = 0;
+    let eveningMinutes = 0;
+
+    for (const s of sessions) {
+      const first = s.stamps[0];
+      const last = s.stamps[s.stamps.length - 1];
+      const durationMin = ((last.getTime() - first.getTime()) + RECORD_BUFFER_MS) / 60000;
+      if (s.morning) morningMinutes += durationMin;
+      else eveningMinutes += durationMin;
+    }
+
+    const lastActive = recs[recs.length - 1];
+
     return {
       userId: user.id,
       userName: user.name,
-      morningMinutes: Math.round((session?.morningMinutes ?? 0) * 10) / 10,
-      eveningMinutes: Math.round((session?.eveningMinutes ?? 0) * 10) / 10,
-      totalMinutes: Math.round(((session?.morningMinutes ?? 0) + (session?.eveningMinutes ?? 0)) * 10) / 10,
-      lastActive: session?.lastHeartbeatAt?.toISOString() ?? null,
+      morningMinutes: Math.round(morningMinutes * 10) / 10,
+      eveningMinutes: Math.round(eveningMinutes * 10) / 10,
+      totalMinutes: Math.round((morningMinutes + eveningMinutes) * 10) / 10,
+      lastActive: lastActive.toISOString(),
     };
   });
 
