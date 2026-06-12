@@ -27,7 +27,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { SURAHS, calculatePages, formatPages } from "@/lib/quran";
-import { PenSquare, CheckCircle, AlertCircle, BookOpen, Users, CalendarDays, Search, UserX, Undo2, XCircle, Zap, Clock, CheckCircle2 } from "lucide-react";
+import { PenSquare, CheckCircle, AlertCircle, BookOpen, Users, CalendarDays, Search, UserX, Undo2, XCircle, Zap, Clock, CheckCircle2, Mic, TableIcon, LayoutList } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -153,6 +153,150 @@ interface SectionState {
 
 const emptySection = (): SectionState => ({ surahStart: "", ayahStart: "", surahEnd: "", ayahEnd: "" });
 
+// ---- Voice Input helpers ----
+function parseVoiceInput(
+  text: string,
+  onResult: (surahStart: string, ayahStart: string, surahEnd: string, ayahEnd: string) => void
+) {
+  const surah = SURAHS.find(s => text.includes(s.name));
+  if (!surah) return;
+  const normalized = text.replace(/[٠-٩]/g, (d: string) => String(d.charCodeAt(0) - 0x0660));
+  const numbers = normalized.match(/\d+/g)?.map(Number) ?? [];
+  if (numbers.length >= 2) {
+    onResult(surah.name, String(numbers[0]), surah.name, String(numbers[1]));
+  } else if (numbers.length === 1) {
+    onResult(surah.name, String(numbers[0]), surah.name, String(numbers[0]));
+  } else {
+    onResult(surah.name, "1", surah.name, "1");
+  }
+}
+
+function VoiceInputButton({
+  onResult,
+}: {
+  onResult: (surahStart: string, ayahStart: string, surahEnd: string, ayahEnd: string) => void;
+}) {
+  const [isListening, setIsListening] = useState(false);
+  const startListening = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { alert("متصفحك لا يدعم التعرف على الصوت. استخدمي Chrome أو Safari."); return; }
+    const recognition = new SR();
+    recognition.lang = "ar-SA";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognition.onresult = (event: any) => {
+      const text = event.results[0][0].transcript;
+      parseVoiceInput(text, onResult);
+    };
+    recognition.start();
+  };
+  return (
+    <button
+      type="button"
+      onClick={startListening}
+      title={isListening ? "جاري الاستماع..." : "إدخال صوتي (مثال: البقرة 10 إلى 20)"}
+      className={`p-1.5 rounded-lg transition-colors border ${
+        isListening
+          ? "bg-rose-100 border-rose-300 text-rose-600 animate-pulse"
+          : "bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+      }`}
+    >
+      <Mic className="w-3.5 h-3.5" />
+    </button>
+  );
+}
+
+// ---- Bulk Entry Table ----
+function BulkEntryTable({
+  students,
+  inputFields,
+  bulkData,
+  onChange,
+  onSave,
+  isSaving,
+}: {
+  students: any[];
+  inputFields: string[];
+  bulkData: Record<number, { absent: boolean; memorizePages: string; reviewNearPages: string; reviewFarPages: string; reviewPages: string; listenedToReciter: boolean | null }>;
+  onChange: (studentId: number, field: string, value: any) => void;
+  onSave: () => void;
+  isSaving: boolean;
+}) {
+  const hasMemorize = inputFields.includes("memorize");
+  const hasNear = inputFields.includes("review_near");
+  const hasFar = inputFields.includes("review_far");
+  const hasReview = inputFields.includes("review");
+  const hasListen = inputFields.includes("listen");
+
+  return (
+    <div className="space-y-3" dir="rtl">
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-muted/50 border-b border-border">
+              <th className="px-3 py-2 text-right font-semibold text-xs text-muted-foreground">الطالبة</th>
+              <th className="px-2 py-2 text-center font-semibold text-xs text-rose-600">غائبة</th>
+              {hasMemorize && <th className="px-2 py-2 text-center font-semibold text-xs text-teal-700">حفظ (ص)</th>}
+              {(hasNear || hasReview) && <th className="px-2 py-2 text-center font-semibold text-xs text-blue-700">مراجعة قريبة (ص)</th>}
+              {hasFar && <th className="px-2 py-2 text-center font-semibold text-xs text-sky-700">مراجعة بعيدة (ص)</th>}
+              {hasListen && <th className="px-2 py-2 text-center font-semibold text-xs text-purple-700">سمعت</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {students.map((student: any, idx: number) => {
+              const d = bulkData[student.studentId] ?? { absent: false, memorizePages: "", reviewNearPages: "", reviewFarPages: "", reviewPages: "", listenedToReciter: null };
+              return (
+                <tr key={student.studentId} className={`border-b border-border/50 transition-colors ${d.absent ? "bg-rose-50/70" : idx % 2 === 0 ? "bg-background" : "bg-muted/15"}`}>
+                  <td className="px-3 py-2 font-medium text-sm max-w-[130px]">
+                    <div className="truncate">{student.studentName}</div>
+                  </td>
+                  <td className="px-2 py-2 text-center">
+                    <input type="checkbox" checked={d.absent} onChange={e => onChange(student.studentId, "absent", e.target.checked)} className="w-4 h-4 accent-rose-500" />
+                  </td>
+                  {hasMemorize && (
+                    <td className="px-2 py-2 text-center">
+                      <input type="number" min="0" max="20" step="0.5" value={d.memorizePages} onChange={e => onChange(student.studentId, "memorizePages", e.target.value)} disabled={d.absent} className="w-14 border border-input rounded px-1.5 py-1 text-center text-xs bg-background disabled:opacity-40" placeholder="0" />
+                    </td>
+                  )}
+                  {(hasNear || hasReview) && (
+                    <td className="px-2 py-2 text-center">
+                      <input type="number" min="0" max="20" step="0.5" value={d.reviewNearPages} onChange={e => onChange(student.studentId, "reviewNearPages", e.target.value)} disabled={d.absent} className="w-14 border border-input rounded px-1.5 py-1 text-center text-xs bg-background disabled:opacity-40" placeholder="0" />
+                    </td>
+                  )}
+                  {hasFar && (
+                    <td className="px-2 py-2 text-center">
+                      <input type="number" min="0" max="20" step="0.5" value={d.reviewFarPages} onChange={e => onChange(student.studentId, "reviewFarPages", e.target.value)} disabled={d.absent} className="w-14 border border-input rounded px-1.5 py-1 text-center text-xs bg-background disabled:opacity-40" placeholder="0" />
+                    </td>
+                  )}
+                  {hasListen && (
+                    <td className="px-2 py-2 text-center">
+                      <input type="checkbox" checked={d.listenedToReciter === true} onChange={e => onChange(student.studentId, "listenedToReciter", e.target.checked ? true : null)} disabled={d.absent} className="w-4 h-4 accent-purple-500 disabled:opacity-40" />
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-muted-foreground text-center">
+        أدخلي عدد الصفحات فقط — الحقول الفارغة تُحفظ كـ 0
+      </p>
+      <Button
+        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+        onClick={onSave}
+        disabled={isSaving || students.length === 0}
+      >
+        <CheckCircle2 className="w-4 h-4" />
+        {isSaving ? "جاري الحفظ..." : `حفظ الحلقة كاملة (${students.length} طالبة)`}
+      </Button>
+    </div>
+  );
+}
+
 /** Returns the surah/ayah that comes right after the given position */
 function nextPosition(surahName: string, ayah: number): { surah: string; ayah: string } {
   const surahIndex = SURAHS.findIndex(s => s.name === surahName);
@@ -185,7 +329,7 @@ function calcSectionPages(s: SectionState) {
 }
 
 function SurahSection({
-  title, color, section, onChange, showPages, autoSuggested, locked, onToggleLock,
+  title, color, section, onChange, showPages, autoSuggested, locked, onToggleLock, onVoiceFill,
 }: {
   title: string; color: string; section: SectionState;
   onChange: (field: keyof SectionState, val: string) => void;
@@ -193,6 +337,7 @@ function SurahSection({
   autoSuggested?: boolean;
   locked?: boolean;
   onToggleLock?: () => void;
+  onVoiceFill?: (surahStart: string, ayahStart: string, surahEnd: string, ayahEnd: string) => void;
 }) {
   const pages = calcSectionPages(section);
   return (
@@ -217,6 +362,9 @@ function SurahSection({
             <Badge className="bg-white/70 text-foreground border-0 text-xs font-bold">
               {formatPages(pages)} وجه
             </Badge>
+          )}
+          {onVoiceFill && !locked && (
+            <VoiceInputButton onResult={onVoiceFill} />
           )}
           {onToggleLock && (
             <button
@@ -349,6 +497,9 @@ export default function DataEntryPage() {
   const [thursdayLoading, setThursdayLoading] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
   const [submittedDays, setSubmittedDays] = useState<string[]>([]);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkData, setBulkData] = useState<Record<number, { absent: boolean; memorizePages: string; reviewNearPages: string; reviewFarPages: string; reviewPages: string; listenedToReciter: boolean | null }>>({});
+  const [isBulkSaving, setIsBulkSaving] = useState(false);
 
   useDataEntryHeartbeat(isDataEntry);
   const myStats = useDataEntryMyStats(isDataEntry);
@@ -437,17 +588,31 @@ export default function DataEntryPage() {
       const next = nextPosition((last as any).memorizeSurahEnd, (last as any).memorizeAyahEnd);
       updates.memorize = { ...emptySection(), surahStart: next.surah, ayahStart: next.ayah };
     }
-    if ((last as any).reviewNearSurahEnd && (last as any).reviewNearAyahEnd) {
-      const next = nextPosition((last as any).reviewNearSurahEnd, (last as any).reviewNearAyahEnd);
-      updates.reviewNear = { ...emptySection(), surahStart: next.surah, ayahStart: next.ayah };
+    // مراجعة قريبة: نفس النطاق الذي أُدخل بالأمس (ذاكرة ذكية)
+    if ((last as any).reviewNearSurahStart && (last as any).reviewNearSurahEnd) {
+      updates.reviewNear = {
+        surahStart: (last as any).reviewNearSurahStart,
+        ayahStart: (last as any).reviewNearAyahStart?.toString() ?? "1",
+        surahEnd: (last as any).reviewNearSurahEnd,
+        ayahEnd: (last as any).reviewNearAyahEnd?.toString() ?? "1",
+      };
     }
-    if ((last as any).reviewFarSurahEnd && (last as any).reviewFarAyahEnd) {
-      const next = nextPosition((last as any).reviewFarSurahEnd, (last as any).reviewFarAyahEnd);
-      updates.reviewFar = { ...emptySection(), surahStart: next.surah, ayahStart: next.ayah };
+    // مراجعة بعيدة: نفس النطاق الذي أُدخل بالأمس
+    if ((last as any).reviewFarSurahStart && (last as any).reviewFarSurahEnd) {
+      updates.reviewFar = {
+        surahStart: (last as any).reviewFarSurahStart,
+        ayahStart: (last as any).reviewFarAyahStart?.toString() ?? "1",
+        surahEnd: (last as any).reviewFarSurahEnd,
+        ayahEnd: (last as any).reviewFarAyahEnd?.toString() ?? "1",
+      };
     }
-    if ((last as any).reviewSurahEnd && (last as any).reviewAyahEnd) {
-      const next = nextPosition((last as any).reviewSurahEnd, (last as any).reviewAyahEnd);
-      updates.review = { ...emptySection(), surahStart: next.surah, ayahStart: next.ayah };
+    if ((last as any).reviewSurahStart && (last as any).reviewSurahEnd) {
+      updates.review = {
+        surahStart: (last as any).reviewSurahStart,
+        ayahStart: (last as any).reviewAyahStart?.toString() ?? "1",
+        surahEnd: (last as any).reviewSurahEnd,
+        ayahEnd: (last as any).reviewAyahEnd?.toString() ?? "1",
+      };
     }
     if ((last as any).recitationSurahEnd && (last as any).recitationAyahEnd) {
       const next = nextPosition((last as any).recitationSurahEnd, (last as any).recitationAyahEnd);
@@ -670,6 +835,72 @@ export default function DataEntryPage() {
         }
       );
     }
+  };
+
+  // ---- إدخال دفعي سريع ----
+  const initBulkData = () => {
+    const init: typeof bulkData = {};
+    studentsInCircle.forEach((s: any) => {
+      init[s.studentId] = { absent: false, memorizePages: "", reviewNearPages: "", reviewFarPages: "", reviewPages: "", listenedToReciter: null };
+    });
+    setBulkData(init);
+  };
+
+  const handleBulkChange = (studentId: number, field: string, value: any) => {
+    setBulkData(prev => ({
+      ...prev,
+      [studentId]: { ...( prev[studentId] ?? { absent: false, memorizePages: "", reviewNearPages: "", reviewFarPages: "", reviewPages: "", listenedToReciter: null }), [field]: value },
+    }));
+  };
+
+  const handleBulkSave = async () => {
+    if (!selectedCircleId) return;
+    setIsBulkSaving(true);
+    const token = getToken();
+    const inputFields = getInputFields(selectedCircle?.dataEntryType);
+    const hasNear = inputFields.includes("review_near");
+    const hasFar = inputFields.includes("review_far");
+    const hasReview = inputFields.includes("review");
+    const hasListen = inputFields.includes("listen");
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const student of studentsInCircle) {
+      const d = bulkData[student.studentId] ?? { absent: false, memorizePages: "", reviewNearPages: "", reviewFarPages: "", reviewPages: "", listenedToReciter: null };
+      const payload: any = {
+        studentId: student.studentId,
+        circleId: student.circleId,
+        date: selectedDate,
+        isAbsent: d.absent,
+        memorizePages: d.absent ? 0 : parseFloat(d.memorizePages) || 0,
+        reviewNearPages: d.absent || !hasNear ? 0 : parseFloat(d.reviewNearPages) || 0,
+        reviewFarPages: d.absent || !hasFar ? 0 : parseFloat(d.reviewFarPages) || 0,
+        reviewPages: d.absent || !hasReview ? 0 : parseFloat(d.reviewPages) || 0,
+        recitationPages: 0,
+      };
+      if (!d.absent && hasListen && d.listenedToReciter !== null) {
+        payload.listenedToReciter = d.listenedToReciter;
+      }
+      try {
+        const res = await fetch(`${BASE}/api/records`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) successCount++; else errorCount++;
+      } catch { errorCount++; }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["missingData", selectedDate] });
+    queryClient.invalidateQueries({ queryKey: ["circleRecords", selectedCircleId, selectedDate] });
+    setIsBulkSaving(false);
+    setBulkMode(false);
+    setBulkData({});
+    toast({
+      title: `تم حفظ ${successCount} طالبة بنجاح ✓`,
+      description: errorCount > 0 ? `${errorCount} طالبة لم تُحفظ` : undefined,
+      variant: errorCount > 0 ? "destructive" : "default",
+    });
   };
 
   // إدخال الخميس تلقائيًا للقائدة
@@ -896,16 +1127,32 @@ export default function DataEntryPage() {
                   </Badge>
                 )}
               </CardTitle>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700 h-8 shrink-0"
-                onClick={handleMarkTeacherAbsent}
-                disabled={markTeacherAbsent.isPending}
-              >
-                <UserX className="w-3.5 h-3.5" />
-                المعلمة غائبة
-              </Button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {studentsInCircle.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={`gap-1.5 h-8 text-xs ${bulkMode ? "bg-violet-50 border-violet-300 text-violet-700 hover:bg-violet-100" : "text-violet-600 border-violet-200 hover:bg-violet-50"}`}
+                    onClick={() => {
+                      if (!bulkMode) { initBulkData(); }
+                      setBulkMode(m => !m);
+                    }}
+                  >
+                    {bulkMode ? <LayoutList className="w-3.5 h-3.5" /> : <TableIcon className="w-3.5 h-3.5" />}
+                    {bulkMode ? "إدخال فردي" : "إدخال دفعي"}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700 h-8"
+                  onClick={handleMarkTeacherAbsent}
+                  disabled={markTeacherAbsent.isPending}
+                >
+                  <UserX className="w-3.5 h-3.5" />
+                  المعلمة غائبة
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -914,6 +1161,15 @@ export default function DataEntryPage() {
                 <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
                 <p className="font-semibold text-emerald-700 text-sm">تم إدخال بيانات جميع طالبات هذه الحلقة ليوم {selectedDate}</p>
               </div>
+            ) : bulkMode ? (
+              <BulkEntryTable
+                students={studentsInCircle}
+                inputFields={getInputFields(selectedCircle?.dataEntryType)}
+                bulkData={bulkData}
+                onChange={handleBulkChange}
+                onSave={handleBulkSave}
+                isSaving={isBulkSaving}
+              />
             ) : (
               <div className="space-y-2">
                 {studentsInCircle.length > 5 && (
@@ -1106,6 +1362,7 @@ export default function DataEntryPage() {
                     section={form.memorize}
                     onChange={(f, v) => updateSection("memorize", f, v)}
                     autoSuggested={autoFilled && !!form.memorize.surahStart}
+                    onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, memorize: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae } }))}
                   />
                 )}
 
@@ -1123,6 +1380,7 @@ export default function DataEntryPage() {
                       noReviewNear: !f.noReviewNear,
                       reviewNear: !f.noReviewNear ? emptySection() : f.reviewNear,
                     }))}
+                    onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, reviewNear: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae }, noReviewNear: false }))}
                   />
                 )}
 
@@ -1140,6 +1398,7 @@ export default function DataEntryPage() {
                       noReviewFar: !f.noReviewFar,
                       reviewFar: !f.noReviewFar ? emptySection() : f.reviewFar,
                     }))}
+                    onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, reviewFar: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae }, noReviewFar: false }))}
                   />
                 )}
 
@@ -1157,6 +1416,7 @@ export default function DataEntryPage() {
                       noReview: !f.noReview,
                       review: !f.noReview ? emptySection() : f.review,
                     }))}
+                    onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, review: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae }, noReview: false }))}
                   />
                 )}
 
@@ -1168,6 +1428,7 @@ export default function DataEntryPage() {
                     section={form.recitation}
                     onChange={(f, v) => updateSection("recitation", f, v)}
                     autoSuggested={autoFilled && !!form.recitation.surahStart}
+                    onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, recitation: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae } }))}
                   />
                 )}
 

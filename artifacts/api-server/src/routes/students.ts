@@ -495,6 +495,29 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     cancelledBy: l.cancelledById ? (lhUserMap[l.cancelledById] ?? "غير معروف") : null,
   }));
 
+  // Heatmap data: last 180 days
+  const meccaNow = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  const cutoff180 = new Date(meccaNow);
+  cutoff180.setDate(cutoff180.getDate() - 179);
+  const cutoffStr = cutoff180.toISOString().slice(0, 10);
+  const heatmapData = allRecords
+    .filter(r => r.date >= cutoffStr)
+    .map(r => {
+      const totalPages =
+        (r.memorizePages ?? 0) + (r.reviewNearPages ?? 0) +
+        (r.reviewFarPages ?? 0) + (r.reviewPages ?? 0) + (r.recitationPages ?? 0);
+      return {
+        date: r.date,
+        status: r.isAbsent
+          ? "absent"
+          : totalPages >= 2
+            ? "present"
+            : totalPages > 0
+              ? "low"
+              : "attended",
+      };
+    });
+
   // Recent sessions (last 20 records sorted by date desc)
   const recentRecords = [...allRecords]
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -544,6 +567,7 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     notes,
     messages,
     recentRecords,
+    heatmapData,
     totalMemorizePages: Math.round(totalMemorizePages * 10) / 10,
     totalReviewPages: Math.round(totalReviewPages * 10) / 10,
     totalRecitationPages: Math.round(totalRecitationPages * 10) / 10,

@@ -27,6 +27,85 @@ import {
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+
+function AttendanceHeatmap({ heatmapData }: { heatmapData: Array<{ date: string; status: string }> }) {
+  const meccaToday = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  const todayStr = meccaToday.toISOString().slice(0, 10);
+
+  const recordMap = new Map(heatmapData.map(r => [r.date, r.status]));
+
+  const startDate = new Date(meccaToday);
+  startDate.setDate(meccaToday.getDate() - 181);
+  while (startDate.getUTCDay() !== 0) startDate.setDate(startDate.getDate() - 1);
+
+  const weeks: Array<Array<string | null>> = [];
+  let currentWeek: Array<string | null> = [];
+  const cur = new Date(startDate);
+  while (cur.toISOString().slice(0, 10) <= todayStr) {
+    const dateStr = cur.toISOString().slice(0, 10);
+    currentWeek.push(dateStr);
+    if (currentWeek.length === 7) { weeks.push(currentWeek); currentWeek = []; }
+    cur.setDate(cur.getDate() + 1);
+  }
+  if (currentWeek.length) {
+    while (currentWeek.length < 7) currentWeek.push(null);
+    weeks.push(currentWeek);
+  }
+
+  function getColor(dateStr: string | null): string {
+    if (!dateStr || dateStr > todayStr) return "bg-transparent";
+    const status = recordMap.get(dateStr);
+    if (!status) return "bg-muted/30 dark:bg-muted/20";
+    if (status === "absent") return "bg-rose-400";
+    if (status === "present") return "bg-emerald-500";
+    if (status === "low") return "bg-yellow-400";
+    return "bg-emerald-200";
+  }
+
+  function getTitle(dateStr: string | null): string {
+    if (!dateStr || dateStr > todayStr) return "";
+    const status = recordMap.get(dateStr);
+    const label = new Date(dateStr).toLocaleDateString("ar-SA", { month: "short", day: "numeric", weekday: "short" });
+    if (!status) return label + " — لا إدخال";
+    if (status === "absent") return label + " — غائبة";
+    if (status === "present") return label + " — حضرت وأنجزت";
+    if (status === "low") return label + " — حضرت (ناقص)";
+    return label + " — حضرت";
+  }
+
+  const dayLabels = ["أح", "", "ثل", "", "خم", "", "سب"];
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-0.5 overflow-x-auto pb-1">
+        <div className="flex flex-col gap-0.5 ml-0.5 shrink-0">
+          {dayLabels.map((d, i) => (
+            <div key={i} className="w-3 h-3 flex items-center justify-end">
+              <span className="text-[8px] text-muted-foreground leading-none">{d}</span>
+            </div>
+          ))}
+        </div>
+        {weeks.map((week, wi) => (
+          <div key={wi} className="flex flex-col gap-0.5 shrink-0">
+            {week.map((day, di) => (
+              <div
+                key={di}
+                className={`w-3 h-3 rounded-[2px] ${day && day <= todayStr ? getColor(day) : "bg-transparent"}`}
+                title={getTitle(day)}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />حضرت وأنجزت</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-yellow-400 inline-block" />حضرت ناقص</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-400 inline-block" />غائبة</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-muted/30 border inline-block" />لا إدخال</span>
+      </div>
+    </div>
+  );
+}
 import { useQueryClient } from "@tanstack/react-query";
 import ReviewPlanTab from "@/components/ReviewPlanTab";
 
@@ -434,6 +513,21 @@ export default function StudentProfilePage({ id }: { id: number }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Attendance Heatmap */}
+      {(profile as any).heatmapData && (profile as any).heatmapData.length > 0 && (
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold text-muted-foreground flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-primary" />
+              سجل الحضور (6 أشهر)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <AttendanceHeatmap heatmapData={(profile as any).heatmapData} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Monthly Attendance Trend Chart */}
       {profile.monthlyTrend && profile.monthlyTrend.some(m => m.sessions > 0) && (
