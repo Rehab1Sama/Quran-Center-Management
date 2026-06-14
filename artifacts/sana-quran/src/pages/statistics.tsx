@@ -6,7 +6,8 @@ import { formatPages } from "@/lib/quran";
 import { schoolConfig, getFieldLabel } from "@/lib/schoolConfig";
 import {
   BarChart2, Users, BookOpen, GraduationCap, TrendingUp, TrendingDown, Minus,
-  Award, Calendar, BookMarked, Eye, Layers, CheckCircle2, FlaskConical, Clock, AlertCircle
+  Award, Calendar, BookMarked, Eye, Layers, CheckCircle2, FlaskConical, Clock, AlertCircle,
+  Star, ShieldCheck
 } from "lucide-react";
 
 function getTrackLabel(dataEntryType: string, fallback: string): string {
@@ -119,6 +120,108 @@ function useJuzStats() {
       .catch(() => {});
   }, []);
   return data;
+}
+
+type TeacherPerf = {
+  teacherId: number; teacherName: string; circleId: number; circleName: string; track: string;
+  teacherAbsences: number; studentCount: number; totalSessions: number;
+  absenceCount: number; attendanceRate: number | null; deficiencyCount: number;
+  memorizePages: number; reviewPages: number; performanceScore: number;
+};
+
+function useTeacherPerformance(periodFrom?: string, periodTo?: string) {
+  const [data, setData] = useState<TeacherPerf[] | null>(null);
+  useEffect(() => {
+    const token = localStorage.getItem("sana_auth_token");
+    const params = periodFrom && periodTo ? `?dateFrom=${periodFrom}&dateTo=${periodTo}` : "";
+    fetch(`${BASE}/api/stats/teacher-performance${params}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(setData)
+      .catch(() => {});
+  }, [periodFrom, periodTo]);
+  return data;
+}
+
+function TeacherPerformanceCard({ periodFrom, periodTo }: { periodFrom?: string; periodTo?: string }) {
+  const data = useTeacherPerformance(periodFrom, periodTo);
+  if (!data || data.length === 0) return null;
+
+  const maxScore = Math.max(...data.map(t => t.performanceScore), 1);
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-bold flex items-center gap-2">
+          <GraduationCap className="w-4 h-4 text-teal-600" />
+          تقرير أداء المعلمات
+          <Badge className="mr-auto bg-muted text-muted-foreground border-0 text-xs">{data.length} معلمة</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/50 border-b border-border">
+              <tr>
+                <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">#</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">المعلمة</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">الحلقة</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">غياب المعلمة</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">حضور الطالبات</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">الحفظ (وجه)</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">التقصير</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">الأداء</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((t, i) => {
+                const scoreColor = t.performanceScore >= 70 ? "text-emerald-600" : t.performanceScore >= 40 ? "text-amber-600" : "text-rose-500";
+                const scoreBg    = t.performanceScore >= 70 ? "bg-emerald-500" : t.performanceScore >= 40 ? "bg-amber-400" : "bg-rose-400";
+                return (
+                  <tr key={t.teacherId} className={`border-b border-border/50 hover:bg-muted/20 transition-colors ${i === 0 ? "bg-amber-50/40" : ""}`}>
+                    <td className="py-2.5 px-3 font-bold text-muted-foreground">
+                      {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
+                    </td>
+                    <td className="py-2.5 px-3 font-semibold">{t.teacherName}</td>
+                    <td className="py-2.5 px-3 text-muted-foreground">{t.circleName}</td>
+                    <td className="py-2.5 px-3">
+                      {t.teacherAbsences > 0
+                        ? <span className="text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded">{t.teacherAbsences} يوم</span>
+                        : <span className="text-emerald-600 font-medium">✓ لا غياب</span>}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      {t.attendanceRate != null
+                        ? <span className={`font-bold ${t.attendanceRate >= 80 ? "text-emerald-600" : t.attendanceRate >= 60 ? "text-amber-600" : "text-rose-500"}`}>{t.attendanceRate}%</span>
+                        : "—"}
+                    </td>
+                    <td className="py-2.5 px-3 text-teal-700 font-bold">{formatPages(t.memorizePages)}</td>
+                    <td className="py-2.5 px-3">
+                      {t.deficiencyCount > 0
+                        ? <span className="text-orange-600 font-bold">{t.deficiencyCount}</span>
+                        : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="py-2.5 px-3 min-w-[90px]">
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex-1 bg-muted rounded-full h-1.5">
+                          <div className={`h-full rounded-full ${scoreBg} transition-all`}
+                            style={{ width: `${(t.performanceScore / maxScore) * 100}%` }} />
+                        </div>
+                        <span className={`font-bold w-6 text-left ${scoreColor}`}>{t.performanceScore}</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-3 py-2 bg-muted/30 border-t border-border/50">
+          <p className="text-[10px] text-muted-foreground">نقاط الأداء = حضور الطالبات (40%) + معدل الحفظ (40%) − التقصير (20%) − غياب المعلمة</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 type WeeklyComparison = {
@@ -369,10 +472,15 @@ function LeaderStats({ summary, circleStats, periodDays }: { summary: any; circl
   const planStats = useReviewPlanStats();
   const juzStats = useJuzStats();
   const weeklyData = useWeeklyComparison();
+  const today = new Date().toISOString().slice(0, 10);
+  const fromDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   return (
     <div className="space-y-5">
       {/* Weekly comparison */}
       {weeklyData && <WeeklyComparisonCard data={weeklyData} />}
+
+      {/* Teacher Performance */}
+      <TeacherPerformanceCard periodFrom={fromDate} periodTo={today} />
 
       {/* Staff counts */}
       <div>

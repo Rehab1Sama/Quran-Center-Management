@@ -873,4 +873,223 @@ router.get("/stats/weekly-comparison", authenticate, async (req, res): Promise<v
   });
 });
 
+// ── تقرير أداء المعلمات ────────────────────────────────────────────────────
+router.get("/stats/teacher-performance", authenticate, async (req, res): Promise<void> => {
+  const role = req.userRole!;
+  if (!["leader", "track_supervisor"].includes(role)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const userId = req.userId;
+
+  const { dateFrom, dateTo } = req.query as Record<string, string | undefined>;
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+  const from = dateFrom ?? monthStart;
+  const to   = dateTo   ?? today;
+
+  const allCircles  = await db.select().from(circlesTable);
+  const allUsers    = await db.select().from(usersTable).where(eq(usersTable.isArchived, false));
+  const allStudents = await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false));
+  const allTracks   = await db.select().from(tracksTable);
+
+  // فلترة المسار للمسؤولة
+  let visibleCircleIds: number[] | null = null;
+  if (role === "track_supervisor") {
+    const me = allUsers.find(u => u.id === userId);
+    visibleCircleIds = allCircles.filter(c => c.track === me?.track).map(c => c.id);
+  }
+
+  // جلب السجلات وغيابات المعلمات
+  const records = await db.select().from(recordsTable)
+    .where(and(gte(recordsTable.date, from), lte(recordsTable.date, to)));
+  const teacherAbsences = await db.select().from(teacherAbsencesTable)
+    .where(and(gte(teacherAbsencesTable.date, from), lte(teacherAbsencesTable.date, to)));
+
+  // خريطة نوع المسار
+  const circleTrackTypeMap: Record<number, string> = {};
+  for (const c of allCircles) {
+    if (c.trackId) {
+      const t = allTracks.find(t => t.id === c.trackId);
+      circleTrackTypeMap[c.id] = t ? t.dataEntryType : (c.trackType ?? "girls");
+    } else {
+      circleTrackTypeMap[c.id] = c.trackType ?? "girls";
+    }
+  }
+
+  // حساب التقصير لسجل واحد
+  const isShortcoming = (r: typeof recordsTable.$inferSelect): boolean => {
+    if (r.isAbsent) return false;
+    if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) return r.shortcomingOverride;
+    const trackType = circleTrackTypeMap[r.circleId];
+    const isRecitation = trackType === "recitation";
+    const noReview = !isRecitation &&
+      (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
+    const notListened = r.listenedToReciter === false;
+    return noReview || notListened;
+  };
+
+  // بناء تقرير لكل معلمة/مشرفة
+  const teachers = allUsers.filter(u =>
+    (u.role === "teacher" || u.role === "supervisor") &&
+    u.circleId &&
+    (visibleCircleIds ? visibleCircleIds.includes(u.circleId) : true)
+  );
+
+  const result = teachers.map(teacher => {
+    const circle = allCircles.find(c => c.id === teacher.circleId);
+    if (!circle) return null;
+
+    const circleRecords = records.filter(r => r.circleId === teacher.circleId);
+    const studentIds = allStudents.filter(s => s.circleId === teacher.circleId).map(s => s.id);
+
+    const totalSessions   = circleRecords.length;
+    const absenceCount    = circleRecords.filter(r => r.isAbsent).length;
+    const presentRecords  = circleRecords.filter(r => !r.isAbsent);
+    const attendanceRate  = totalSessions > 0 ? Math.round(((totalSessions - absenceCount) / totalSessions) * 100) : null;
+    const deficiencyCount = circleRecords.filter(isShortcoming).length;
+    const memorizePages   = Math.round(presentRecords.reduce((s, r) => s + (r.memorizePages ?? 0), 0) * 2) / 2;
+    const reviewPages     = Math.round(presentRecords.reduce((s, r) =>
+      s + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewPages ?? 0), 0) * 2) / 2;
+
+    const teacherAbsCount = teacherAbsences.filter(ta => ta.circleId === teacher.circleId).length;
+    const studentCount    = studentIds.length;
+
+    // نقاط الأداء: حضور الطالبات (40%) + حفظ لكل طالبة (40%) - تقصير (20%)
+    const avgMemorizePerStudent = studentCount > 0 ? memorizePages / studentCount : 0;
+    const deficiencyRate = totalSessions > 0 ? (deficiencyCount / totalSessions) * 100 : 0;
+    const performanceScore = Math.round(
+      (attendanceRate ?? 0) * 0.4 +
+      Math.min(avgMemorizePerStudent * 10, 40) -
+      deficiencyRate * 0.2 -
+      teacherAbsCount * 3
+    );
+
+    return {
+      teacherId: teacher.id,
+      teacherName: teacher.name,
+      circleId: circle.id,
+      circleName: circle.name,
+      track: circle.track,
+      teacherAbsences: teacherAbsCount,
+      studentCount,
+      totalSessions,
+      absenceCount,
+      attendanceRate,
+      deficiencyCount,
+      memorizePages,
+      reviewPages,
+      performanceScore: Math.max(0, performanceScore),
+    };
+  }).filter(Boolean);
+
+  // ترتيب بنقاط الأداء (الأعلى أولاً)
+  result.sort((a: any, b: any) => b.performanceScore - a.performanceScore);
+
+  res.json(result);
+});
+
+// ── لوحة التكريم الشهري — بلا غياب ولا تقصير ─────────────────────────────
+router.get("/stats/monthly-honor", authenticate, async (req, res): Promise<void> => {
+  const role = req.userRole!;
+  if (!["leader", "track_supervisor", "teacher", "supervisor"].includes(role)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const userId = req.userId;
+
+  const { month } = req.query as Record<string, string | undefined>;
+  const now = new Date();
+  const targetYear  = month ? parseInt(month.split("-")[0]) : now.getFullYear();
+  const targetMonth = month ? parseInt(month.split("-")[1]) - 1 : now.getMonth();
+
+  const monthStart = new Date(targetYear, targetMonth, 1).toISOString().slice(0, 10);
+  const monthEnd   = new Date(targetYear, targetMonth + 1, 0).toISOString().slice(0, 10);
+  const todayStr   = now.toISOString().slice(0, 10);
+  const effectiveEnd = monthEnd < todayStr ? monthEnd : todayStr;
+
+  const allCircles  = await db.select().from(circlesTable);
+  const allUsers    = await db.select().from(usersTable).where(eq(usersTable.isArchived, false));
+  const allStudents = await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false));
+  const allTracks   = await db.select().from(tracksTable);
+
+  // فلترة حسب الصلاحية
+  let visibleCircleIds: number[] | null = null;
+  if (role === "track_supervisor") {
+    const me = allUsers.find(u => u.id === userId);
+    visibleCircleIds = allCircles.filter(c => c.track === me?.track).map(c => c.id);
+  } else if (role === "teacher" || role === "supervisor") {
+    const me = allUsers.find(u => u.id === userId);
+    visibleCircleIds = me?.circleId ? [me.circleId] : [];
+  }
+
+  const circleTrackTypeMap: Record<number, string> = {};
+  for (const c of allCircles) {
+    if (c.trackId) {
+      const t = allTracks.find(t => t.id === c.trackId);
+      circleTrackTypeMap[c.id] = t ? t.dataEntryType : (c.trackType ?? "girls");
+    } else {
+      circleTrackTypeMap[c.id] = c.trackType ?? "girls";
+    }
+  }
+
+  const records = await db.select().from(recordsTable)
+    .where(and(gte(recordsTable.date, monthStart), lte(recordsTable.date, effectiveEnd)));
+
+  const filteredRecords = visibleCircleIds
+    ? records.filter(r => visibleCircleIds!.includes(r.circleId))
+    : records;
+
+  const isShortcoming = (r: typeof recordsTable.$inferSelect): boolean => {
+    if (r.isAbsent) return false;
+    if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) return r.shortcomingOverride;
+    const trackType = circleTrackTypeMap[r.circleId];
+    const isRecitation = trackType === "recitation";
+    const noReview = !isRecitation &&
+      (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
+    const notListened = r.listenedToReciter === false;
+    return noReview || notListened;
+  };
+
+  // تجميع السجلات بالطالبة
+  const byStudent: Record<number, typeof filteredRecords> = {};
+  for (const r of filteredRecords) {
+    if (!byStudent[r.studentId]) byStudent[r.studentId] = [];
+    byStudent[r.studentId].push(r);
+  }
+
+  const honored: {
+    studentId: number; studentName: string; circleName: string; track: string;
+    memorizePages: number; sessions: number;
+  }[] = [];
+
+  for (const [sidStr, recs] of Object.entries(byStudent)) {
+    const sid = parseInt(sidStr);
+    if (recs.length === 0) continue;
+    const hasAbsence     = recs.some(r => r.isAbsent);
+    const hasShortcoming = recs.some(r => isShortcoming(r));
+    if (hasAbsence || hasShortcoming) continue;
+
+    const student = allStudents.find(s => s.id === sid);
+    if (!student) continue;
+    const circle  = allCircles.find(c => c.id === recs[0].circleId);
+
+    honored.push({
+      studentId: sid,
+      studentName: student.fullName,
+      circleName: circle?.name ?? "—",
+      track: circle?.track ?? "—",
+      memorizePages: Math.round(recs.reduce((s, r) => s + (r.memorizePages ?? 0), 0) * 2) / 2,
+      sessions: recs.length,
+    });
+  }
+
+  honored.sort((a, b) => b.memorizePages - a.memorizePages);
+
+  res.json({
+    month: `${targetYear}-${String(targetMonth + 1).padStart(2, "0")}`,
+    monthLabel: new Date(targetYear, targetMonth, 1).toLocaleDateString("ar-SA", { month: "long", year: "numeric" }),
+    honoredCount: honored.length,
+    honored,
+  });
+});
+
 export default router;

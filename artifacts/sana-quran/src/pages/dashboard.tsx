@@ -1,6 +1,6 @@
 import { useGetStatsSummary, useGetCirclesStats, useGetCurrentUser, useGetRepeatedAbsences, useGetMonthlyComparison, useGetDailySnapshot, useListStudentsNearCompletion } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, Users, Calendar, Star, TrendingUp, TrendingDown, Minus, Award, CheckCircle2, AlertTriangle, Plane, ClipboardCheck, AlertCircle, GraduationCap } from "lucide-react";
+import { BookOpen, Users, Calendar, Star, TrendingUp, TrendingDown, Minus, Award, CheckCircle2, AlertTriangle, Plane, ClipboardCheck, AlertCircle, GraduationCap, ShieldCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatPages } from "@/lib/quran";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
@@ -33,10 +33,108 @@ function useWeeklyDash() {
   return data;
 }
 
+type HonorData = {
+  month: string; monthLabel: string; honoredCount: number;
+  honored: { studentId: number; studentName: string; circleName: string; track: string; memorizePages: number; sessions: number }[];
+};
+
+function useMonthlyHonor(month?: string) {
+  const [data, setData] = useState<HonorData | null>(null);
+  useEffect(() => {
+    const token = localStorage.getItem("sana_auth_token");
+    const params = month ? `?month=${month}` : "";
+    fetch(`${BASE}/api/stats/monthly-honor${params}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(setData)
+      .catch(() => {});
+  }, [month]);
+  return data;
+}
+
 function TrendIcon({ trend }: { trend?: string }) {
   if (trend === "up") return <TrendingUp className="w-3 h-3 text-emerald-500" />;
   if (trend === "down") return <TrendingDown className="w-3 h-3 text-rose-500" />;
   return <Minus className="w-3 h-3 text-muted-foreground" />;
+}
+
+function MonthlyHonorBoard({ role }: { role?: string }) {
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+  const honor = useMonthlyHonor(selectedMonth);
+
+  const prevMonth = () => {
+    const [y, m] = selectedMonth.split("-").map(Number);
+    const d = new Date(y, m - 2, 1);
+    setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  };
+  const nextMonth = () => {
+    const [y, m] = selectedMonth.split("-").map(Number);
+    const d = new Date(y, m, 1);
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const nextKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    if (nextKey > todayKey) return;
+    setSelectedMonth(nextKey);
+  };
+  const isCurrentMonth = selectedMonth === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  if (!honor) return null;
+
+  return (
+    <Card className="border-0 shadow-sm border-r-4 border-r-yellow-400 bg-gradient-to-l from-yellow-50/60 to-amber-50/40">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base font-bold flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-yellow-600" />
+            لوحة التكريم الشهري
+          </CardTitle>
+          <div className="flex items-center gap-1">
+            <button onClick={prevMonth} className="p-1 rounded-lg hover:bg-muted/60 transition-colors">
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <span className="text-xs font-semibold text-foreground px-1 min-w-[80px] text-center">{honor.monthLabel}</span>
+            <button onClick={nextMonth} disabled={isCurrentMonth} className="p-1 rounded-lg hover:bg-muted/60 transition-colors disabled:opacity-30">
+              <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {honor.honoredCount === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            لا توجد طالبات مكتملة الشروط حتى الآن
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 bg-yellow-100/60 rounded-xl px-3 py-2">
+              <Star className="w-4 h-4 text-yellow-600 shrink-0" />
+              <p className="text-xs text-yellow-800 font-medium">
+                طالبات بلا غياب ولا تقصير — <strong>{honor.honoredCount} طالبة</strong>
+              </p>
+            </div>
+            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              {honor.honored.map((s, i) => (
+                <div key={s.studentId} className="flex items-center gap-2 bg-white/70 rounded-xl px-3 py-2">
+                  <span className="text-sm font-bold text-amber-500 w-6 shrink-0">
+                    {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{s.studentName}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{s.circleName} · {s.track}</p>
+                  </div>
+                  <div className="flex flex-col items-end shrink-0">
+                    <span className="text-xs font-bold bg-teal-100 text-teal-700 rounded-full px-2 py-0.5">{formatPages(s.memorizePages)} وجه</span>
+                    <span className="text-[10px] text-muted-foreground mt-0.5">{s.sessions} جلسة</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function DashboardPage() {
@@ -448,6 +546,9 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Monthly Honor Board */}
+      <MonthlyHonorBoard role={user?.role} />
 
       {/* Monthly Comparison */}
       {monthly && (
