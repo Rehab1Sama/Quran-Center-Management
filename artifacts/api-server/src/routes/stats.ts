@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, recordsTable, studentsTable, circlesTable, usersTable, teacherAbsencesTable, tracksTable, dailyCircleTasksTable } from "@workspace/db";
+import { db, recordsTable, studentsTable, circlesTable, usersTable, teacherAbsencesTable, tracksTable, dailyCircleTasksTable, examRecordsTable } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
@@ -672,6 +672,92 @@ router.get("/stats/teacher-records", authenticate, async (req, res): Promise<voi
     .sort((a, b) => b.absenceCount - a.absenceCount);
 
   res.json(result);
+});
+
+router.get("/stats/juz-stats", authenticate, async (req, res): Promise<void> => {
+  const userRole = req.userRole;
+  const userId = req.userId;
+
+  const allCircles = await db.select().from(circlesTable);
+  const allUsers = await db.select().from(usersTable).where(eq(usersTable.isArchived, false));
+  let students = await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false));
+
+  if (userRole === "track_supervisor" || userRole === "data_entry") {
+    const userRecord = allUsers.find(u => u.id === userId);
+    const trackCircles = allCircles.filter(c => c.track === userRecord?.track).map(c => c.id);
+    students = students.filter(s => s.circleId && trackCircles.includes(s.circleId));
+  } else if (userRole === "teacher" || userRole === "supervisor") {
+    const userRecord = allUsers.find(u => u.id === userId);
+    const circleId = userRecord?.circleId;
+    if (circleId) students = students.filter(s => s.circleId === circleId);
+  }
+
+  const studentIds = students.map(s => s.id);
+  if (studentIds.length === 0) {
+    res.json({ examsByJuz: [], nearingJuzCompletion: 0, completedJuzNotTested: 0 });
+    return;
+  }
+
+  const allStudentRecords = await db.select({
+    studentId: recordsTable.studentId,
+    memorizePages: recordsTable.memorizePages,
+    isAbsent: recordsTable.isAbsent,
+  }).from(recordsTable);
+
+  const memorizeByStudent: Record<number, number> = {};
+  for (const r of allStudentRecords) {
+    if (!studentIds.includes(r.studentId)) continue;
+    if (r.isAbsent) continue;
+    memorizeByStudent[r.studentId] = (memorizeByStudent[r.studentId] ?? 0) + (r.memorizePages ?? 0);
+  }
+
+  const PAGES_PER_JUZ = 20;
+
+  let nearingJuzCompletion = 0;
+  const completedJuzByStudent: Record<number, number> = {};
+
+  for (const studentId of studentIds) {
+    const total = Math.round((memorizeByStudent[studentId] ?? 0) * 2) / 2;
+    if (total <= 0) continue;
+
+    const position = Math.round((total % PAGES_PER_JUZ) * 2) / 2;
+
+    if (position === 0) {
+      const completedJuz = Math.round(total / PAGES_PER_JUZ);
+      if (completedJuz > 0 && completedJuz <= 30) {
+        completedJuzByStudent[studentId] = completedJuz;
+      }
+    } else if (position >= PAGES_PER_JUZ - 2) {
+      nearingJuzCompletion++;
+    }
+  }
+
+  const allExamRecords = await db.select().from(examRecordsTable);
+  const studentExamRecords = allExamRecords.filter(e => studentIds.includes(e.studentId));
+
+  let completedJuzNotTested = 0;
+  for (const [studentIdStr, juzNum] of Object.entries(completedJuzByStudent)) {
+    const studentId = parseInt(studentIdStr);
+    const hasExam = studentExamRecords.some(e => e.studentId === studentId && e.juzNumber === juzNum);
+    if (!hasExam) completedJuzNotTested++;
+  }
+
+  const examsByJuzMap: Record<number, Set<number>> = {};
+  for (const e of studentExamRecords) {
+    if (e.juzNumber == null) continue;
+    if (!examsByJuzMap[e.juzNumber]) examsByJuzMap[e.juzNumber] = new Set();
+    examsByJuzMap[e.juzNumber].add(e.studentId);
+  }
+
+  const examsByJuz = Object.entries(examsByJuzMap)
+    .map(([juz, studs]) => ({ juzNumber: parseInt(juz), count: studs.size }))
+    .sort((a, b) => a.juzNumber - b.juzNumber);
+
+  res.json({
+    examsByJuz,
+    nearingJuzCompletion,
+    completedJuzNotTested,
+  });
 });
 
 export default router;

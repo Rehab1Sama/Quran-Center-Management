@@ -6,7 +6,7 @@ import { formatPages } from "@/lib/quran";
 import { schoolConfig, getFieldLabel } from "@/lib/schoolConfig";
 import {
   BarChart2, Users, BookOpen, GraduationCap, TrendingUp,
-  Award, Calendar, BookMarked, Eye, Layers, CheckCircle2
+  Award, Calendar, BookMarked, Eye, Layers, CheckCircle2, FlaskConical, Clock, AlertCircle
 } from "lucide-react";
 
 function getTrackLabel(dataEntryType: string, fallback: string): string {
@@ -101,6 +101,85 @@ function useReviewPlanStats() {
   return data;
 }
 
+type JuzStats = {
+  examsByJuz: { juzNumber: number; count: number }[];
+  nearingJuzCompletion: number;
+  completedJuzNotTested: number;
+};
+
+function useJuzStats() {
+  const [data, setData] = useState<JuzStats | null>(null);
+  useEffect(() => {
+    const token = localStorage.getItem("auth_token");
+    fetch(`${BASE}/api/stats/juz-stats`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(setData)
+      .catch(() => {});
+  }, []);
+  return data;
+}
+
+function JuzStatsCard({ juzStats }: { juzStats: JuzStats | null }) {
+  if (!juzStats) return null;
+  const { examsByJuz, nearingJuzCompletion, completedJuzNotTested } = juzStats;
+  const maxCount = Math.max(...examsByJuz.map(j => j.count), 1);
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-bold flex items-center gap-2">
+          <FlaskConical className="w-4 h-4 text-violet-600" />
+          إحصائيات الاختبارات والأجزاء
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-amber-50 p-3 text-center border border-amber-100">
+            <Clock className="w-4 h-4 mx-auto mb-1 text-amber-500" />
+            <p className="text-2xl font-bold text-amber-600">{nearingJuzCompletion}</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-tight">شارفن على إنهاء الجزء<br/><span className="text-amber-500 font-medium">(باقي وجهين)</span></p>
+          </div>
+          <div className="rounded-xl bg-rose-50 p-3 text-center border border-rose-100">
+            <AlertCircle className="w-4 h-4 mx-auto mb-1 text-rose-500" />
+            <p className="text-2xl font-bold text-rose-600">{completedJuzNotTested}</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-tight">أنهين الجزء<br/><span className="text-rose-500 font-medium">ولم يختبرن بعد</span></p>
+          </div>
+        </div>
+
+        {examsByJuz.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+              <FlaskConical className="w-3 h-3 text-violet-500" />
+              المختبرات بالأجزاء
+            </p>
+            <div className="space-y-1">
+              {examsByJuz.map(j => (
+                <div key={j.juzNumber} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-12 shrink-0 text-right">
+                    جزء {j.juzNumber}
+                  </span>
+                  <div className="flex-1 bg-muted rounded-full h-2">
+                    <div
+                      className="h-full rounded-full bg-violet-400 transition-all"
+                      style={{ width: `${(j.count / maxCount) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-bold w-6 text-right text-violet-700">{j.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {examsByJuz.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-2">لا توجد اختبارات مسجّلة بعد</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ReviewPlanStatsCard({ planStats }: { planStats: ReviewPlanStats | null }) {
   if (!planStats || planStats.totalWithPlan === 0) return null;
   const rateColor =
@@ -179,6 +258,7 @@ function ReviewPlanStatsCard({ planStats }: { planStats: ReviewPlanStats | null 
 function LeaderStats({ summary, circleStats, periodDays }: { summary: any; circleStats: any[]; periodDays: number }) {
   const teacherRecords = useTeacherRecords(periodDays);
   const planStats = useReviewPlanStats();
+  const juzStats = useJuzStats();
   return (
     <div className="space-y-5">
       {/* Staff counts */}
@@ -274,6 +354,9 @@ function LeaderStats({ summary, circleStats, periodDays }: { summary: any; circl
 
       {/* Review Plan Stats */}
       <ReviewPlanStatsCard planStats={planStats} />
+
+      {/* Juz Stats */}
+      <JuzStatsCard juzStats={juzStats} />
 
       {/* Circles Table */}
       {circleStats?.length > 0 && (
