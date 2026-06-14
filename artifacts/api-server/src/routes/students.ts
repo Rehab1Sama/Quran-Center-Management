@@ -337,7 +337,11 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
 
     if (plan && leaveDays.length > 0) {
       const records = await db.select().from(recordsTable)
-        .where(and(eq(recordsTable.studentId, enr.id), gte(recordsTable.date, leaveStart)));
+        .where(and(
+          eq(recordsTable.studentId, enr.id),
+          eq(recordsTable.circleId, enr.circleId),
+          gte(recordsTable.date, leaveStart),
+        ));
       for (const day of leaveDays) {
         const rec = records.find(r => r.date === day && !r.isAbsent);
         if (rec) { enteredDays++; if (day === today) enteredToday = true; }

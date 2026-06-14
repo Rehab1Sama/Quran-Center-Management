@@ -30,7 +30,7 @@ export const LoginResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['leader', 'deputy', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
+  "role": zod.enum(['leader', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
   "track": zod.string().nullish(),
   "circleId": zod.number().nullish(),
   "phone": zod.string().nullish(),
@@ -66,7 +66,7 @@ export const LoginSelectAccountResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['leader', 'deputy', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
+  "role": zod.enum(['leader', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
   "track": zod.string().nullish(),
   "circleId": zod.number().nullish(),
   "phone": zod.string().nullish(),
@@ -95,7 +95,7 @@ export const GetCurrentUserResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['leader', 'deputy', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
+  "role": zod.enum(['leader', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
   "track": zod.string().nullish(),
   "circleId": zod.number().nullish(),
   "phone": zod.string().nullish(),
@@ -118,7 +118,7 @@ export const ListUsersResponseItem = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['leader', 'deputy', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
+  "role": zod.enum(['leader', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
   "track": zod.string().nullish(),
   "circleId": zod.number().nullish(),
   "phone": zod.string().nullish(),
@@ -159,7 +159,7 @@ export const GetUserResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['leader', 'deputy', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
+  "role": zod.enum(['leader', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
   "track": zod.string().nullish(),
   "circleId": zod.number().nullish(),
   "phone": zod.string().nullish(),
@@ -195,7 +195,7 @@ export const UpdateUserResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['leader', 'deputy', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
+  "role": zod.enum(['leader', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
   "track": zod.string().nullish(),
   "circleId": zod.number().nullish(),
   "phone": zod.string().nullish(),
@@ -296,7 +296,7 @@ export const GetCircleResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['leader', 'deputy', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
+  "role": zod.enum(['leader', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
   "track": zod.string().nullish(),
   "circleId": zod.number().nullish(),
   "phone": zod.string().nullish(),
@@ -310,7 +310,7 @@ export const GetCircleResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['leader', 'deputy', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
+  "role": zod.enum(['leader', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
   "track": zod.string().nullish(),
   "circleId": zod.number().nullish(),
   "phone": zod.string().nullish(),
@@ -1144,10 +1144,14 @@ export const DeleteStudentParams = zod.object({
 
 
 /**
- * @summary Move student to archive
+ * @summary Archive a student from a specific circle (or globally for leaders)
  */
 export const ArchiveStudentParams = zod.object({
   "id": zod.coerce.number()
+})
+
+export const ArchiveStudentBody = zod.object({
+  "circleId": zod.number().optional().describe('If provided, archives only this enrollment. If omitted, archives globally (leader only).')
 })
 
 export const ArchiveStudentResponse = zod.object({
@@ -1163,6 +1167,41 @@ export const ArchiveStudentResponse = zod.object({
   "archivedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
+
+
+/**
+ * @summary Enroll a student in an additional circle
+ */
+export const EnrollStudentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const EnrollStudentBody = zod.object({
+  "circleId": zod.number()
+})
+
+export const EnrollStudentResponse = zod.object({
+  "ok": zod.boolean().optional()
+})
+
+
+/**
+ * @summary List all circle enrollments for a student
+ */
+export const GetStudentEnrollmentsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetStudentEnrollmentsResponseItem = zod.object({
+  "circleId": zod.number().optional(),
+  "circleName": zod.string().optional(),
+  "circleTrack": zod.string().optional(),
+  "isArchived": zod.boolean().optional(),
+  "leaveStart": zod.string().nullish(),
+  "leaveEnd": zod.string().nullish(),
+  "createdAt": zod.string().optional()
+})
+export const GetStudentEnrollmentsResponse = zod.array(GetStudentEnrollmentsResponseItem)
 
 
 /**
@@ -1189,6 +1228,14 @@ export const GetStudentProfileResponse = zod.object({
   "name": zod.string().optional(),
   "track": zod.string().optional()
 }).nullish(),
+  "enrollments": zod.array(zod.object({
+  "circleId": zod.number().optional(),
+  "circleName": zod.string().optional(),
+  "circleTrack": zod.string().optional(),
+  "isArchived": zod.boolean().optional(),
+  "leaveStart": zod.string().nullish(),
+  "leaveEnd": zod.string().nullish()
+})).optional(),
   "attendanceSummary": zod.object({
   "totalSessions": zod.number().optional(),
   "totalAbsences": zod.number().optional(),
@@ -1865,7 +1912,7 @@ export const DisableUserResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['leader', 'deputy', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
+  "role": zod.enum(['leader', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
   "track": zod.string().nullish(),
   "circleId": zod.number().nullish(),
   "phone": zod.string().nullish(),
@@ -1888,7 +1935,7 @@ export const EnableUserResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['leader', 'deputy', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
+  "role": zod.enum(['leader', 'data_entry', 'teacher', 'supervisor', 'student', 'track_supervisor', 'volunteer', 'exam_supervisor']),
   "track": zod.string().nullish(),
   "circleId": zod.number().nullish(),
   "phone": zod.string().nullish(),

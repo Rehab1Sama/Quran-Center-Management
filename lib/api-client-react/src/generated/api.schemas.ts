@@ -25,7 +25,6 @@ export type UserRole = typeof UserRole[keyof typeof UserRole];
 
 export const UserRole = {
   leader: 'leader',
-  deputy: 'deputy',
   data_entry: 'data_entry',
   teacher: 'teacher',
   supervisor: 'supervisor',
@@ -559,6 +558,17 @@ export type StudentProfileCircle = {
   track?: string;
 } | null;
 
+export type StudentProfileEnrollmentsItem = {
+  circleId?: number;
+  circleName?: string;
+  circleTrack?: string;
+  isArchived?: boolean;
+  /** @nullable */
+  leaveStart?: string | null;
+  /** @nullable */
+  leaveEnd?: string | null;
+};
+
 export type StudentProfileAttendanceSummary = {
   totalSessions?: number;
   totalAbsences?: number;
@@ -657,6 +667,7 @@ export interface StudentProfile {
   createdAt: string;
   /** @nullable */
   circle?: StudentProfileCircle;
+  enrollments?: StudentProfileEnrollmentsItem[];
   attendanceSummary: StudentProfileAttendanceSummary;
   recentAbsences: string[];
   monthlyTrend: AttendanceTrendItem[];
@@ -1289,6 +1300,31 @@ isArchived?: boolean;
  * Search by name
  */
 q?: string;
+};
+
+export type ArchiveStudentBody = {
+  /** If provided, archives only this enrollment. If omitted, archives globally (leader only). */
+  circleId?: number;
+};
+
+export type EnrollStudentBody = {
+  circleId: number;
+};
+
+export type EnrollStudent200 = {
+  ok?: boolean;
+};
+
+export type GetStudentEnrollments200Item = {
+  circleId?: number;
+  circleName?: string;
+  circleTrack?: string;
+  isArchived?: boolean;
+  /** @nullable */
+  leaveStart?: string | null;
+  /** @nullable */
+  leaveEnd?: string | null;
+  createdAt?: string;
 };
 
 export type ListRecordsParams = {

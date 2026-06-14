@@ -13,6 +13,7 @@ import {
   useUpdateStudentGoal,
   useDeleteStudentGoal,
   useListCircleNames,
+  useEnrollStudent,
   type CreateStudentGoalBody,
   type UpdateStudentGoalBody,
 } from "@workspace/api-client-react";
@@ -165,7 +166,6 @@ export default function StudentProfilePage({ id }: { id: number }) {
 
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
   const [enrollCircleId, setEnrollCircleId] = useState("");
-  const [enrollLoading, setEnrollLoading] = useState(false);
   const [perCircleLeaveOpen, setPerCircleLeaveOpen] = useState<number | null>(null);
   const [perCircleLeaveStart, setPerCircleLeaveStart] = useState("");
   const [perCircleLeaveEnd, setPerCircleLeaveEnd] = useState("");
@@ -259,30 +259,28 @@ export default function StudentProfilePage({ id }: { id: number }) {
     archiveStudent.mutate({ id }, { onSuccess: () => { toast({ title: "تم أرشفة الطالبة" }); invalidate(); } });
   };
 
+  const enrollStudentMutation = useEnrollStudent();
+
   const handleArchiveFromCircle = (circleId: number, circleName: string) => {
     if (!confirm(`هل تريدين إخراج "${profile?.fullName}" من حلقة "${circleName}"؟`)) return;
-    const token = localStorage.getItem("auth_token");
-    fetch(`/api/students/${id}/archive`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ circleId }),
-    })
-      .then(r => { if (!r.ok) throw new Error(); toast({ title: "تم الإخراج من الحلقة" }); invalidate(); })
-      .catch(() => toast({ title: "خطأ في الإخراج", variant: "destructive" }));
+    archiveStudent.mutate(
+      { id, data: { circleId } },
+      {
+        onSuccess: () => { toast({ title: "تم الإخراج من الحلقة" }); invalidate(); },
+        onError: () => toast({ title: "خطأ في الإخراج", variant: "destructive" }),
+      }
+    );
   };
 
   const handleEnrollInCircle = () => {
     if (!enrollCircleId) return;
-    setEnrollLoading(true);
-    const token = localStorage.getItem("auth_token");
-    fetch(`/api/students/${id}/enroll`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ circleId: parseInt(enrollCircleId) }),
-    })
-      .then(r => { if (!r.ok) throw new Error(); toast({ title: "تم تسجيل الطالبة في الحلقة الجديدة" }); invalidate(); setEnrollDialogOpen(false); setEnrollCircleId(""); })
-      .catch(() => toast({ title: "خطأ في التسجيل", variant: "destructive" }))
-      .finally(() => setEnrollLoading(false));
+    enrollStudentMutation.mutate(
+      { id, data: { circleId: parseInt(enrollCircleId) } },
+      {
+        onSuccess: () => { toast({ title: "تم تسجيل الطالبة في الحلقة الجديدة" }); invalidate(); setEnrollDialogOpen(false); setEnrollCircleId(""); },
+        onError: () => toast({ title: "خطأ في التسجيل", variant: "destructive" }),
+      }
+    );
   };
 
   const handlePerCircleLeave = (circleId: number) => {
@@ -640,8 +638,8 @@ export default function StudentProfilePage({ id }: { id: number }) {
               ))}
             </select>
             <div className="flex gap-2">
-              <Button size="sm" className="flex-1" onClick={handleEnrollInCircle} disabled={!enrollCircleId || enrollLoading}>
-                {enrollLoading ? "جاري التسجيل..." : "تسجيل"}
+              <Button size="sm" className="flex-1" onClick={handleEnrollInCircle} disabled={!enrollCircleId || enrollStudentMutation.isPending}>
+                {enrollStudentMutation.isPending ? "جاري التسجيل..." : "تسجيل"}
               </Button>
               <Button size="sm" variant="outline" className="flex-1" onClick={() => setEnrollDialogOpen(false)}>إلغاء</Button>
             </div>

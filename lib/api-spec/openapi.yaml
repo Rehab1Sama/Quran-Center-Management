@@ -1301,7 +1301,68 @@ paths:
     patch:
       operationId: archiveStudent
       tags: [students]
-      summary: Move student to archive
+      summary: Archive a student from a specific circle (or globally for leaders)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                circleId:
+                  type: integer
+                  description: If provided, archives only this enrollment. If omitted, archives globally (leader only).
+      responses:
+        "200":
+          description: Student archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+
+  /students/{id}/enroll:
+    post:
+      operationId: enrollStudent
+      tags: [students]
+      summary: Enroll a student in an additional circle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [circleId]
+              properties:
+                circleId:
+                  type: integer
+      responses:
+        "200":
+          description: Enrollment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /students/{id}/enrollments:
+    get:
+      operationId: getStudentEnrollments
+      tags: [students]
+      summary: List all circle enrollments for a student
       parameters:
         - name: id
           in: path
@@ -1310,11 +1371,28 @@ paths:
             type: integer
       responses:
         "200":
-          description: Student archived
+          description: List of enrollments
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Student"
+                type: array
+                items:
+                  type: object
+                  properties:
+                    circleId:
+                      type: integer
+                    circleName:
+                      type: string
+                    circleTrack:
+                      type: string
+                    isArchived:
+                      type: boolean
+                    leaveStart:
+                      type: ["string", "null"]
+                    leaveEnd:
+                      type: ["string", "null"]
+                    createdAt:
+                      type: string
 
   /students/{id}/profile:
     get:
@@ -2787,6 +2865,23 @@ components:
               type: string
             track:
               type: string
+        enrollments:
+          type: array
+          items:
+            type: object
+            properties:
+              circleId:
+                type: integer
+              circleName:
+                type: string
+              circleTrack:
+                type: string
+              isArchived:
+                type: boolean
+              leaveStart:
+                type: ["string", "null"]
+              leaveEnd:
+                type: ["string", "null"]
         attendanceSummary:
           type: object
           properties:

@@ -21,6 +21,7 @@ import type {
 
 import type {
   AddNoteBody,
+  ArchiveStudentBody,
   AttendanceByDate,
   AttendanceSummary,
   AutoAssignBadgeEvent200,
@@ -54,6 +55,8 @@ import type {
   DailyCircleTask,
   DailySnapshot,
   DeleteTeacherAbsenceParams,
+  EnrollStudent200,
+  EnrollStudentBody,
   ExamRecord,
   ExamRotation,
   ExamTeacherAssignment,
@@ -63,6 +66,7 @@ import type {
   GetMonthlyAttendanceReportParams,
   GetRepeatedAbsencesParams,
   GetStatsSummaryParams,
+  GetStudentEnrollments200Item,
   GetTodayAttendanceParams,
   HealthStatus,
   ListBadgeAssignmentsParams,
@@ -4948,16 +4952,17 @@ export const getArchiveStudentUrl = (id: number,) => {
 }
 
 /**
- * @summary Move student to archive
+ * @summary Archive a student from a specific circle (or globally for leaders)
  */
-export const archiveStudent = async (id: number, options?: RequestInit): Promise<Student> => {
+export const archiveStudent = async (id: number,
+    archiveStudentBody?: ArchiveStudentBody, options?: RequestInit): Promise<Student> => {
 
   return customFetch<Student>(getArchiveStudentUrl(id),
   {
     ...options,
-    method: 'PATCH'
-
-
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(archiveStudentBody)
   }
 );}
 
@@ -4965,8 +4970,8 @@ export const archiveStudent = async (id: number, options?: RequestInit): Promise
 
 
 export const getArchiveStudentMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof archiveStudent>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof archiveStudent>>, TError,{id: number}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof archiveStudent>>, TError,{id: number;data?: BodyType<ArchiveStudentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof archiveStudent>>, TError,{id: number;data?: BodyType<ArchiveStudentBody>}, TContext> => {
 
 const mutationKey = ['archiveStudent'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -4978,10 +4983,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof archiveStudent>>, {id: number}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof archiveStudent>>, {id: number;data?: BodyType<ArchiveStudentBody>}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  archiveStudent(id,requestOptions)
+          return  archiveStudent(id,data,requestOptions)
         }
 
 
@@ -4992,22 +4997,170 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type ArchiveStudentMutationResult = NonNullable<Awaited<ReturnType<typeof archiveStudent>>>
-
+    export type ArchiveStudentMutationBody = BodyType<ArchiveStudentBody> | undefined
     export type ArchiveStudentMutationError = ErrorType<unknown>
 
     /**
- * @summary Move student to archive
+ * @summary Archive a student from a specific circle (or globally for leaders)
  */
 export const useArchiveStudent = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof archiveStudent>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof archiveStudent>>, TError,{id: number;data?: BodyType<ArchiveStudentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof archiveStudent>>,
         TError,
-        {id: number},
+        {id: number;data?: BodyType<ArchiveStudentBody>},
         TContext
       > => {
       return useMutation(getArchiveStudentMutationOptions(options));
     }
+
+export const getEnrollStudentUrl = (id: number,) => {
+
+
+
+
+  return `/api/students/${id}/enroll`
+}
+
+/**
+ * @summary Enroll a student in an additional circle
+ */
+export const enrollStudent = async (id: number,
+    enrollStudentBody: EnrollStudentBody, options?: RequestInit): Promise<EnrollStudent200> => {
+
+  return customFetch<EnrollStudent200>(getEnrollStudentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(enrollStudentBody)
+  }
+);}
+
+
+
+
+export const getEnrollStudentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof enrollStudent>>, TError,{id: number;data: BodyType<EnrollStudentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof enrollStudent>>, TError,{id: number;data: BodyType<EnrollStudentBody>}, TContext> => {
+
+const mutationKey = ['enrollStudent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof enrollStudent>>, {id: number;data: BodyType<EnrollStudentBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  enrollStudent(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EnrollStudentMutationResult = NonNullable<Awaited<ReturnType<typeof enrollStudent>>>
+    export type EnrollStudentMutationBody = BodyType<EnrollStudentBody>
+    export type EnrollStudentMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Enroll a student in an additional circle
+ */
+export const useEnrollStudent = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof enrollStudent>>, TError,{id: number;data: BodyType<EnrollStudentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof enrollStudent>>,
+        TError,
+        {id: number;data: BodyType<EnrollStudentBody>},
+        TContext
+      > => {
+      return useMutation(getEnrollStudentMutationOptions(options));
+    }
+
+export const getGetStudentEnrollmentsUrl = (id: number,) => {
+
+
+
+
+  return `/api/students/${id}/enrollments`
+}
+
+/**
+ * @summary List all circle enrollments for a student
+ */
+export const getStudentEnrollments = async (id: number, options?: RequestInit): Promise<GetStudentEnrollments200Item[]> => {
+
+  return customFetch<GetStudentEnrollments200Item[]>(getGetStudentEnrollmentsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStudentEnrollmentsQueryKey = (id: number,) => {
+    return [
+    `/api/students/${id}/enrollments`
+    ] as const;
+    }
+
+
+export const getGetStudentEnrollmentsQueryOptions = <TData = Awaited<ReturnType<typeof getStudentEnrollments>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStudentEnrollments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStudentEnrollmentsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStudentEnrollments>>> = ({ signal }) => getStudentEnrollments(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStudentEnrollments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStudentEnrollmentsQueryResult = NonNullable<Awaited<ReturnType<typeof getStudentEnrollments>>>
+export type GetStudentEnrollmentsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all circle enrollments for a student
+ */
+
+export function useGetStudentEnrollments<TData = Awaited<ReturnType<typeof getStudentEnrollments>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStudentEnrollments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStudentEnrollmentsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetStudentProfileUrl = (id: number,) => {
 
