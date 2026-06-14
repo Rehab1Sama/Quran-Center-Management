@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatPages } from "@/lib/quran";
 import { schoolConfig, getFieldLabel } from "@/lib/schoolConfig";
 import {
-  BarChart2, Users, BookOpen, GraduationCap, TrendingUp,
+  BarChart2, Users, BookOpen, GraduationCap, TrendingUp, TrendingDown, Minus,
   Award, Calendar, BookMarked, Eye, Layers, CheckCircle2, FlaskConical, Clock, AlertCircle
 } from "lucide-react";
 
@@ -68,7 +68,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function useTeacherRecords(periodDays: number) {
   const [data, setData] = useState<any[]>([]);
   useEffect(() => {
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem("sana_auth_token");
     fetch(`${BASE}/api/stats/teacher-records?days=${periodDays}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
@@ -90,7 +90,7 @@ type ReviewPlanStats = {
 function useReviewPlanStats() {
   const [data, setData] = useState<ReviewPlanStats | null>(null);
   useEffect(() => {
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem("sana_auth_token");
     fetch(`${BASE}/api/stats/review-plan-stats`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
@@ -110,7 +110,7 @@ type JuzStats = {
 function useJuzStats() {
   const [data, setData] = useState<JuzStats | null>(null);
   useEffect(() => {
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem("sana_auth_token");
     fetch(`${BASE}/api/stats/juz-stats`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
@@ -119,6 +119,115 @@ function useJuzStats() {
       .catch(() => {});
   }, []);
   return data;
+}
+
+type WeeklyComparison = {
+  thisWeek: { memorize: number; reviewNear: number; reviewFar: number; totalPages: number; absences: number; attendanceRate: number | null; topStudents: { name: string; pages: number }[]; topCircleName: string | null; topCirclePages: number };
+  lastWeek: { memorize: number; reviewNear: number; reviewFar: number; totalPages: number; absences: number; attendanceRate: number | null; topStudents: { name: string; pages: number }[]; topCircleName: string | null; topCirclePages: number };
+  trends: Record<string, "up" | "down" | "same">;
+  changes: Record<string, number | null>;
+};
+
+function useWeeklyComparison() {
+  const [data, setData] = useState<WeeklyComparison | null>(null);
+  useEffect(() => {
+    const token = localStorage.getItem("sana_auth_token");
+    fetch(`${BASE}/api/stats/weekly-comparison`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(setData)
+      .catch(() => {});
+  }, []);
+  return data;
+}
+
+function WeeklyTrendIcon({ trend, positive = "up" }: { trend?: string; positive?: "up" | "down" }) {
+  const isGood = trend === positive;
+  const isBad  = trend === (positive === "up" ? "down" : "up");
+  if (isGood) return <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />;
+  if (isBad)  return <TrendingDown className="w-3.5 h-3.5 text-rose-500" />;
+  return <Minus className="w-3.5 h-3.5 text-muted-foreground" />;
+}
+
+function WeeklyComparisonCard({ data }: { data: WeeklyComparison }) {
+  const { thisWeek, lastWeek, trends, changes } = data;
+
+  const metrics = [
+    { label: "الحفظ", key: "memorize", curr: thisWeek.memorize, prev: lastWeek.memorize, color: "text-teal-700", bg: "bg-teal-50", positive: "up" as const, unit: "وجه" },
+    { label: "م. قريبة", key: "reviewNear", curr: thisWeek.reviewNear, prev: lastWeek.reviewNear, color: "text-blue-700", bg: "bg-blue-50", positive: "up" as const, unit: "وجه" },
+    { label: "م. بعيدة", key: "reviewFar", curr: thisWeek.reviewFar, prev: lastWeek.reviewFar, color: "text-indigo-700", bg: "bg-indigo-50", positive: "up" as const, unit: "وجه" },
+    { label: "الغياب", key: "absences", curr: thisWeek.absences, prev: lastWeek.absences, color: "text-rose-600", bg: "bg-rose-50", positive: "down" as const, unit: "" },
+  ];
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-bold flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-primary" />
+          مقارنة هذا الأسبوع بالماضي
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {metrics.map(m => {
+            const ch = changes[m.key];
+            const tr = trends[m.key];
+            return (
+              <div key={m.key} className={`${m.bg} rounded-xl p-3`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-muted-foreground font-medium">{m.label}</span>
+                  <WeeklyTrendIcon trend={tr} positive={m.positive} />
+                </div>
+                <p className={`text-xl font-bold ${m.color}`}>{m.unit ? formatPages(m.curr) : m.curr}</p>
+                <div className="flex items-center gap-1 mt-1">
+                  <span className="text-[10px] text-muted-foreground">قبله: {m.unit ? formatPages(m.prev) : m.prev}</span>
+                  {ch !== null && ch !== 0 && (
+                    <span className={`text-[10px] font-bold ${ch > 0 ? (m.positive === "up" ? "text-emerald-600" : "text-rose-500") : (m.positive === "up" ? "text-rose-500" : "text-emerald-600")}`}>
+                      {ch > 0 ? "+" : ""}{ch}%
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* أفضل 3 طالبات */}
+        {thisWeek.topStudents.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
+              <Award className="w-3.5 h-3.5 text-amber-500" />
+              أعلى حفظًا هذا الأسبوع
+            </p>
+            <div className="space-y-1.5">
+              {thisWeek.topStudents.map((s, i) => (
+                <div key={i} className="flex items-center justify-between bg-amber-50/60 rounded-lg px-3 py-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-amber-700 w-4">{i + 1}.</span>
+                    <span className="text-sm font-semibold text-amber-900">{s.name}</span>
+                  </div>
+                  <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">{formatPages(s.pages)} وجه</Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* أفضل حلقة */}
+        {thisWeek.topCircleName && (
+          <div className="flex items-center gap-3 bg-emerald-50 rounded-xl px-3 py-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div>
+              <p className="text-xs text-muted-foreground">أفضل حلقة هذا الأسبوع</p>
+              <p className="font-bold text-emerald-800 text-sm">{thisWeek.topCircleName}</p>
+            </div>
+            <Badge className="mr-auto bg-emerald-100 text-emerald-700 border-0">{formatPages(thisWeek.topCirclePages)} وجه</Badge>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function JuzStatsCard({ juzStats }: { juzStats: JuzStats | null }) {
@@ -259,8 +368,12 @@ function LeaderStats({ summary, circleStats, periodDays }: { summary: any; circl
   const teacherRecords = useTeacherRecords(periodDays);
   const planStats = useReviewPlanStats();
   const juzStats = useJuzStats();
+  const weeklyData = useWeeklyComparison();
   return (
     <div className="space-y-5">
+      {/* Weekly comparison */}
+      {weeklyData && <WeeklyComparisonCard data={weeklyData} />}
+
       {/* Staff counts */}
       <div>
         <h2 className="text-sm font-bold text-muted-foreground mb-3 flex items-center gap-2">

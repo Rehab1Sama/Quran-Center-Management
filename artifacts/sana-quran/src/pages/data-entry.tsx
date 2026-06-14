@@ -570,6 +570,25 @@ export default function DataEntryPage() {
     { query: { queryKey: ["studentRecords", selectedStudent?.studentId], enabled: !!selectedStudent && dialogOpen } }
   );
 
+  // Fetch review plan for selected student to suggest far review range
+  const [reviewPlanToday, setReviewPlanToday] = useState<{ surahStart?: number; ayahStart?: number; surahEnd?: number; ayahEnd?: number; pages?: number } | null>(null);
+  useEffect(() => {
+    if (!selectedStudent || !dialogOpen) { setReviewPlanToday(null); return; }
+    const token = getToken();
+    fetch(`${BASE}/api/students/${selectedStudent.studentId}/review-plan`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: any) => {
+        if (data?.todayEntry?.surahStart && data?.todayEntry?.surahEnd) {
+          setReviewPlanToday(data.todayEntry);
+        } else {
+          setReviewPlanToday(null);
+        }
+      })
+      .catch(() => setReviewPlanToday(null));
+  }, [selectedStudent?.studentId, dialogOpen]);
+
   // Fetch all records for selected circle+date (for "entered today" section)
   const { data: circleRecordsRaw } = useListRecords(
     selectedCircleId ? { circleId: selectedCircleId, date: selectedDate } : undefined,
@@ -1419,20 +1438,46 @@ export default function DataEntryPage() {
 
                 {/* المراجعة البعيدة */}
                 {inputFields.includes("review_far") && (
-                  <SurahSection
-                    title="المراجعة البعيدة"
-                    color="border-teal-200 bg-teal-100/40"
-                    section={form.reviewFar}
-                    onChange={(f, v) => updateSection("reviewFar", f, v)}
-                    autoSuggested={autoFilled && !!form.reviewFar.surahStart}
-                    locked={form.noReviewFar}
-                    onToggleLock={() => setForm(f => ({
-                      ...f,
-                      noReviewFar: !f.noReviewFar,
-                      reviewFar: !f.noReviewFar ? emptySection() : f.reviewFar,
-                    }))}
-                    onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, reviewFar: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae }, noReviewFar: false }))}
-                  />
+                  <div className="space-y-1.5">
+                    {reviewPlanToday && !form.noReviewFar && (
+                      <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-xl px-3 py-2">
+                        <span className="text-xs text-teal-700 flex-1">
+                          📋 خطة اليوم: {SURAHS.find(s => s.number === reviewPlanToday.surahStart)?.arabicName ?? reviewPlanToday.surahStart} ← {SURAHS.find(s => s.number === reviewPlanToday.surahEnd)?.arabicName ?? reviewPlanToday.surahEnd}
+                          {reviewPlanToday.pages != null && <span className="font-bold mr-1">({formatPages(reviewPlanToday.pages)} وجه)</span>}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setForm(f => ({
+                            ...f,
+                            reviewFar: {
+                              surahStart: reviewPlanToday.surahStart!,
+                              ayahStart: reviewPlanToday.ayahStart?.toString() ?? "1",
+                              surahEnd: reviewPlanToday.surahEnd!,
+                              ayahEnd: reviewPlanToday.ayahEnd?.toString() ?? "1",
+                            },
+                            noReviewFar: false,
+                          }))}
+                          className="text-xs bg-teal-600 text-white px-2.5 py-1 rounded-lg font-semibold hover:bg-teal-700 transition-colors shrink-0"
+                        >
+                          تطبيق
+                        </button>
+                      </div>
+                    )}
+                    <SurahSection
+                      title="المراجعة البعيدة"
+                      color="border-teal-200 bg-teal-100/40"
+                      section={form.reviewFar}
+                      onChange={(f, v) => updateSection("reviewFar", f, v)}
+                      autoSuggested={autoFilled && !!form.reviewFar.surahStart}
+                      locked={form.noReviewFar}
+                      onToggleLock={() => setForm(f => ({
+                        ...f,
+                        noReviewFar: !f.noReviewFar,
+                        reviewFar: !f.noReviewFar ? emptySection() : f.reviewFar,
+                      }))}
+                      onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, reviewFar: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae }, noReviewFar: false }))}
+                    />
+                  </div>
                 )}
 
                 {/* المراجعة العامة */}

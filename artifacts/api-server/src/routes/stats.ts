@@ -760,4 +760,117 @@ router.get("/stats/juz-stats", authenticate, async (req, res): Promise<void> => 
   });
 });
 
+// مقارنة الأسبوع الحالي بالأسبوع الماضي
+router.get("/stats/weekly-comparison", authenticate, async (req, res): Promise<void> => {
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+
+  // الأسبوع الحالي: آخر 7 أيام
+  const thisWeekStart = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  // الأسبوع الماضي: 8-14 يوماً
+  const lastWeekStart = new Date(today.getTime() - 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const lastWeekEnd   = new Date(today.getTime() - 7  * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const userRole = req.userRole;
+  const userId   = req.userId;
+
+  const allCircles  = await db.select().from(circlesTable);
+  const allUsers    = await db.select().from(usersTable).where(eq(usersTable.isArchived, false));
+
+  let circleIds: number[] | null = null;
+  if (userRole === "track_supervisor" || userRole === "data_entry") {
+    const u = allUsers.find(u => u.id === userId);
+    circleIds = allCircles.filter(c => c.track === u?.track).map(c => c.id);
+  } else if (userRole === "teacher" || userRole === "supervisor") {
+    const u = allUsers.find(u => u.id === userId);
+    circleIds = u?.circleId ? [u.circleId] : [];
+  }
+
+  const thisRecs = await db.select().from(recordsTable)
+    .where(and(gte(recordsTable.date, thisWeekStart), lte(recordsTable.date, todayStr)));
+  const lastRecs = await db.select().from(recordsTable)
+    .where(and(gte(recordsTable.date, lastWeekStart), lte(recordsTable.date, lastWeekEnd)));
+
+  const filterByCircles = (recs: typeof thisRecs) =>
+    circleIds ? recs.filter(r => circleIds!.includes(r.circleId)) : recs;
+
+  const thisFiltered = filterByCircles(thisRecs);
+  const lastFiltered = filterByCircles(lastRecs);
+
+  const allStudentsWC = await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false));
+
+  const calcWeek = (recs: typeof thisRecs) => {
+    const present  = recs.filter(r => !r.isAbsent);
+    const absences = recs.filter(r => r.isAbsent).length;
+    const total    = recs.length;
+    const memorize = Math.round(present.reduce((s, r) => s + (r.memorizePages ?? 0), 0) * 2) / 2;
+    const reviewNear = Math.round(present.reduce((s, r) => s + (r.reviewNearPages ?? 0), 0) * 2) / 2;
+    const reviewFar  = Math.round(present.reduce((s, r) => s + (r.reviewFarPages ?? 0), 0) * 2) / 2;
+    const review     = Math.round(present.reduce((s, r) => s + (r.reviewPages ?? 0), 0) * 2) / 2;
+    const totalPages = Math.round((memorize + reviewNear + reviewFar + review) * 2) / 2;
+    const attendanceRate = total > 0 ? Math.round(((total - absences) / total) * 100) : null;
+
+    // أفضل 3 طالبات (أعلى حفظ)
+    const byStudent: Record<number, number> = {};
+    for (const r of present) {
+      byStudent[r.studentId] = (byStudent[r.studentId] ?? 0) + (r.memorizePages ?? 0);
+    }
+    const topStudents = Object.entries(byStudent)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([id, pages]) => ({
+        name: allStudentsWC.find(s => s.id === parseInt(id))?.fullName ?? `#${id}`,
+        pages: Math.round(pages * 2) / 2,
+      }));
+
+    // أفضل حلقة (أعلى إجمالي)
+    const byCircle: Record<number, number> = {};
+    for (const r of present) {
+      byCircle[r.circleId] = (byCircle[r.circleId] ?? 0) +
+        (r.memorizePages ?? 0) + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewPages ?? 0);
+    }
+    const topCircleId = Object.entries(byCircle).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const topCircleName = topCircleId ? allCircles.find(c => c.id === parseInt(topCircleId))?.name : null;
+    const topCirclePages = topCircleId ? Math.round(byCircle[parseInt(topCircleId)] * 2) / 2 : 0;
+
+    return { memorize, reviewNear, reviewFar, review, totalPages, absences, total, attendanceRate,
+             topStudents, topCircleName, topCirclePages };
+  };
+
+  const trend = (curr: number | null, prev: number | null): "up" | "down" | "same" => {
+    if (curr == null || prev == null || prev === 0) return curr && curr > 0 ? "up" : "same";
+    if (curr > prev) return "up";
+    if (curr < prev) return "down";
+    return "same";
+  };
+  const pct = (curr: number | null, prev: number | null): number | null => {
+    if (curr == null || prev == null || prev === 0) return null;
+    return Math.round(((curr - prev) / prev) * 100);
+  };
+
+  const thisWeek = await calcWeek(thisFiltered);
+  const lastWeek = await calcWeek(lastFiltered);
+
+  res.json({
+    thisWeek,
+    lastWeek,
+    trends: {
+      memorize:      trend(thisWeek.memorize, lastWeek.memorize),
+      reviewNear:    trend(thisWeek.reviewNear, lastWeek.reviewNear),
+      reviewFar:     trend(thisWeek.reviewFar, lastWeek.reviewFar),
+      totalPages:    trend(thisWeek.totalPages, lastWeek.totalPages),
+      absences:      trend(thisWeek.absences, lastWeek.absences),
+      attendanceRate:trend(thisWeek.attendanceRate, lastWeek.attendanceRate),
+    },
+    changes: {
+      memorize:      pct(thisWeek.memorize, lastWeek.memorize),
+      reviewNear:    pct(thisWeek.reviewNear, lastWeek.reviewNear),
+      reviewFar:     pct(thisWeek.reviewFar, lastWeek.reviewFar),
+      totalPages:    pct(thisWeek.totalPages, lastWeek.totalPages),
+      absences:      pct(thisWeek.absences, lastWeek.absences),
+      attendanceRate:pct(thisWeek.attendanceRate, lastWeek.attendanceRate),
+    },
+  });
+});
+
 export default router;

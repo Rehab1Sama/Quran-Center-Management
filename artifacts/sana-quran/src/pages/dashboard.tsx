@@ -3,6 +3,35 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Users, Calendar, Star, TrendingUp, TrendingDown, Minus, Award, CheckCircle2, AlertTriangle, Plane, ClipboardCheck, AlertCircle, GraduationCap } from "lucide-react";
 import { formatPages } from "@/lib/quran";
 import { motion } from "framer-motion";
+import { useState, useEffect } from "react";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+type WeeklyData = {
+  thisWeek: {
+    memorize: number; reviewNear: number; reviewFar: number; totalPages: number;
+    absences: number; attendanceRate: number | null;
+    topStudents: { name: string; pages: number }[];
+    topCircleName: string | null; topCirclePages: number;
+  };
+  lastWeek: { memorize: number; totalPages: number; absences: number; topStudents: { name: string; pages: number }[] };
+  trends: Record<string, "up" | "down" | "same">;
+  changes: Record<string, number | null>;
+};
+
+function useWeeklyDash() {
+  const [data, setData] = useState<WeeklyData | null>(null);
+  useEffect(() => {
+    const token = localStorage.getItem("sana_auth_token");
+    fetch(`${BASE}/api/stats/weekly-comparison`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(setData)
+      .catch(() => {});
+  }, []);
+  return data;
+}
 
 function TrendIcon({ trend }: { trend?: string }) {
   if (trend === "up") return <TrendingUp className="w-3 h-3 text-emerald-500" />;
@@ -15,6 +44,7 @@ export default function DashboardPage() {
   const { data: circleStats } = useGetCirclesStats(undefined, { query: { queryKey: ["circlesStats"] } });
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const { data: monthly } = useGetMonthlyComparison({ query: { queryKey: ["monthlyComparison"] } });
+  const weekly = useWeeklyDash();
   const { data: repeatedAbsences } = useGetRepeatedAbsences(
     { minAbsences: 3 },
     { query: { queryKey: ["repeatedAbsences"] } }
@@ -337,6 +367,87 @@ export default function DashboardPage() {
           </motion.div>
         ))}
       </motion.div>
+
+      {/* Weekly Achievements Board */}
+      {weekly && user?.role !== "student" && (
+        <Card className="border-0 shadow-sm border-r-4 border-r-amber-400 bg-amber-50/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Award className="w-4 h-4 text-amber-500" />
+              إنجازات هذا الأسبوع
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* mini stats row */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-teal-50 rounded-xl p-2.5 text-center">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  {weekly.trends.memorize === "up" ? <TrendingUp className="w-3 h-3 text-emerald-500" /> : weekly.trends.memorize === "down" ? <TrendingDown className="w-3 h-3 text-rose-500" /> : <Minus className="w-3 h-3 text-muted-foreground" />}
+                  <span className="text-[10px] text-muted-foreground">الحفظ</span>
+                </div>
+                <p className="font-bold text-teal-700">{formatPages(weekly.thisWeek.memorize)}</p>
+                {weekly.changes.memorize != null && weekly.changes.memorize !== 0 && (
+                  <p className={`text-[10px] font-semibold ${weekly.changes.memorize > 0 ? "text-emerald-600" : "text-rose-500"}`}>
+                    {weekly.changes.memorize > 0 ? "+" : ""}{weekly.changes.memorize}%
+                  </p>
+                )}
+              </div>
+              <div className="bg-blue-50 rounded-xl p-2.5 text-center">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  {weekly.trends.totalPages === "up" ? <TrendingUp className="w-3 h-3 text-emerald-500" /> : weekly.trends.totalPages === "down" ? <TrendingDown className="w-3 h-3 text-rose-500" /> : <Minus className="w-3 h-3 text-muted-foreground" />}
+                  <span className="text-[10px] text-muted-foreground">الإجمالي</span>
+                </div>
+                <p className="font-bold text-blue-700">{formatPages(weekly.thisWeek.totalPages)}</p>
+                {weekly.changes.totalPages != null && weekly.changes.totalPages !== 0 && (
+                  <p className={`text-[10px] font-semibold ${weekly.changes.totalPages > 0 ? "text-emerald-600" : "text-rose-500"}`}>
+                    {weekly.changes.totalPages > 0 ? "+" : ""}{weekly.changes.totalPages}%
+                  </p>
+                )}
+              </div>
+              <div className="bg-rose-50 rounded-xl p-2.5 text-center">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  {weekly.trends.absences === "down" ? <TrendingUp className="w-3 h-3 text-emerald-500" /> : weekly.trends.absences === "up" ? <TrendingDown className="w-3 h-3 text-rose-500" /> : <Minus className="w-3 h-3 text-muted-foreground" />}
+                  <span className="text-[10px] text-muted-foreground">الغياب</span>
+                </div>
+                <p className="font-bold text-rose-600">{weekly.thisWeek.absences}</p>
+                {weekly.changes.absences != null && weekly.changes.absences !== 0 && (
+                  <p className={`text-[10px] font-semibold ${weekly.changes.absences < 0 ? "text-emerald-600" : "text-rose-500"}`}>
+                    {weekly.changes.absences > 0 ? "+" : ""}{weekly.changes.absences}%
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Top 3 students */}
+            {weekly.thisWeek.topStudents.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-2">🏆 أعلى حفظًا هذا الأسبوع</p>
+                <div className="space-y-1.5">
+                  {weekly.thisWeek.topStudents.map((s, i) => (
+                    <div key={i} className="flex items-center gap-2 bg-white/70 rounded-xl px-3 py-1.5">
+                      <span className="text-sm font-bold text-amber-500 w-5">{i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}</span>
+                      <span className="text-sm font-semibold text-foreground flex-1 truncate">{s.name}</span>
+                      <span className="text-xs font-bold bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">{formatPages(s.pages)} وجه</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Top circle */}
+            {weekly.thisWeek.topCircleName && (
+              <div className="flex items-center gap-3 bg-emerald-50 rounded-xl px-3 py-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] text-muted-foreground">أفضل حلقة</p>
+                  <p className="font-bold text-emerald-800 text-sm truncate">{weekly.thisWeek.topCircleName}</p>
+                </div>
+                <span className="text-xs font-bold bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5 shrink-0">{formatPages(weekly.thisWeek.topCirclePages)} وجه</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Monthly Comparison */}
       {monthly && (
