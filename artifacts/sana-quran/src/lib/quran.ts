@@ -158,6 +158,7 @@ function isWajhComplete(idx: number, endSurahNum: number, endAyah: number): bool
 // حساب عدد الأوجه بناءً على عدّ الأوجه الكاملة من مصحف المدينة المنورة.
 // كل إدخالَين في MUSHAF_PAGES = وجه واحد بمنطق المستخدم (نتيجة * 0.5)
 // أمثلة: البقرة 1-12 → 1.5، 1-16 → 2، 1-20 → 2.5، 1-21 → 2.5
+// يقبل النطاق بأي اتجاه — لو البداية بعد النهاية يُعكس الترتيب تلقائياً
 export function calculatePages(
   startSurahName: string | null | undefined,
   startAyah: number | null | undefined,
@@ -170,14 +171,24 @@ export function calculatePages(
   const endIdx   = SURAHS.findIndex(s => s.name === endSurahName);
   if (startIdx === -1 || endIdx === -1) return 0;
 
-  const startSurahNum = startIdx + 1;
-  const endSurahNum   = endIdx + 1;
+  let startSurahNum = startIdx + 1;
+  let endSurahNum   = endIdx + 1;
+  let startAyahNum  = startAyah;
+  let endAyahNum    = endAyah;
 
-  const startWajhIdx = findWajhIdx(startSurahNum, startAyah);
+  // إذا كانت البداية بعد النهاية في المصحف، اعكس الترتيب تلقائياً
+  const rawStartIdx = findWajhIdx(startSurahNum, startAyahNum);
+  const rawEndIdx   = findWajhIdx(endSurahNum, endAyahNum);
+  if (rawStartIdx > rawEndIdx) {
+    [startSurahNum, endSurahNum] = [endSurahNum, startSurahNum];
+    [startAyahNum, endAyahNum]   = [endAyahNum, startAyahNum];
+  }
+
+  const startWajhIdx = findWajhIdx(startSurahNum, startAyahNum);
 
   let count = 0;
   for (let i = startWajhIdx; i < MUSHAF_PAGES.length; i++) {
-    if (isWajhComplete(i, endSurahNum, endAyah)) count++;
+    if (isWajhComplete(i, endSurahNum, endAyahNum)) count++;
     else break;
   }
 
