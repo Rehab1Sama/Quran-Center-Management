@@ -948,6 +948,23 @@ export default function DataEntryPage() {
   const revPages = calcSectionPages(form.review);
   const recPages = calcSectionPages(form.recitation);
 
+  // المعدل اليومي الاعتيادي للحفظ من آخر 10 سجلات بها حفظ
+  const avgMemorize = useMemo(() => {
+    if (!studentRecords) return null;
+    const withMemo = [...(studentRecords as any[])]
+      .filter(r => !r.isAbsent && (r.memorizePages ?? 0) > 0)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 10);
+    if (withMemo.length < 3) return null;
+    const avg = withMemo.reduce((s, r) => s + (r.memorizePages ?? 0), 0) / withMemo.length;
+    return Math.round(avg * 2) / 2;
+  }, [studentRecords]);
+
+  // عتبة التحذير: 1.5× المعدل أو 2 وجه (صفحة كاملة) للطالبة الجديدة
+  const memorizeWarning = memPages > 0 && (
+    avgMemorize !== null ? memPages > avgMemorize * 1.5 : memPages > 2
+  );
+
   return (
     <div className="space-y-5" dir="rtl">
       <div>
@@ -1364,6 +1381,22 @@ export default function DataEntryPage() {
                     autoSuggested={autoFilled && !!form.memorize.surahStart}
                     onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, memorize: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae } }))}
                   />
+                )}
+
+                {/* تحذير تجاوز المعدل الاعتيادي في الحفظ */}
+                {inputFields.includes("memorize") && memorizeWarning && (
+                  <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 text-sm">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+                    <div>
+                      <p className="font-semibold">الحفظ أعلى من المعتاد</p>
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        {formatPages(memPages)} وجه اليوم
+                        {avgMemorize !== null
+                          ? ` · معدلها المعتاد ${formatPages(avgMemorize)} وجه`
+                          : " · أكثر من وجه كامل"}
+                      </p>
+                    </div>
+                  </div>
                 )}
 
                 {/* المراجعة القريبة */}
