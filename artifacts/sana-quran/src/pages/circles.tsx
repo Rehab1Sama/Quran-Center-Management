@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListCircles, useUpdateCircle, useListStudents, useArchiveStudent, useRestoreStudent } from "@workspace/api-client-react";
+import { useListCircles, useUpdateCircle, useListStudents, useRestoreStudent } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -25,19 +25,24 @@ function CircleStudentsPanel({ circleId }: { circleId: number }) {
     { query: { queryKey: ["circle-students-archived", circleId] } }
   );
 
-  const archiveStudent = useArchiveStudent();
   const restoreStudent = useRestoreStudent();
 
   const handleArchive = (s: any) => {
-    if (!confirm(`هل تريدين أرشفة "${s.fullName}"؟`)) return;
-    archiveStudent.mutate({ id: s.id }, {
-      onSuccess: () => {
-        toast({ title: `تم أرشفة ${s.fullName}` });
+    if (!confirm(`هل تريدين إخراج "${s.fullName}" من هذه الحلقة؟`)) return;
+    const token = localStorage.getItem("auth_token");
+    fetch(`/api/students/${s.id}/archive`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ circleId }),
+    })
+      .then(r => {
+        if (!r.ok) throw new Error();
+        toast({ title: `تم إخراج ${s.fullName} من الحلقة` });
         queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
         queryClient.invalidateQueries({ queryKey: ["circle-students-archived", circleId] });
         queryClient.invalidateQueries({ queryKey: ["circles"] });
-      },
-    });
+      })
+      .catch(() => toast({ title: "خطأ في الإخراج", variant: "destructive" }));
   };
 
   const handleRestore = (s: any) => {

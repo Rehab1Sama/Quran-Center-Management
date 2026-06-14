@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListCircles, useListCircleNames, useGetCurrentUser, useListStudents, useUpdateStudent, useArchiveStudent, useGetMonthlyAttendanceReport, useCreateUser, useListTracks } from "@workspace/api-client-react";
+import { useListCircles, useListCircleNames, useGetCurrentUser, useListStudents, useUpdateStudent, useGetMonthlyAttendanceReport, useCreateUser, useListTracks } from "@workspace/api-client-react";
 import MessagesSection from "@/components/MessagesSection";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Users, ChevronDown, ChevronUp, Archive, ArrowLeftRight, Search, UserCircle, BarChart2, Link2, Clock, UserPlus } from "lucide-react";
@@ -86,7 +86,6 @@ export default function TrackPage() {
   const { data: allStudents } = useListStudents(undefined, { query: { queryKey: ["allStudents"] } });
   const { data: allTracks } = useListTracks({ query: { queryKey: ["tracks"] } });
   const updateStudent = useUpdateStudent();
-  const archiveStudent = useArchiveStudent();
   const createUser = useCreateUser();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -117,20 +116,20 @@ export default function TrackPage() {
   const getCircleStudents = (circleId: number): Student[] =>
     (allStudents ?? []).filter(s => s.circleId === circleId);
 
-  const handleArchive = (student: Student) => {
-    if (!confirm(`هل أنتِ متأكدة من أرشفة "${student.fullName}"؟`)) return;
-    archiveStudent.mutate(
-      { id: student.id },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ["allStudents"] });
-          toast({ title: "تمت الأرشفة", description: `تم أرشفة ${student.fullName}` });
-        },
-        onError: () => {
-          toast({ title: "خطأ", description: "فشلت عملية الأرشفة", variant: "destructive" });
-        },
-      }
-    );
+  const handleArchive = (student: Student, circleId: number) => {
+    if (!confirm(`هل أنتِ متأكدة من إخراج "${student.fullName}" من هذه الحلقة؟ ستبقى في الحلقات الأخرى التي هي فيها.`)) return;
+    const token = localStorage.getItem("auth_token");
+    fetch(`/api/students/${student.id}/archive`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ circleId }),
+    })
+      .then(r => {
+        if (!r.ok) throw new Error();
+        queryClient.invalidateQueries({ queryKey: ["allStudents"] });
+        toast({ title: "تمت الأرشفة", description: `تم إخراج ${student.fullName} من الحلقة` });
+      })
+      .catch(() => toast({ title: "خطأ", description: "فشلت عملية الأرشفة", variant: "destructive" }));
   };
 
   const handleTransfer = (circleId: number) => {
@@ -469,13 +468,13 @@ export default function TrackPage() {
                                     نقل
                                   </button>
                                   <button
-                                    onClick={() => handleArchive(student)}
+                                    onClick={() => handleArchive(student, circle.id)}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors text-xs font-semibold"
-                                    title="أرشفة الطالبة"
+                                    title="إخراج الطالبة من هذه الحلقة"
                                     data-testid={`btn-archive-${student.id}`}
                                   >
                                     <Archive className="w-3 h-3" />
-                                    أرشفة
+                                    إخراج
                                   </button>
                                   <button
                                     onClick={() => {

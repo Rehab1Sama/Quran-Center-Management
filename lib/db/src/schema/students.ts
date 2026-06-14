@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, pgEnum, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -66,6 +66,21 @@ export const studentLeaveHistoryTable = pgTable("student_leave_history", {
 });
 
 export type StudentLeaveHistory = typeof studentLeaveHistoryTable.$inferSelect;
+
+export const studentEnrollmentsTable = pgTable("student_enrollments", {
+  id: serial("id").primaryKey(),
+  studentId: integer("student_id").notNull(),
+  circleId: integer("circle_id").notNull(),
+  isArchived: boolean("is_archived").notNull().default(false),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  leaveStart: text("leave_start"),
+  leaveEnd: text("leave_end"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [unique("student_circle_unique").on(t.studentId, t.circleId)]);
+
+export type StudentEnrollment = typeof studentEnrollmentsTable.$inferSelect;
+export type InsertStudentEnrollment = typeof studentEnrollmentsTable.$inferInsert;
 
 export const messagesTable = pgTable("messages", {
   id: serial("id").primaryKey(),

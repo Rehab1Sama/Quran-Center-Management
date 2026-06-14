@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, recordsTable, circlesTable, studentsTable, teacherAbsencesTable, dataEntryCircleAssignmentsTable } from "@workspace/db";
+import { db, recordsTable, circlesTable, studentsTable, teacherAbsencesTable, dataEntryCircleAssignmentsTable, studentEnrollmentsTable } from "@workspace/db";
 import { eq, and, gte, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
@@ -27,14 +27,21 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
     .select({
       studentId: studentsTable.id,
       studentName: studentsTable.fullName,
-      circleId: circlesTable.id,
+      circleId: studentEnrollmentsTable.circleId,
       circleName: circlesTable.name,
       track: circlesTable.track,
-      leaveStart: studentsTable.leaveStart,
-      leaveEnd: studentsTable.leaveEnd,
+      leaveStart: studentEnrollmentsTable.leaveStart,
+      leaveEnd: studentEnrollmentsTable.leaveEnd,
     })
     .from(studentsTable)
-    .innerJoin(circlesTable, eq(studentsTable.circleId, circlesTable.id))
+    .innerJoin(
+      studentEnrollmentsTable,
+      and(
+        eq(studentEnrollmentsTable.studentId, studentsTable.id),
+        eq(studentEnrollmentsTable.isArchived, false),
+      ),
+    )
+    .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))
     .where(eq(studentsTable.isArchived, false));
 
   const students = await studentsQuery;

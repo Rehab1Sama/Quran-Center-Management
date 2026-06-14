@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, circlesTable, usersTable, studentsTable, tracksTable, dataEntryCircleAssignmentsTable } from "@workspace/db";
+import { db, circlesTable, usersTable, studentsTable, tracksTable, dataEntryCircleAssignmentsTable, studentEnrollmentsTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateCircleBody, UpdateCircleBody } from "@workspace/api-zod";
@@ -86,16 +86,19 @@ router.get("/circles/enriched", authenticate, async (req, res): Promise<void> =>
   const userMap: Record<number, { name: string; phone: string | null }> = {};
   allUsers.forEach(u => { userMap[u.id] = { name: u.name, phone: u.phone }; });
 
-  const allStudents = await db.select({
-    id: studentsTable.id, fullName: studentsTable.fullName, circleId: studentsTable.circleId,
+  const allEnrollments = await db.select({
+    studentId: studentEnrollmentsTable.studentId,
+    circleId: studentEnrollmentsTable.circleId,
+    fullName: studentsTable.fullName,
     phone: studentsTable.phone,
-  }).from(studentsTable).where(eq(studentsTable.isArchived, false));
+  })
+    .from(studentEnrollmentsTable)
+    .innerJoin(studentsTable, eq(studentsTable.id, studentEnrollmentsTable.studentId))
+    .where(and(eq(studentEnrollmentsTable.isArchived, false), eq(studentsTable.isArchived, false)));
   const studentsByCircle: Record<number, { id: number; fullName: string }[]> = {};
-  for (const s of allStudents) {
-    if (s.circleId != null) {
-      if (!studentsByCircle[s.circleId]) studentsByCircle[s.circleId] = [];
-      studentsByCircle[s.circleId].push({ id: s.id, fullName: s.fullName });
-    }
+  for (const e of allEnrollments) {
+    if (!studentsByCircle[e.circleId]) studentsByCircle[e.circleId] = [];
+    studentsByCircle[e.circleId].push({ id: e.studentId, fullName: e.fullName });
   }
 
   const enriched = circles.map(c => ({
@@ -160,11 +163,37 @@ router.get("/circles/:id", authenticate, async (req, res): Promise<void> => {
     }
   }
 
-  const students = await db.select().from(studentsTable).where(
-    and(eq(studentsTable.circleId, id), eq(studentsTable.isArchived, false))
-  );
+  const studentsRaw = await db
+    .select({
+      id: studentsTable.id,
+      fullName: studentsTable.fullName,
+      phone: studentsTable.phone,
+      country: studentsTable.country,
+      ageRange: studentsTable.ageRange,
+      educationLevel: studentsTable.educationLevel,
+      memorizeFrom: studentsTable.memorizeFrom,
+      extraData: studentsTable.extraData,
+      isArchived: studentsTable.isArchived,
+      isNewcomer: studentsTable.isNewcomer,
+      archivedAt: studentsTable.archivedAt,
+      circleId: studentEnrollmentsTable.circleId,
+      leaveStart: studentEnrollmentsTable.leaveStart,
+      leaveEnd: studentEnrollmentsTable.leaveEnd,
+      createdAt: studentsTable.createdAt,
+      updatedAt: studentsTable.updatedAt,
+    })
+    .from(studentsTable)
+    .innerJoin(
+      studentEnrollmentsTable,
+      and(
+        eq(studentEnrollmentsTable.studentId, studentsTable.id),
+        eq(studentEnrollmentsTable.circleId, id),
+        eq(studentEnrollmentsTable.isArchived, false),
+      ),
+    )
+    .where(eq(studentsTable.isArchived, false));
 
-  res.json({ ...circle, teacher, supervisor, students });
+  res.json({ ...circle, teacher, supervisor, students: studentsRaw });
 });
 
 router.patch("/circles/:id", authenticate, async (req, res): Promise<void> => {

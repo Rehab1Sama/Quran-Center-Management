@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, reviewPlansTable, usersTable, studentArchiveEventsTable, studentLeaveHistoryTable } from "@workspace/db";
-import { eq, and, gte, desc, sql } from "drizzle-orm";
+import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, reviewPlansTable, usersTable, studentArchiveEventsTable, studentLeaveHistoryTable, studentEnrollmentsTable } from "@workspace/db";
+import { eq, and, gte, desc, sql, ne } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateStudentBody, UpdateStudentBody } from "@workspace/api-zod";
 
@@ -12,17 +12,56 @@ function parseId(raw: string | string[]): number {
 
 const STAFF_ROLES = ["leader", "track_supervisor", "teacher", "supervisor"];
 
+// ── List students ──────────────────────────────────────────────────────────────
 router.get("/students", authenticate, async (req, res): Promise<void> => {
   const circleIdRaw = req.query.circleId;
   const isArchivedRaw = req.query.isArchived;
   const q = (req.query.q as string | undefined)?.trim().toLowerCase();
 
-  let students = await db.select().from(studentsTable);
-
+  // When filtering by circleId: use enrollments as the source of truth
   if (circleIdRaw) {
     const circleId = parseInt(circleIdRaw as string, 10);
-    students = students.filter(s => s.circleId === circleId);
+    // isArchived=true → show enrollment-archived in this circle; otherwise show active
+    const wantEnrollmentArchived = isArchivedRaw === "true";
+    const enrollments = await db
+      .select({
+        id: studentsTable.id,
+        fullName: studentsTable.fullName,
+        circleId: studentEnrollmentsTable.circleId,
+        phone: studentsTable.phone,
+        country: studentsTable.country,
+        ageRange: studentsTable.ageRange,
+        educationLevel: studentsTable.educationLevel,
+        memorizeFrom: studentsTable.memorizeFrom,
+        extraData: studentsTable.extraData,
+        isArchived: studentsTable.isArchived,
+        isNewcomer: studentsTable.isNewcomer,
+        archivedAt: studentsTable.archivedAt,
+        leaveStart: studentEnrollmentsTable.leaveStart,
+        leaveEnd: studentEnrollmentsTable.leaveEnd,
+        createdAt: studentsTable.createdAt,
+        updatedAt: studentsTable.updatedAt,
+        enrollmentId: studentEnrollmentsTable.id,
+        enrollmentIsArchived: studentEnrollmentsTable.isArchived,
+      })
+      .from(studentsTable)
+      .innerJoin(
+        studentEnrollmentsTable,
+        and(
+          eq(studentEnrollmentsTable.studentId, studentsTable.id),
+          eq(studentEnrollmentsTable.circleId, circleId),
+        ),
+      )
+      .where(eq(studentEnrollmentsTable.isArchived, wantEnrollmentArchived));
+
+    let result = enrollments;
+    if (q) result = result.filter(s => s.fullName.toLowerCase().includes(q));
+    res.json(result);
+    return;
   }
+
+  let students = await db.select().from(studentsTable);
+
   if (isArchivedRaw !== undefined) {
     const archived = isArchivedRaw === "true";
     students = students.filter(s => s.isArchived === archived);
@@ -41,6 +80,7 @@ router.get("/students", authenticate, async (req, res): Promise<void> => {
   res.json(students);
 });
 
+// ── Create student ─────────────────────────────────────────────────────────────
 router.post("/students", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "track_supervisor", "data_entry"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
@@ -52,9 +92,18 @@ router.post("/students", authenticate, async (req, res): Promise<void> => {
     return;
   }
   const [student] = await db.insert(studentsTable).values(parsed.data).returning();
+
+  // Auto-create enrollment if circleId provided
+  if (parsed.data.circleId) {
+    await db.insert(studentEnrollmentsTable)
+      .values({ studentId: student.id, circleId: parsed.data.circleId, isArchived: false })
+      .onConflictDoNothing();
+  }
+
   res.status(201).json(student);
 });
 
+// ── Get single student ─────────────────────────────────────────────────────────
 router.get("/students/:id", authenticate, async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
@@ -62,6 +111,7 @@ router.get("/students/:id", authenticate, async (req, res): Promise<void> => {
   res.json(student);
 });
 
+// ── Update student ─────────────────────────────────────────────────────────────
 router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "track_supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
@@ -77,6 +127,7 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
   const [student] = await db.update(studentsTable).set(parsed.data).where(eq(studentsTable.id, id)).returning();
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
 
+  // If circleId changed, log transfer + create/update enrollment
   if (parsed.data.circleId !== undefined && parsed.data.circleId !== before.circleId) {
     await db.insert(studentTransfersTable).values({
       studentId: id,
@@ -84,11 +135,21 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
       toCircleId: parsed.data.circleId!,
       transferredById: req.userId!,
     });
+    // Ensure enrollment exists in new circle
+    if (parsed.data.circleId) {
+      await db.insert(studentEnrollmentsTable)
+        .values({ studentId: id, circleId: parsed.data.circleId, isArchived: false })
+        .onConflictDoUpdate({
+          target: [studentEnrollmentsTable.studentId, studentEnrollmentsTable.circleId],
+          set: { isArchived: false, archivedAt: null },
+        });
+    }
   }
 
   res.json(student);
 });
 
+// ── Delete (soft) student ──────────────────────────────────────────────────────
 router.delete("/students/:id", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "track_supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
@@ -99,19 +160,79 @@ router.delete("/students/:id", authenticate, async (req, res): Promise<void> => 
   res.sendStatus(204);
 });
 
+// ── Archive student (per-circle or global) ─────────────────────────────────────
+// Body: { circleId?: number }
+// If circleId → archive only that enrollment
+// If no circleId → global archive (leader only): archive student + all enrollments
 router.patch("/students/:id/archive", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "track_supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
   const id = parseId(req.params.id);
+  const { circleId } = req.body as { circleId?: number };
+
   const [before] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
-  const [student] = await db.update(studentsTable).set({ isArchived: true, circleId: null, archivedAt: new Date() }).where(eq(studentsTable.id, id)).returning();
-  if (!student) { res.status(404).json({ error: "Student not found" }); return; }
-  await db.insert(studentArchiveEventsTable).values({ studentId: id, eventType: "archived", circleIdAtTime: before?.circleId ?? null, performedById: req.userId ?? null });
-  res.json(student);
+  if (!before) { res.status(404).json({ error: "Student not found" }); return; }
+
+  if (circleId) {
+    // Per-circle archive: archive the enrollment
+    await db.update(studentEnrollmentsTable)
+      .set({ isArchived: true, archivedAt: new Date() })
+      .where(
+        and(
+          eq(studentEnrollmentsTable.studentId, id),
+          eq(studentEnrollmentsTable.circleId, circleId),
+        ),
+      );
+
+    // If this was the student's primary circle, clear it
+    if (before.circleId === circleId) {
+      // Find another active enrollment to promote as primary
+      const [otherEnrollment] = await db.select()
+        .from(studentEnrollmentsTable)
+        .where(
+          and(
+            eq(studentEnrollmentsTable.studentId, id),
+            eq(studentEnrollmentsTable.isArchived, false),
+            ne(studentEnrollmentsTable.circleId, circleId),
+          ),
+        )
+        .limit(1);
+      await db.update(studentsTable)
+        .set({ circleId: otherEnrollment?.circleId ?? null })
+        .where(eq(studentsTable.id, id));
+    }
+
+    await db.insert(studentArchiveEventsTable).values({
+      studentId: id, eventType: "archived", circleIdAtTime: circleId, performedById: req.userId ?? null,
+    });
+
+    const [updated] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
+    res.json(updated);
+  } else {
+    // Global archive (leader-only)
+    const [student] = await db.update(studentsTable)
+      .set({ isArchived: true, circleId: null, archivedAt: new Date() })
+      .where(eq(studentsTable.id, id)).returning();
+    if (!student) { res.status(404).json({ error: "Student not found" }); return; }
+
+    // Archive all enrollments
+    await db.update(studentEnrollmentsTable)
+      .set({ isArchived: true, archivedAt: new Date() })
+      .where(eq(studentEnrollmentsTable.studentId, id));
+
+    await db.insert(studentArchiveEventsTable).values({
+      studentId: id, eventType: "archived", circleIdAtTime: before?.circleId ?? null, performedById: req.userId ?? null,
+    });
+    res.json(student);
+  }
 });
 
+// ── Restore student ────────────────────────────────────────────────────────────
+// Body: { circleId?: number }
+// If circleId → restore/upsert enrollment + make student active
+// If no circleId → restore globally (no circle assignment)
 router.patch("/students/:id/restore", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "track_supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
@@ -119,34 +240,66 @@ router.patch("/students/:id/restore", authenticate, async (req, res): Promise<vo
   }
   const id = parseId(req.params.id);
   const { circleId } = req.body as { circleId?: number | null };
-  const updateData: { isArchived: boolean; archivedAt: null; circleId?: number | null } = { isArchived: false, archivedAt: null };
+
+  const updateData: { isArchived: boolean; archivedAt: null; circleId?: number | null } = {
+    isArchived: false, archivedAt: null,
+  };
   if (circleId !== undefined) updateData.circleId = circleId;
+
   const [student] = await db.update(studentsTable).set(updateData).where(eq(studentsTable.id, id)).returning();
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
-  await db.insert(studentArchiveEventsTable).values({ studentId: id, eventType: "restored", circleIdAtTime: circleId ?? null, performedById: req.userId ?? null });
+
+  if (circleId) {
+    await db.insert(studentEnrollmentsTable)
+      .values({ studentId: id, circleId, isArchived: false })
+      .onConflictDoUpdate({
+        target: [studentEnrollmentsTable.studentId, studentEnrollmentsTable.circleId],
+        set: { isArchived: false, archivedAt: null },
+      });
+  }
+
+  await db.insert(studentArchiveEventsTable).values({
+    studentId: id, eventType: "restored", circleIdAtTime: circleId ?? null, performedById: req.userId ?? null,
+  });
   res.json(student);
 });
 
+// ── Students on leave ──────────────────────────────────────────────────────────
 router.get("/students/on-leave", authenticate, async (req, res): Promise<void> => {
   if (!req.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const allStudents = await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false));
+  // Get all active enrollments that have a current leave
+  const enrollments = await db
+    .select({
+      id: studentsTable.id,
+      fullName: studentsTable.fullName,
+      phone: studentsTable.phone,
+      circleId: studentEnrollmentsTable.circleId,
+      leaveStart: studentEnrollmentsTable.leaveStart,
+      leaveEnd: studentEnrollmentsTable.leaveEnd,
+      enrollmentId: studentEnrollmentsTable.id,
+    })
+    .from(studentEnrollmentsTable)
+    .innerJoin(studentsTable, eq(studentsTable.id, studentEnrollmentsTable.studentId))
+    .where(
+      and(
+        eq(studentEnrollmentsTable.isArchived, false),
+        eq(studentsTable.isArchived, false),
+      ),
+    );
+
+  const onLeaveEnrollments = enrollments.filter(e => {
+    if (!e.leaveStart || !e.leaveEnd) return false;
+    return e.leaveStart <= today && today <= e.leaveEnd;
+  });
+
+  if (!onLeaveEnrollments.length) { res.json([]); return; }
 
   const circles = await db.select().from(circlesTable);
   const circleMap: Record<number, typeof circles[0]> = {};
   for (const c of circles) circleMap[c.id] = c;
-
-  const onLeaveStudents = allStudents.filter(s => {
-    if (!s.leaveStart || !s.leaveEnd) return false;
-    return s.leaveStart <= today && today <= s.leaveEnd;
-  });
-
-  if (!onLeaveStudents.length) {
-    res.json([]);
-    return;
-  }
 
   const activePlans = await db.select().from(reviewPlansTable).where(eq(reviewPlansTable.status, "active"));
   const planByStudent: Record<number, typeof activePlans[0]> = {};
@@ -164,13 +317,12 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
     return days;
   }
 
-  const result = await Promise.all(onLeaveStudents.map(async student => {
-    const circle = student.circleId ? circleMap[student.circleId] : null;
-    const plan = planByStudent[student.id];
+  const result = await Promise.all(onLeaveEnrollments.map(async enr => {
+    const circle = circleMap[enr.circleId];
+    const plan = planByStudent[enr.id];
 
-    const leaveStart = student.leaveStart!;
-    const leaveEnd = student.leaveEnd!;
-
+    const leaveStart = enr.leaveStart!;
+    const leaveEnd = enr.leaveEnd!;
     const leaveDays = getWorkingDaysBetween(leaveStart, today);
 
     const trackType = circle?.trackType ?? "girls";
@@ -181,23 +333,14 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
 
     if (plan && leaveDays.length > 0) {
       const records = await db.select().from(recordsTable)
-        .where(and(
-          eq(recordsTable.studentId, student.id),
-          gte(recordsTable.date, leaveStart),
-        ));
+        .where(and(eq(recordsTable.studentId, enr.id), gte(recordsTable.date, leaveStart)));
       for (const day of leaveDays) {
         const rec = records.find(r => r.date === day && !r.isAbsent);
-        if (rec) {
-          enteredDays++;
-          if (day === today) enteredToday = true;
-        }
+        if (rec) { enteredDays++; if (day === today) enteredToday = true; }
       }
-      // حساب حالة اليوم
       const todayRec = records.find(r => r.date === today && !r.isAbsent);
       if (todayRec) {
-        const actualPages = useMemoForTrack
-          ? (todayRec.memorizePages ?? 0)
-          : (todayRec.reviewFarPages ?? 0);
+        const actualPages = useMemoForTrack ? (todayRec.memorizePages ?? 0) : (todayRec.reviewFarPages ?? 0);
         const plannedPerDay = plan.cycleLength > 0 ? plan.totalPages / plan.cycleLength : 0;
         if (actualPages >= plannedPerDay && plannedPerDay > 0) todayStatus = "full";
         else if (actualPages > 0) todayStatus = "partial";
@@ -206,9 +349,9 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
     }
 
     return {
-      id: student.id,
-      fullName: student.fullName,
-      circleId: student.circleId,
+      id: enr.id,
+      fullName: enr.fullName,
+      circleId: enr.circleId,
       circleName: circle?.name ?? null,
       track: circle?.track ?? null,
       trackType,
@@ -225,27 +368,56 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
   res.json(result);
 });
 
+// ── Grant / cancel leave (per-circle) ─────────────────────────────────────────
+// Body: { leaveStart, leaveEnd, circleId? }
+// If circleId → update enrollment's leave dates
+// If no circleId → update student's leave dates (backward compat)
 router.patch("/students/:id/leave", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
   const id = parseId(req.params.id);
-  const { leaveStart, leaveEnd } = req.body as { leaveStart?: string | null; leaveEnd?: string | null };
-  const [student] = await db.update(studentsTable)
-    .set({ leaveStart: leaveStart ?? null, leaveEnd: leaveEnd ?? null })
-    .where(eq(studentsTable.id, id)).returning();
+  const { leaveStart, leaveEnd, circleId } = req.body as {
+    leaveStart?: string | null;
+    leaveEnd?: string | null;
+    circleId?: number;
+  };
+
+  if (circleId) {
+    // Update enrollment leave dates
+    await db.update(studentEnrollmentsTable)
+      .set({ leaveStart: leaveStart ?? null, leaveEnd: leaveEnd ?? null })
+      .where(
+        and(
+          eq(studentEnrollmentsTable.studentId, id),
+          eq(studentEnrollmentsTable.circleId, circleId),
+        ),
+      );
+  } else {
+    // Backward compat: also update students table + primary enrollment
+    await db.update(studentsTable)
+      .set({ leaveStart: leaveStart ?? null, leaveEnd: leaveEnd ?? null })
+      .where(eq(studentsTable.id, id));
+
+    // Update all active enrollments of the student
+    await db.update(studentEnrollmentsTable)
+      .set({ leaveStart: leaveStart ?? null, leaveEnd: leaveEnd ?? null })
+      .where(
+        and(
+          eq(studentEnrollmentsTable.studentId, id),
+          eq(studentEnrollmentsTable.isArchived, false),
+        ),
+      );
+  }
+
+  const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
 
   if (leaveStart && leaveEnd) {
-    // تسجيل منح الإجازة
     await db.insert(studentLeaveHistoryTable).values({
-      studentId: id,
-      leaveStart,
-      leaveEnd,
-      grantedById: req.userId ?? null,
+      studentId: id, leaveStart, leaveEnd, grantedById: req.userId ?? null,
     });
   } else if (!leaveStart && !leaveEnd) {
-    // تسجيل إلغاء الإجازة — تحديث آخر سجل غير ملغى
     const [lastLeave] = await db.select().from(studentLeaveHistoryTable)
       .where(and(
         eq(studentLeaveHistoryTable.studentId, id),
@@ -259,9 +431,69 @@ router.patch("/students/:id/leave", authenticate, async (req, res): Promise<void
         .where(eq(studentLeaveHistoryTable.id, lastLeave.id));
     }
   }
+
   res.json(student);
 });
 
+// ── Enroll student in a new circle ────────────────────────────────────────────
+// POST /students/:id/enroll
+// Body: { circleId: number }
+router.post("/students/:id/enroll", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "track_supervisor"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const id = parseId(req.params.id);
+  const { circleId } = req.body as { circleId: number };
+  if (!circleId) { res.status(400).json({ error: "circleId required" }); return; }
+
+  const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
+  if (!student) { res.status(404).json({ error: "Student not found" }); return; }
+
+  const [enrollment] = await db.insert(studentEnrollmentsTable)
+    .values({ studentId: id, circleId, isArchived: false })
+    .onConflictDoUpdate({
+      target: [studentEnrollmentsTable.studentId, studentEnrollmentsTable.circleId],
+      set: { isArchived: false, archivedAt: null },
+    })
+    .returning();
+
+  // If student has no primary circle, set it
+  if (!student.circleId) {
+    await db.update(studentsTable).set({ circleId }).where(eq(studentsTable.id, id));
+  }
+
+  res.status(201).json(enrollment);
+});
+
+// ── List enrollments for a student ────────────────────────────────────────────
+// GET /students/:id/enrollments
+router.get("/students/:id/enrollments", authenticate, async (req, res): Promise<void> => {
+  if (!STAFF_ROLES.includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const id = parseId(req.params.id);
+
+  const enrollments = await db
+    .select({
+      id: studentEnrollmentsTable.id,
+      studentId: studentEnrollmentsTable.studentId,
+      circleId: studentEnrollmentsTable.circleId,
+      isArchived: studentEnrollmentsTable.isArchived,
+      archivedAt: studentEnrollmentsTable.archivedAt,
+      leaveStart: studentEnrollmentsTable.leaveStart,
+      leaveEnd: studentEnrollmentsTable.leaveEnd,
+      circleName: circlesTable.name,
+      circleTrack: circlesTable.track,
+    })
+    .from(studentEnrollmentsTable)
+    .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))
+    .where(eq(studentEnrollmentsTable.studentId, id))
+    .orderBy(studentEnrollmentsTable.createdAt);
+
+  res.json(enrollments);
+});
+
+// ── Student notes ──────────────────────────────────────────────────────────────
 router.get("/students/:id/notes", authenticate, async (req, res): Promise<void> => {
   if (!STAFF_ROLES.includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
@@ -329,6 +561,7 @@ router.delete("/students/:id/notes/:noteId", authenticate, async (req, res): Pro
   res.sendStatus(204);
 });
 
+// ── Student profile ────────────────────────────────────────────────────────────
 router.get("/students/:id/profile", authenticate, async (req, res): Promise<void> => {
   if (!STAFF_ROLES.includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
@@ -343,6 +576,23 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     ? await db.select().from(circlesTable).where(eq(circlesTable.id, student.circleId))
     : [];
 
+  // All enrollments for this student
+  const enrollments = await db
+    .select({
+      id: studentEnrollmentsTable.id,
+      circleId: studentEnrollmentsTable.circleId,
+      isArchived: studentEnrollmentsTable.isArchived,
+      archivedAt: studentEnrollmentsTable.archivedAt,
+      leaveStart: studentEnrollmentsTable.leaveStart,
+      leaveEnd: studentEnrollmentsTable.leaveEnd,
+      circleName: circlesTable.name,
+      circleTrack: circlesTable.track,
+    })
+    .from(studentEnrollmentsTable)
+    .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))
+    .where(eq(studentEnrollmentsTable.studentId, id))
+    .orderBy(studentEnrollmentsTable.createdAt);
+
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const allRecords = await db.select().from(recordsTable).where(eq(recordsTable.studentId, id));
   const recentAbsences = allRecords
@@ -354,7 +604,6 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
   const totalAbsences = allRecords.filter(r => r.isAbsent).length;
   const attendanceRate = totalSessions > 0 ? Math.round(((totalSessions - totalAbsences) / totalSessions) * 100) : null;
 
-  // Monthly attendance trend for last 6 months
   const monthlyMap: Record<string, { sessions: number; absences: number }> = {};
   for (const r of allRecords) {
     const month = r.date.slice(0, 7);
@@ -399,7 +648,6 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     })
   );
 
-  // Notes
   const rawNotes = await db.select().from(studentNotesTable)
     .where(eq(studentNotesTable.studentId, id))
     .orderBy(desc(studentNotesTable.createdAt));
@@ -419,7 +667,6 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     createdAt: n.createdAt.toISOString(),
   }));
 
-  // Messages relevant to this student (personal + circle + track)
   const allMessages = await db.select().from(messagesTable).orderBy(desc(messagesTable.createdAt));
   const relevantMessages = allMessages.filter(m => {
     if (m.targetType === "student") return m.targetId === String(student.id);
@@ -453,13 +700,11 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     };
   });
 
-  // Totals from all non-absent records
   const presentRecords = allRecords.filter(r => !r.isAbsent);
   const totalMemorizePages = presentRecords.reduce((s, r) => s + (r.memorizePages ?? 0), 0);
   const totalReviewPages = presentRecords.reduce((s, r) => s + (r.reviewPages ?? 0) + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0), 0);
   const totalRecitationPages = presentRecords.reduce((s, r) => s + (r.recitationPages ?? 0), 0);
 
-  // Shortcomings count
   const isRecitationTrack = circle?.trackType === "recitation";
   const totalShortcomings = presentRecords.filter(r => {
     if (r.shortcomingOverride === true) return true;
@@ -469,7 +714,6 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     return noReview || r.listenedToReciter === false;
   }).length;
 
-  // Leave history
   const leaveHistoryRaw = await db.select().from(studentLeaveHistoryTable)
     .where(eq(studentLeaveHistoryTable.studentId, id))
     .orderBy(desc(studentLeaveHistoryTable.grantedAt));
@@ -495,7 +739,6 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     cancelledBy: l.cancelledById ? (lhUserMap[l.cancelledById] ?? "غير معروف") : null,
   }));
 
-  // Heatmap data: last 180 days
   const meccaNow = new Date(Date.now() + 3 * 60 * 60 * 1000);
   const cutoff180 = new Date(meccaNow);
   cutoff180.setDate(cutoff180.getDate() - 179);
@@ -510,15 +753,10 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
         date: r.date,
         status: r.isAbsent
           ? "absent"
-          : totalPages >= 2
-            ? "present"
-            : totalPages > 0
-              ? "low"
-              : "attended",
+          : totalPages >= 2 ? "present" : totalPages > 0 ? "low" : "attended",
       };
     });
 
-  // Recent sessions (last 20 records sorted by date desc)
   const recentRecords = [...allRecords]
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 20)
@@ -560,19 +798,22 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     leaveEnd: student.leaveEnd,
     createdAt: student.createdAt.toISOString(),
     circle: circle ? { id: circle.id, name: circle.name, track: circle.track, trackType: circle.trackType } : null,
-    attendanceSummary: { totalSessions, totalAbsences, attendanceRate },
+    enrollments,
     recentAbsences,
+    totalSessions,
+    totalAbsences,
+    attendanceRate,
     monthlyTrend,
     transfers: transfersByUser,
     notes,
     messages,
-    recentRecords,
-    heatmapData,
-    totalMemorizePages: Math.round(totalMemorizePages * 10) / 10,
-    totalReviewPages: Math.round(totalReviewPages * 10) / 10,
-    totalRecitationPages: Math.round(totalRecitationPages * 10) / 10,
+    totalMemorizePages,
+    totalReviewPages,
+    totalRecitationPages,
     totalShortcomings,
     leaveHistory,
+    heatmapData,
+    recentRecords,
   });
 });
 

@@ -12,6 +12,7 @@ import {
   useCreateStudentGoal,
   useUpdateStudentGoal,
   useDeleteStudentGoal,
+  useListCircleNames,
   type CreateStudentGoalBody,
   type UpdateStudentGoalBody,
 } from "@workspace/api-client-react";
@@ -23,7 +24,7 @@ import {
   ArrowRight, UserCircle, BookOpen, Calendar, ArrowLeftRight,
   Phone, Globe, GraduationCap, StickyNote, Archive, RotateCcw,
   Plane, MessageSquare, Trash2, Plus, Printer, TrendingUp, ListChecks, AlertTriangle,
-  Target, CheckCircle2, Circle, PlaneTakeoff, XCircle,
+  Target, CheckCircle2, Circle, PlaneTakeoff, XCircle, PlusCircle, Layers,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
@@ -160,6 +161,15 @@ export default function StudentProfilePage({ id }: { id: number }) {
   const updateGoal = useUpdateStudentGoal();
   const deleteGoal = useDeleteStudentGoal();
 
+  const { data: allCircleNames } = useListCircleNames(undefined, { query: { queryKey: ["circleNames"] } });
+
+  const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
+  const [enrollCircleId, setEnrollCircleId] = useState("");
+  const [enrollLoading, setEnrollLoading] = useState(false);
+  const [perCircleLeaveOpen, setPerCircleLeaveOpen] = useState<number | null>(null);
+  const [perCircleLeaveStart, setPerCircleLeaveStart] = useState("");
+  const [perCircleLeaveEnd, setPerCircleLeaveEnd] = useState("");
+
   const canEdit = ["leader", "track_supervisor"].includes(user?.role ?? "");
   const canNote = ["leader", "track_supervisor", "teacher", "supervisor"].includes(user?.role ?? "");
   const canSeePlan = ["track_supervisor", "teacher", "supervisor"].includes(user?.role ?? "");
@@ -245,8 +255,57 @@ export default function StudentProfilePage({ id }: { id: number }) {
   };
 
   const handleArchive = () => {
-    if (!confirm(`هل تريدين أرشفة "${profile?.fullName}"؟ ستختفي من الحلقة مع الحفاظ على جميع بياناتها.`)) return;
+    if (!confirm(`هل تريدين أرشفة "${profile?.fullName}" بشكل كامل؟ ستختفي من جميع الحلقات مع الحفاظ على بياناتها.`)) return;
     archiveStudent.mutate({ id }, { onSuccess: () => { toast({ title: "تم أرشفة الطالبة" }); invalidate(); } });
+  };
+
+  const handleArchiveFromCircle = (circleId: number, circleName: string) => {
+    if (!confirm(`هل تريدين إخراج "${profile?.fullName}" من حلقة "${circleName}"؟`)) return;
+    const token = localStorage.getItem("auth_token");
+    fetch(`/api/students/${id}/archive`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ circleId }),
+    })
+      .then(r => { if (!r.ok) throw new Error(); toast({ title: "تم الإخراج من الحلقة" }); invalidate(); })
+      .catch(() => toast({ title: "خطأ في الإخراج", variant: "destructive" }));
+  };
+
+  const handleEnrollInCircle = () => {
+    if (!enrollCircleId) return;
+    setEnrollLoading(true);
+    const token = localStorage.getItem("auth_token");
+    fetch(`/api/students/${id}/enroll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ circleId: parseInt(enrollCircleId) }),
+    })
+      .then(r => { if (!r.ok) throw new Error(); toast({ title: "تم تسجيل الطالبة في الحلقة الجديدة" }); invalidate(); setEnrollDialogOpen(false); setEnrollCircleId(""); })
+      .catch(() => toast({ title: "خطأ في التسجيل", variant: "destructive" }))
+      .finally(() => setEnrollLoading(false));
+  };
+
+  const handlePerCircleLeave = (circleId: number) => {
+    if (!perCircleLeaveStart || !perCircleLeaveEnd) { toast({ title: "أدخلي تاريخ البداية والنهاية", variant: "destructive" }); return; }
+    const token = localStorage.getItem("auth_token");
+    fetch(`/api/students/${id}/leave`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ circleId, leaveStart: perCircleLeaveStart, leaveEnd: perCircleLeaveEnd }),
+    })
+      .then(r => { if (!r.ok) throw new Error(); toast({ title: "تم تسجيل الإجازة" }); invalidate(); setPerCircleLeaveOpen(null); })
+      .catch(() => toast({ title: "خطأ في تسجيل الإجازة", variant: "destructive" }));
+  };
+
+  const handleClearPerCircleLeave = (circleId: number) => {
+    const token = localStorage.getItem("auth_token");
+    fetch(`/api/students/${id}/leave`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ circleId, leaveStart: null, leaveEnd: null }),
+    })
+      .then(r => { if (!r.ok) throw new Error(); toast({ title: "تم إلغاء الإجازة" }); invalidate(); })
+      .catch(() => toast({ title: "خطأ في إلغاء الإجازة", variant: "destructive" }));
   };
 
   const handleRestore = () => {
@@ -470,6 +529,125 @@ export default function StudentProfilePage({ id }: { id: number }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Enrollments (multi-circle) */}
+      {(() => {
+        const enrollments: Array<{ circleId: number; circleName: string; circleTrack: string; isArchived: boolean; leaveStart?: string | null; leaveEnd?: string | null }> = (profile as any).enrollments ?? [];
+        if (enrollments.length === 0) return null;
+        const today = new Date().toISOString().slice(0, 10);
+        return (
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-bold text-muted-foreground flex items-center gap-2">
+                  <Layers className="w-4 h-4" />
+                  الحلقات المسجّلة ({enrollments.filter(e => !e.isArchived).length})
+                </CardTitle>
+                {canEdit && !profile.isArchived && (
+                  <Button size="sm" variant="outline" className="gap-1 text-xs h-7 px-2" onClick={() => { setEnrollCircleId(""); setEnrollDialogOpen(true); }}>
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    تسجيل في حلقة
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-2">
+              {enrollments.map(en => {
+                const onEnrollLeave = !!(en.leaveStart && en.leaveEnd && en.leaveStart <= today && today <= en.leaveEnd);
+                return (
+                  <div key={en.circleId} className={`rounded-xl border px-3 py-2.5 ${en.isArchived ? "bg-gray-50 opacity-60" : "bg-white"}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate">{en.circleName}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          <span className="text-xs text-muted-foreground">{en.circleTrack}</span>
+                          {en.isArchived && <Badge className="bg-gray-100 text-gray-600 text-[10px] py-0 px-1.5">مؤرشفة</Badge>}
+                          {onEnrollLeave && <Badge className="bg-amber-100 text-amber-700 text-[10px] py-0 px-1.5">إجازة حتى {en.leaveEnd}</Badge>}
+                        </div>
+                      </div>
+                      {canEdit && !en.isArchived && (
+                        <div className="flex gap-1 shrink-0">
+                          {onEnrollLeave ? (
+                            <button
+                              onClick={() => handleClearPerCircleLeave(en.circleId)}
+                              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 text-[11px] font-semibold"
+                            >
+                              <XCircle className="w-3 h-3" />
+                              إلغاء الإجازة
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => { setPerCircleLeaveOpen(en.circleId); setPerCircleLeaveStart(""); setPerCircleLeaveEnd(""); }}
+                              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 text-[11px] font-semibold"
+                            >
+                              <Plane className="w-3 h-3" />
+                              إجازة
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleArchiveFromCircle(en.circleId, en.circleName)}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 text-[11px] font-semibold"
+                          >
+                            <Archive className="w-3 h-3" />
+                            إخراج
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {perCircleLeaveOpen === en.circleId && (
+                      <div className="mt-2 pt-2 border-t border-amber-100">
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                          <div>
+                            <p className="text-[10px] text-muted-foreground mb-1">البداية</p>
+                            <Input type="date" value={perCircleLeaveStart} onChange={e => setPerCircleLeaveStart(e.target.value)} className="h-7 text-xs" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-muted-foreground mb-1">النهاية</p>
+                            <Input type="date" value={perCircleLeaveEnd} onChange={e => setPerCircleLeaveEnd(e.target.value)} className="h-7 text-xs" />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" className="flex-1 h-7 text-xs" onClick={() => handlePerCircleLeave(en.circleId)}>تأكيد</Button>
+                          <Button size="sm" variant="outline" className="flex-1 h-7 text-xs" onClick={() => setPerCircleLeaveOpen(null)}>إلغاء</Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* Enroll in new circle dialog */}
+      {enrollDialogOpen && canEdit && (
+        <Card className="border border-teal-200 shadow-sm bg-teal-50/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold text-teal-700 flex items-center gap-2">
+              <PlusCircle className="w-4 h-4" /> تسجيل في حلقة جديدة
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <select
+              value={enrollCircleId}
+              onChange={e => setEnrollCircleId(e.target.value)}
+              className="w-full border border-input rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">— اختاري الحلقة —</option>
+              {(allCircleNames ?? []).map((c: any) => (
+                <option key={c.id} value={c.id}>{c.name} ({c.track})</option>
+              ))}
+            </select>
+            <div className="flex gap-2">
+              <Button size="sm" className="flex-1" onClick={handleEnrollInCircle} disabled={!enrollCircleId || enrollLoading}>
+                {enrollLoading ? "جاري التسجيل..." : "تسجيل"}
+              </Button>
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => setEnrollDialogOpen(false)}>إلغاء</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Attendance Summary */}
       <Card className="border-0 shadow-sm">
