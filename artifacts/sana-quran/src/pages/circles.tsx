@@ -46,14 +46,21 @@ function CircleStudentsPanel({ circleId }: { circleId: number }) {
   };
 
   const handleRestore = (s: any) => {
-    restoreStudent.mutate({ id: s.id, data: {} }, {
-      onSuccess: () => {
-        toast({ title: `تم استرجاع ${s.fullName}` });
+    if (!confirm(`هل تريدين استرجاع "${s.fullName}" إلى هذه الحلقة؟`)) return;
+    const token = localStorage.getItem("auth_token");
+    fetch(`/api/students/${s.id}/restore`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ circleId }),
+    })
+      .then(r => {
+        if (!r.ok) throw new Error();
+        toast({ title: `تم استرجاع ${s.fullName} إلى الحلقة` });
         queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
         queryClient.invalidateQueries({ queryKey: ["circle-students-archived", circleId] });
         queryClient.invalidateQueries({ queryKey: ["circles"] });
-      },
-    });
+      })
+      .catch(() => toast({ title: "خطأ في الاسترجاع", variant: "destructive" }));
   };
 
   if (isLoading) return <p className="text-xs text-muted-foreground py-3 text-center">جاري التحميل...</p>;

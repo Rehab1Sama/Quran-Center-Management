@@ -165,12 +165,16 @@ router.delete("/students/:id", authenticate, async (req, res): Promise<void> => 
 // If circleId → archive only that enrollment
 // If no circleId → global archive (leader only): archive student + all enrollments
 router.patch("/students/:id/archive", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "track_supervisor"].includes(req.userRole!)) {
+  const { circleId } = req.body as { circleId?: number };
+  // Per-circle archive: leader + track_supervisor allowed
+  // Global archive (no circleId): leader only
+  const canPerCircle = ["leader", "track_supervisor"].includes(req.userRole!);
+  const canGlobal = req.userRole === "leader";
+  if ((circleId && !canPerCircle) || (!circleId && !canGlobal)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
   const id = parseId(req.params.id);
-  const { circleId } = req.body as { circleId?: number };
 
   const [before] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
   if (!before) { res.status(404).json({ error: "Student not found" }); return; }
@@ -800,6 +804,8 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     circle: circle ? { id: circle.id, name: circle.name, track: circle.track, trackType: circle.trackType } : null,
     enrollments,
     recentAbsences,
+    // Nested attendanceSummary for frontend compatibility
+    attendanceSummary: { totalSessions, totalAbsences, attendanceRate },
     totalSessions,
     totalAbsences,
     attendanceRate,
