@@ -71,13 +71,13 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
   if (userRole === "data_entry" && userId) {
     const assignments = await db.select().from(dataEntryCircleAssignmentsTable)
       .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, userId));
-    assignedCircleIds = new Set(assignments.map((a: any) => a.circleId));
+    assignedCircleIds = new Set(assignments.map((a: any) => Number(a.circleId)));
   }
 
   const result = students
     .filter(s => {
       if (recordedStudentIds.has(s.studentId)) return false;
-      if (assignedCircleIds !== null && !assignedCircleIds.has(s.circleId)) return false;
+      if (assignedCircleIds !== null && !assignedCircleIds.has(Number(s.circleId))) return false;
       const onLeave = !!(s.leaveStart && s.leaveEnd && s.leaveStart <= today && today <= s.leaveEnd);
       if (onLeave) return false;
       return true;

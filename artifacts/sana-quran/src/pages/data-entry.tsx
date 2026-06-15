@@ -689,7 +689,7 @@ export default function DataEntryPage() {
 
   const studentsInCircle = useMemo(() => {
     if (!selectedCircleId || !missingData) return [];
-    return ((missingData as unknown) as any[]).filter((s: any) => s.circleId === selectedCircleId);
+    return ((missingData as unknown) as any[]).filter((s: any) => Number(s.circleId) === selectedCircleId);
   }, [missingData, selectedCircleId]);
 
   const filteredStudents = useMemo(() => {
