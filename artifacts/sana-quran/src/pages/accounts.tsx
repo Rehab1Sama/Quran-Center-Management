@@ -148,6 +148,8 @@ export default function AccountsPage() {
   const [assignTarget, setAssignTarget] = useState<{ userId: number; userName: string } | null>(null);
   const [selectedAssignCircles, setSelectedAssignCircles] = useState<number[]>([]);
   const [assignTrackFilter, setAssignTrackFilter] = useState<string>("");
+  // تحديد الحلقات لمدخلة البيانات داخل نموذج الإنشاء/التعديل
+  const [deFormCircles, setDeFormCircles] = useState<number[]>([]);
   const { assignments: dataEntryAssignments, saving: assignSaving, saveAssignments } = useDataEntryAssignments(canManageAssignments);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -169,6 +171,7 @@ export default function AccountsPage() {
   const openCreate = () => {
     setEditingUser(null);
     setForm({ name: "", email: "", password: "", role: "", track: "", circleId: "" });
+    setDeFormCircles([]);
     setDialogOpen(true);
   };
 
@@ -182,6 +185,13 @@ export default function AccountsPage() {
       track: user.track ?? "",
       circleId: user.circleId?.toString() ?? "",
     });
+    // تحميل الحلقات المُسندة لمدخلة البيانات
+    if (user.role === "data_entry") {
+      const existing = dataEntryAssignments.find(a => a.userId === user.id);
+      setDeFormCircles(existing?.circleIds ?? []);
+    } else {
+      setDeFormCircles([]);
+    }
     setDialogOpen(true);
   };
 
@@ -195,28 +205,36 @@ export default function AccountsPage() {
       track: "",
       circleId: "",
     });
+    setDeFormCircles([]);
     setDialogOpen(true);
   };
 
   const handleSave = () => {
+    const isDataEntry = form.role === "data_entry";
     const data: any = {
       name: form.name,
       email: form.email,
       role: form.role,
-      track: form.track || null,
-      circleId: form.circleId ? parseInt(form.circleId) : null,
+      // مدخلة البيانات: لا circleId فردي، نحفظ المسار فقط للمرجعية
+      track: isDataEntry ? (form.track || null) : (form.track || null),
+      circleId: isDataEntry ? null : (form.circleId ? parseInt(form.circleId) : null),
     };
     if (form.password) data.password = form.password;
+
+    const afterSave = async (userId: number) => {
+      if (isDataEntry) {
+        await saveAssignments(userId, deFormCircles);
+      }
+      toast({ title: editingUser ? "تم تحديث الحساب بنجاح" : "تم إنشاء الحساب بنجاح" });
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setDialogOpen(false);
+    };
 
     if (editingUser) {
       updateUser.mutate(
         { id: editingUser.id, data },
         {
-          onSuccess: () => {
-            toast({ title: "تم تحديث الحساب بنجاح" });
-            queryClient.invalidateQueries({ queryKey: ["users"] });
-            setDialogOpen(false);
-          },
+          onSuccess: () => afterSave(editingUser.id),
           onError: () => toast({ title: "خطأ في تحديث الحساب", variant: "destructive" }),
         }
       );
@@ -224,10 +242,14 @@ export default function AccountsPage() {
       createUser.mutate(
         { data: { ...data, password: form.password } },
         {
-          onSuccess: () => {
-            toast({ title: "تم إنشاء الحساب بنجاح" });
-            queryClient.invalidateQueries({ queryKey: ["users"] });
-            setDialogOpen(false);
+          onSuccess: (res: any) => {
+            const userId = res?.id ?? res?.data?.id;
+            if (userId) afterSave(userId);
+            else {
+              toast({ title: "تم إنشاء الحساب بنجاح" });
+              queryClient.invalidateQueries({ queryKey: ["users"] });
+              setDialogOpen(false);
+            }
           },
           onError: () => toast({ title: "خطأ في إنشاء الحساب", variant: "destructive" }),
         }
@@ -320,12 +342,15 @@ export default function AccountsPage() {
     if (roleFilter && !p.accounts.some(a => a.role === roleFilter)) return false;
     return true;
   });
-  // deputy has no track/circle requirement
-  const needsTrack = ["data_entry", "track_supervisor", "teacher", "supervisor", "student"].includes(form.role);
+  const needsTrack = ["track_supervisor", "teacher", "supervisor", "student"].includes(form.role);
   const needsCircle = ["teacher", "supervisor", "student"].includes(form.role);
   const filteredCircles = form.track
     ? (circles ?? []).filter(c => c.track === form.track)
     : (circles ?? []);
+  // حلقات مدخلة البيانات — مفلترة بالمسار المختار في النموذج
+  const deFormTrackCircles = form.track
+    ? (circles ?? []).filter((c: any) => !c.isArchived && c.track === form.track)
+    : [];
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -528,7 +553,10 @@ export default function AccountsPage() {
             </div>
             <div className="space-y-2">
               <Label>الدور</Label>
-              <Select value={form.role} onValueChange={v => setForm(f => ({ ...f, role: v, track: "", circleId: "" }))}>
+              <Select value={form.role} onValueChange={v => {
+                setForm(f => ({ ...f, role: v, track: "", circleId: "" }));
+                setDeFormCircles([]);
+              }}>
                 <SelectTrigger>
                   <SelectValue placeholder="اختيار الدور" />
                 </SelectTrigger>
@@ -539,6 +567,73 @@ export default function AccountsPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* مدخلة البيانات: اختيار المسار أولاً ثم الحلقات */}
+            {form.role === "data_entry" && (
+              <>
+                <div className="space-y-2">
+                  <Label>المسار <span className="text-rose-500">*</span></Label>
+                  <Select value={form.track} onValueChange={v => {
+                    setForm(f => ({ ...f, track: v }));
+                    setDeFormCircles([]);
+                  }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={tracksLoading ? "جارٍ التحميل..." : "اختاري المسار أولاً"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tracksLoading ? (
+                        <SelectItem value="__loading__" disabled>جارٍ تحميل المسارات...</SelectItem>
+                      ) : !tracks?.length ? (
+                        <SelectItem value="__empty__" disabled>لا توجد مسارات</SelectItem>
+                      ) : (
+                        tracks.map(t => (
+                          <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {form.track && (
+                  <div className="space-y-2">
+                    <Label className="flex items-center justify-between">
+                      <span>الحلقات المُسندة لها</span>
+                      {deFormCircles.length > 0 && (
+                        <span className="text-xs text-blue-600 font-medium">{deFormCircles.length} مُختارة</span>
+                      )}
+                    </Label>
+                    {deFormTrackCircles.length === 0 ? (
+                      <p className="text-xs text-muted-foreground bg-muted/50 rounded-xl px-3 py-3 text-center">
+                        لا توجد حلقات في هذا المسار
+                      </p>
+                    ) : (
+                      <div className="max-h-48 overflow-y-auto space-y-1.5 border border-border rounded-xl p-2">
+                        {deFormTrackCircles.map((c: any) => {
+                          const checked = deFormCircles.includes(c.id);
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => setDeFormCircles(prev =>
+                                prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                              )}
+                              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors text-right ${
+                                checked ? "bg-blue-50 border-blue-200 text-blue-800" : "border-border hover:bg-muted/40"
+                              }`}
+                            >
+                              {checked
+                                ? <CheckSquare className="w-4 h-4 text-blue-600 shrink-0" />
+                                : <Square className="w-4 h-4 text-muted-foreground shrink-0" />}
+                              <span className="text-sm font-medium">{c.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
             {needsTrack && (
               <div className="space-y-2">
                 <Label>المسار</Label>
