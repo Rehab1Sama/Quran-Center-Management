@@ -50,7 +50,7 @@ export default function DataEntryStatusPage() {
   const [circlesToday, setCirclesToday] = useState<CirclesTodayStat[]>([]);
   const [expandedUser, setExpandedUser] = useState<number | null>(null);
 
-  const isLeaderOrDeputy = currentUser?.role === "leader" || currentUser?.role === "deputy";
+  const isLeaderOrDeputy = currentUser?.role === "leader" || (currentUser?.role as string) === "deputy";
 
   useEffect(() => {
     if (!isLeaderOrDeputy) return;

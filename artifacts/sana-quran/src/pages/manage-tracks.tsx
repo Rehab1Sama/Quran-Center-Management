@@ -120,7 +120,7 @@ export default function ManageTracksPage() {
   const handleCreateTrack = () => {
     if (!newTrackName.trim()) return;
     createTrack.mutate(
-      { data: { name: newTrackName.trim(), dataEntryType: newTrackType } },
+      { data: { name: newTrackName.trim(), dataEntryType: newTrackType as "girls" | "simple_review" | "recitation" | "fixation" } },
       {
         onSuccess: () => {
           toast({ title: `تم إنشاء مسار "${newTrackName.trim()}"` });

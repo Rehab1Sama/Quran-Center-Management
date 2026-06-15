@@ -157,12 +157,12 @@ export default function StudentProfilePage({ id }: { id: number }) {
   const [goalNotes, setGoalNotes] = useState("");
   const [goalMessage, setGoalMessage] = useState("");
 
-  const goals = useListStudentGoals(id, { query: { queryKey: ["studentGoals", id] } });
+  const goals = useListStudentGoals(id);
   const createGoal = useCreateStudentGoal();
   const updateGoal = useUpdateStudentGoal();
   const deleteGoal = useDeleteStudentGoal();
 
-  const { data: allCircleNames } = useListCircleNames(undefined, { query: { queryKey: ["circleNames"] } });
+  const { data: allCircleNames } = useListCircleNames({ query: { queryKey: ["circleNames"] } });
 
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
   const [enrollCircleId, setEnrollCircleId] = useState("");

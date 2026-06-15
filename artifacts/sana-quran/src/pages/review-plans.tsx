@@ -10,7 +10,7 @@ import {
   RefreshCw, TrendingUp, BarChart2, Bell, Clock, Share2,
 } from "lucide-react";
 import { calculatePages, SURAHS, getSurahByName } from "@/lib/quran";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -737,7 +737,7 @@ function ProgressRing({ day, total, color }: { day: number; total: number; color
   );
 }
 
-const cardVariants = {
+const cardVariants: Variants = {
   hidden: { opacity: 0, y: 14 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } },
 };

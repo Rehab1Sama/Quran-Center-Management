@@ -130,7 +130,7 @@ export default function AccountsPage() {
   const { data: currentUser } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const isLeader = currentUser?.role === "leader";
   const isTrackSupervisor = currentUser?.role === "track_supervisor";
-  const canManageAssignments = currentUser?.role === "leader" || currentUser?.role === "deputy";
+  const canManageAssignments = currentUser?.role === "leader" || (currentUser?.role as string) === "deputy";
   const { data: users, isLoading } = useListUsers(undefined, { query: { queryKey: ["users"] } });
   const { data: circles } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
   const { data: tracks, isLoading: tracksLoading } = useListTracks({ query: { queryKey: ["tracks"] } });
