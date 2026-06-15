@@ -58,12 +58,11 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
     .filter(s => {
       if (recordedStudentIds.has(s.studentId)) return false;
       if (assignedCircleIds !== null && !assignedCircleIds.has(s.circleId)) return false;
+      const onLeave = !!(s.leaveStart && s.leaveEnd && s.leaveStart <= today && today <= s.leaveEnd);
+      if (onLeave) return false;
       return true;
     })
-    .map(s => {
-      const onLeave = !!(s.leaveStart && s.leaveEnd && s.leaveStart <= today && today <= s.leaveEnd);
-      return { ...s, onLeave };
-    });
+    .map(s => ({ ...s, onLeave: false }));
 
   res.json(result);
 });

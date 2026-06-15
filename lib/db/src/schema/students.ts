@@ -59,6 +59,7 @@ export const studentLeaveHistoryTable = pgTable("student_leave_history", {
   studentId: integer("student_id").notNull(),
   leaveStart: text("leave_start").notNull(),
   leaveEnd: text("leave_end").notNull(),
+  reason: text("reason"),
   grantedById: integer("granted_by_id"),
   grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),

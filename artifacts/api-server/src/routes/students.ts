@@ -385,10 +385,11 @@ router.patch("/students/:id/leave", authenticate, async (req, res): Promise<void
     res.status(403).json({ error: "Forbidden" }); return;
   }
   const id = parseId(req.params.id);
-  const { leaveStart, leaveEnd, circleId } = req.body as {
+  const { leaveStart, leaveEnd, circleId, reason } = req.body as {
     leaveStart?: string | null;
     leaveEnd?: string | null;
     circleId?: number;
+    reason?: string | null;
   };
 
   if (circleId) {
@@ -423,7 +424,7 @@ router.patch("/students/:id/leave", authenticate, async (req, res): Promise<void
 
   if (leaveStart && leaveEnd) {
     await db.insert(studentLeaveHistoryTable).values({
-      studentId: id, leaveStart, leaveEnd, grantedById: req.userId ?? null,
+      studentId: id, leaveStart, leaveEnd, reason: reason ?? null, grantedById: req.userId ?? null,
     });
   } else if (!leaveStart && !leaveEnd) {
     const [lastLeave] = await db.select().from(studentLeaveHistoryTable)

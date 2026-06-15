@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, registrationSettingsTable, usersTable, studentsTable, circlesTable } from "@workspace/db";
+import { db, registrationSettingsTable, usersTable, studentsTable, circlesTable, studentEnrollmentsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { authenticate, requireRole } from "../middlewares/authenticate";
 import { hashPassword } from "../lib/auth";
@@ -286,7 +286,7 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
     const mergedExtra = extraData ? { ...extraData } : {};
     if (isNewcomer) mergedExtra.__isNewcomer = true;
 
-    await db.insert(studentsTable).values({
+    const [newStudent] = await db.insert(studentsTable).values({
       fullName,
       circleId: targetCircleId ?? null,
       phone: phone ?? null,
@@ -296,7 +296,13 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
       memorizeFrom: memorizeFrom ?? null,
       extraData: Object.keys(mergedExtra).length > 0 ? JSON.stringify(mergedExtra) : null,
       isNewcomer,
-    });
+    }).returning();
+
+    if (newStudent && targetCircleId) {
+      await db.insert(studentEnrollmentsTable)
+        .values({ studentId: newStudent.id, circleId: targetCircleId, isArchived: false })
+        .onConflictDoNothing();
+    }
 
     const circleName = targetCircleId
       ? (await db.select({ name: circlesTable.name }).from(circlesTable).where(eq(circlesTable.id, targetCircleId)))[0]?.name

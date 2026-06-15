@@ -1,17 +1,30 @@
 import { useState } from "react";
-import { useListCircles, useUpdateCircle, useListStudents, useArchiveStudent, useRestoreStudent } from "@workspace/api-client-react";
+import { useListCircles, useUpdateCircle, useListStudents, useArchiveStudent, useRestoreStudent, useGetCurrentUser } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronDown, ChevronUp, Archive, RotateCcw, UserCircle, Link2 } from "lucide-react";
+import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronDown, ChevronUp, Archive, RotateCcw, UserCircle, Link2, PlaneTakeoff, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 
-function CircleStudentsPanel({ circleId }: { circleId: number }) {
+type LeaveModal = {
+  studentId: number;
+  studentName: string;
+  circleId: number;
+  currentLeaveStart?: string | null;
+  currentLeaveEnd?: string | null;
+};
+
+function CircleStudentsPanel({ circleId, canGrantLeave }: { circleId: number; canGrantLeave: boolean }) {
   const [showArchived, setShowArchived] = useState(false);
+  const [leaveModal, setLeaveModal] = useState<LeaveModal | null>(null);
+  const [leaveStart, setLeaveStart] = useState("");
+  const [leaveEnd, setLeaveEnd] = useState("");
+  const [leaveReason, setLeaveReason] = useState("");
+  const [leaveSaving, setLeaveSaving] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
@@ -60,10 +73,59 @@ function CircleStudentsPanel({ circleId }: { circleId: number }) {
     );
   };
 
+  const openLeaveModal = (s: any) => {
+    setLeaveModal({ studentId: s.id, studentName: s.fullName, circleId, currentLeaveStart: s.leaveStart, currentLeaveEnd: s.leaveEnd });
+    setLeaveStart(s.leaveStart ?? "");
+    setLeaveEnd(s.leaveEnd ?? "");
+    setLeaveReason("");
+  };
+
+  const handleGrantLeave = async () => {
+    if (!leaveModal) return;
+    if (!leaveStart || !leaveEnd) { toast({ title: "أدخلي تاريخ البداية والنهاية", variant: "destructive" }); return; }
+    if (leaveEnd < leaveStart) { toast({ title: "تاريخ النهاية يجب أن يكون بعد البداية", variant: "destructive" }); return; }
+    setLeaveSaving(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`/api/students/${leaveModal.studentId}/leave`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ circleId: leaveModal.circleId, leaveStart, leaveEnd, reason: leaveReason || null }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: `تم تسجيل إجازة ${leaveModal.studentName}` });
+      queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
+      setLeaveModal(null);
+    } catch {
+      toast({ title: "خطأ في تسجيل الإجازة", variant: "destructive" });
+    } finally {
+      setLeaveSaving(false);
+    }
+  };
+
+  const handleCancelLeave = async (s: any) => {
+    if (!confirm(`هل تريدين إلغاء إجازة "${s.fullName}"؟`)) return;
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`/api/students/${s.id}/leave`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ circleId, leaveStart: null, leaveEnd: null }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: `تم إلغاء إجازة ${s.fullName}` });
+      queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
+    } catch {
+      toast({ title: "خطأ في إلغاء الإجازة", variant: "destructive" });
+    }
+  };
+
   if (isLoading) return <p className="text-xs text-muted-foreground py-3 text-center">جاري التحميل...</p>;
 
+  const today = new Date().toISOString().slice(0, 10);
+
   return (
-    <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
+    <div className="mt-3 pt-3 border-t border-border/50 space-y-2" dir="rtl">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-muted-foreground">الطالبات ({students?.length ?? 0})</p>
         {(archivedStudents?.length ?? 0) > 0 && (
@@ -81,27 +143,55 @@ function CircleStudentsPanel({ circleId }: { circleId: number }) {
       {(!students || students.length === 0) && (
         <p className="text-xs text-muted-foreground text-center py-2">لا توجد طالبات</p>
       )}
-      {students?.map(s => (
-        <div key={s.id} className="flex items-center justify-between gap-2 bg-muted/30 rounded-lg px-2.5 py-1.5">
-          <span className="text-xs font-medium truncate flex-1">{s.fullName}</span>
-          <div className="flex gap-1 flex-shrink-0">
-            <button
-              onClick={() => navigate(`/students/${s.id}`)}
-              className="p-1 rounded bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors"
-              title="ملف الطالبة"
-            >
-              <UserCircle className="w-3 h-3" />
-            </button>
-            <button
-              onClick={() => handleArchive(s)}
-              className="p-1 rounded bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors"
-              title="أرشفة"
-            >
-              <Archive className="w-3 h-3" />
-            </button>
+      {students?.map(s => {
+        const sAny = s as any;
+        const onLeave = !!(sAny.leaveStart && sAny.leaveEnd && sAny.leaveStart <= today && today <= sAny.leaveEnd);
+        return (
+          <div key={s.id} className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 ${onLeave ? "bg-blue-50 border border-blue-200" : "bg-muted/30"}`}>
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <span className="text-xs font-medium truncate">{s.fullName}</span>
+              {onLeave && (
+                <span className="text-[10px] bg-blue-100 text-blue-700 border border-blue-200 rounded-full px-1.5 py-0.5 shrink-0">إجازة</span>
+              )}
+            </div>
+            <div className="flex gap-1 flex-shrink-0">
+              <button
+                onClick={() => navigate(`/students/${s.id}`)}
+                className="p-1 rounded bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors"
+                title="ملف الطالبة"
+              >
+                <UserCircle className="w-3 h-3" />
+              </button>
+              {canGrantLeave && (
+                onLeave ? (
+                  <button
+                    onClick={() => handleCancelLeave(s)}
+                    className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                    title="إلغاء الإجازة"
+                  >
+                    <XCircle className="w-3 h-3" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => openLeaveModal(s)}
+                    className="p-1 rounded bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                    title="منح إجازة"
+                  >
+                    <PlaneTakeoff className="w-3 h-3" />
+                  </button>
+                )
+              )}
+              <button
+                onClick={() => handleArchive(s)}
+                className="p-1 rounded bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors"
+                title="أرشفة"
+              >
+                <Archive className="w-3 h-3" />
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Archived students */}
       {showArchived && archivedStudents && archivedStudents.length > 0 && (
@@ -119,6 +209,66 @@ function CircleStudentsPanel({ circleId }: { circleId: number }) {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Leave Modal */}
+      {leaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm mx-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <PlaneTakeoff className="w-4 h-4 text-amber-500" />
+                منح إجازة
+              </h3>
+              <button onClick={() => setLeaveModal(null)} className="p-1 rounded hover:bg-muted">
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground">الطالبة: <span className="font-semibold text-foreground">{leaveModal.studentName}</span></p>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">تاريخ البداية</Label>
+                <input
+                  type="date"
+                  value={leaveStart}
+                  onChange={e => setLeaveStart(e.target.value)}
+                  className="h-9 text-sm border border-input rounded-md px-3 w-full bg-background"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">تاريخ النهاية</Label>
+                <input
+                  type="date"
+                  value={leaveEnd}
+                  onChange={e => setLeaveEnd(e.target.value)}
+                  className="h-9 text-sm border border-input rounded-md px-3 w-full bg-background"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">السبب (اختياري)</Label>
+                <input
+                  type="text"
+                  value={leaveReason}
+                  onChange={e => setLeaveReason(e.target.value)}
+                  placeholder="مثال: سفر، مرض..."
+                  className="h-9 text-sm border border-input rounded-md px-3 w-full bg-background"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button
+                onClick={handleGrantLeave}
+                disabled={leaveSaving || !leaveStart || !leaveEnd}
+                className="flex-1 text-sm"
+              >
+                {leaveSaving ? "جاري الحفظ..." : "تسجيل الإجازة"}
+              </Button>
+              <Button variant="outline" onClick={() => setLeaveModal(null)} className="flex-1 text-sm">
+                إلغاء
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -139,6 +289,7 @@ const TRACK_COLORS: Record<string, string> = {
 
 export default function CirclesPage() {
   const { data: circles, isLoading, refetch } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
+  const { data: currentUser } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const updateCircle = useUpdateCircle();
   const { toast } = useToast();
 
@@ -148,6 +299,8 @@ export default function CirclesPage() {
   const [editData, setEditData] = useState({ meetingTime: "", newStudentCapacity: "", whatsappLink: "" });
   const [saving, setSaving] = useState(false);
   const [expandedCircle, setExpandedCircle] = useState<number | null>(null);
+
+  const canGrantLeave = ["leader", "deputy", "track_supervisor"].includes(currentUser?.role ?? "");
 
   const tracks = Array.from(new Set(
     (circles ?? []).flatMap(c => (typeof c.track === "string" && c.track) ? [c.track] : [])
@@ -348,49 +501,59 @@ export default function CirclesPage() {
                                 value={editData.whatsappLink}
                                 onChange={e => setEditData(d => ({ ...d, whatsappLink: e.target.value }))}
                                 placeholder="https://chat.whatsapp.com/..."
-                                className="h-8 text-xs"
-                                dir="ltr"
+                                className="h-8 text-xs text-right"
                               />
                             </div>
-                            <Button
-                              size="sm"
-                              className="w-full h-8 text-xs gap-1"
-                              onClick={() => saveEdit(circle.id)}
-                              disabled={saving}
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              حفظ
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => saveEdit(circle.id)}
+                                disabled={saving}
+                                className="flex-1 h-8 text-xs"
+                              >
+                                <Check className="w-3 h-3 ml-1" />
+                                {saving ? "جاري الحفظ..." : "حفظ"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setEditingId(null)}
+                                className="flex-1 h-8 text-xs"
+                              >
+                                إلغاء
+                              </Button>
+                            </div>
                           </div>
                         )}
 
-                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/50 text-xs text-muted-foreground">
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-1">
+                        {/* Students count + expand toggle */}
+                        <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between">
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
                               <Users className="w-3.5 h-3.5" />
-                              <span>{c.studentCount ?? 0} طالبة</span>
-                            </div>
-                            {c.location && (
-                              <div className="flex items-center gap-1">
+                              {(c as any).studentCount ?? 0} طالبة
+                            </span>
+                            {(c as any).location && (
+                              <span className="flex items-center gap-1">
                                 <BookOpen className="w-3.5 h-3.5" />
-                                <span className="truncate">{c.location}</span>
-                              </div>
+                                {(c as any).location}
+                              </span>
                             )}
                           </div>
-                          {!isEditing && (
-                            <button
-                              onClick={() => setExpandedCircle(expandedCircle === circle.id ? null : circle.id)}
-                              className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                              title="عرض الطالبات"
-                            >
-                              <Users className="w-3 h-3" />
-                              الطالبات
-                              {expandedCircle === circle.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setExpandedCircle(expandedCircle === circle.id ? null : circle.id)}
+                            className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors"
+                          >
+                            {expandedCircle === circle.id ? (
+                              <><ChevronUp className="w-3 h-3" />إخفاء</>
+                            ) : (
+                              <><ChevronDown className="w-3 h-3" />الطالبات</>
+                            )}
+                          </button>
                         </div>
-                        {expandedCircle === circle.id && !isEditing && (
-                          <CircleStudentsPanel circleId={circle.id} />
+
+                        {expandedCircle === circle.id && (
+                          <CircleStudentsPanel circleId={circle.id} canGrantLeave={canGrantLeave} />
                         )}
                       </CardContent>
                     </Card>
@@ -399,10 +562,6 @@ export default function CirclesPage() {
               </div>
             </div>
           ))}
-
-          {filtered.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">لا توجد حلقات مطابقة</div>
-          )}
         </div>
       )}
     </div>
