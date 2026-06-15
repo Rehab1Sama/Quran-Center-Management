@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, recordsTable, circlesTable, studentsTable, teacherAbsencesTable, dataEntryCircleAssignmentsTable, studentEnrollmentsTable } from "@workspace/db";
-import { eq, and, gte, inArray, sql, isNotNull } from "drizzle-orm";
+import { eq, and, gte, inArray, sql } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
 const router: IRouter = Router();
@@ -18,66 +18,110 @@ function getWeekSunday(today: string): string {
 
 router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> => {
   const today = (req.query.date as string) ?? getMeccaTodayServer();
-  const userId = (req as any).userId;
-  const userRole = (req as any).userRole;
+  const userId = req.userId;
+  const userRole = req.userRole;
 
-  const todayRecords = await db.select().from(recordsTable).where(eq(recordsTable.date, today));
+  // سجلات اليوم — لتصفية من أُدخلت بياناتهن مسبقاً
+  const todayRecords = await db
+    .select({ studentId: recordsTable.studentId })
+    .from(recordsTable)
+    .where(eq(recordsTable.date, today));
   const recordedStudentIds = new Set(todayRecords.map(r => r.studentId));
 
-  // LEFT JOIN: يشمل الطالبات اللواتي لديهن سجل تسجيل أو لديهن circleId مباشرة على جدول students
-  const studentsQuery = db
+  // للمدخلة: نجلب الحلقات المُسندة لها من قاعدة البيانات
+  let assignedCircleIds: number[] | null = null;
+  if (userRole === "data_entry" && userId) {
+    const assignments = await db
+      .select({ circleId: dataEntryCircleAssignmentsTable.circleId })
+      .from(dataEntryCircleAssignmentsTable)
+      .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, userId));
+    assignedCircleIds = assignments.map(a => a.circleId);
+  }
+
+  // ── طريقة 1: جلب الطالبات عبر studentEnrollmentsTable (مصدر الحقيقة) ──
+  const enrollmentConditions = [
+    eq(studentEnrollmentsTable.isArchived, false),
+    eq(studentsTable.isArchived, false),
+    ...(assignedCircleIds !== null && assignedCircleIds.length > 0
+      ? [inArray(studentEnrollmentsTable.circleId, assignedCircleIds)]
+      : assignedCircleIds !== null && assignedCircleIds.length === 0
+        ? [sql`false`] // لا حلقات مُسندة → لا طالبات
+        : []),
+  ];
+
+  const byEnrollment = await db
     .select({
       studentId: studentsTable.id,
       studentName: studentsTable.fullName,
-      circleId: sql<number>`COALESCE(${studentEnrollmentsTable.circleId}, ${studentsTable.circleId})`.as("circleId"),
+      circleId: studentEnrollmentsTable.circleId,
       circleName: circlesTable.name,
       track: circlesTable.track,
       leaveStart: studentEnrollmentsTable.leaveStart,
       leaveEnd: studentEnrollmentsTable.leaveEnd,
     })
     .from(studentsTable)
-    .leftJoin(
+    .innerJoin(
       studentEnrollmentsTable,
       and(
         eq(studentEnrollmentsTable.studentId, studentsTable.id),
-        eq(studentEnrollmentsTable.isArchived, false),
+        ...enrollmentConditions.slice(0, 2),
+        ...(enrollmentConditions.length > 2 ? [enrollmentConditions[2]] : []),
       ),
     )
-    .innerJoin(
-      circlesTable,
-      sql`${circlesTable.id} = COALESCE(${studentEnrollmentsTable.circleId}, ${studentsTable.circleId})`,
-    )
-    .where(
-      and(
-        eq(studentsTable.isArchived, false),
-        sql`COALESCE(${studentEnrollmentsTable.circleId}, ${studentsTable.circleId}) IS NOT NULL`,
-      ),
-    )
-    .groupBy(
-      studentsTable.id,
-      studentsTable.fullName,
-      studentsTable.circleId,
-      studentEnrollmentsTable.circleId,
-      studentEnrollmentsTable.leaveStart,
-      studentEnrollmentsTable.leaveEnd,
-      circlesTable.name,
-      circlesTable.track,
+    .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))
+    .where(eq(studentsTable.isArchived, false));
+
+  // ── طريقة 2: جلب الطالبات عبر studentsTable.circleId مباشرة (لمن ليس لهن enrollment) ──
+  let byDirectCircle: typeof byEnrollment = [];
+  if (assignedCircleIds === null || assignedCircleIds.length > 0) {
+    const directWhere = and(
+      eq(studentsTable.isArchived, false),
+      assignedCircleIds !== null && assignedCircleIds.length > 0
+        ? inArray(studentsTable.circleId, assignedCircleIds)
+        : sql`${studentsTable.circleId} IS NOT NULL`,
     );
 
-  const students = await studentsQuery;
+    const directRows = await db
+      .select({
+        studentId: studentsTable.id,
+        studentName: studentsTable.fullName,
+        circleId: studentsTable.circleId,
+        circleName: circlesTable.name,
+        track: circlesTable.track,
+        leaveStart: sql<string | null>`null`.as("leave_start"),
+        leaveEnd: sql<string | null>`null`.as("leave_end"),
+      })
+      .from(studentsTable)
+      .innerJoin(circlesTable, eq(circlesTable.id, studentsTable.circleId))
+      .where(directWhere!);
 
-  // للمدخلة: فقط الحلقات المُسندة لها
-  let assignedCircleIds: Set<number> | null = null;
-  if (userRole === "data_entry" && userId) {
-    const assignments = await db.select().from(dataEntryCircleAssignmentsTable)
-      .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, userId));
-    assignedCircleIds = new Set(assignments.map((a: any) => Number(a.circleId)));
+    byDirectCircle = directRows as any;
   }
 
-  const result = students
+  // ── دمج النتيجتين وإزالة التكرار بـ (studentId + circleId) ──
+  const seen = new Set<string>();
+  const allStudents: Array<{
+    studentId: number;
+    studentName: string;
+    circleId: number;
+    circleName: string;
+    track: string | null;
+    leaveStart: string | null;
+    leaveEnd: string | null;
+  }> = [];
+
+  for (const s of [...byEnrollment, ...byDirectCircle]) {
+    const key = `${s.studentId}-${s.circleId}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      allStudents.push(s as any);
+    }
+  }
+
+  // ── تصفية من أُدخلت بياناتهن أو في إجازة ──
+  const result = allStudents
     .filter(s => {
       if (recordedStudentIds.has(s.studentId)) return false;
-      if (assignedCircleIds !== null && !assignedCircleIds.has(Number(s.circleId))) return false;
       const onLeave = !!(s.leaveStart && s.leaveEnd && s.leaveStart <= today && today <= s.leaveEnd);
       if (onLeave) return false;
       return true;
