@@ -38,16 +38,14 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
     assignedCircleIds = assignments.map(a => a.circleId);
   }
 
-  // ── طريقة 1: جلب الطالبات عبر studentEnrollmentsTable (مصدر الحقيقة) ──
-  const enrollmentConditions = [
-    eq(studentEnrollmentsTable.isArchived, false),
-    eq(studentsTable.isArchived, false),
-    ...(assignedCircleIds !== null && assignedCircleIds.length > 0
-      ? [inArray(studentEnrollmentsTable.circleId, assignedCircleIds)]
-      : assignedCircleIds !== null && assignedCircleIds.length === 0
-        ? [sql`false`] // لا حلقات مُسندة → لا طالبات
-        : []),
-  ];
+  // ── طريقة 1 (الأساسية): جلب الطالبات عبر enrollment أولًا (مطابق لـ students list endpoint) ──
+  // نبدأ من enrollment ثم نضم studentsTable — نفس أسلوب GET /students?circleId=X
+  const enrollmentCircleFilter =
+    assignedCircleIds !== null && assignedCircleIds.length > 0
+      ? inArray(studentEnrollmentsTable.circleId, assignedCircleIds)
+      : assignedCircleIds !== null // مصفوفة فارغة = لا حلقات مُسندة
+        ? sql`false`
+        : sql`true`;
 
   const byEnrollment = await db
     .select({
@@ -59,19 +57,18 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
       leaveStart: studentEnrollmentsTable.leaveStart,
       leaveEnd: studentEnrollmentsTable.leaveEnd,
     })
-    .from(studentsTable)
-    .innerJoin(
-      studentEnrollmentsTable,
-      and(
-        eq(studentEnrollmentsTable.studentId, studentsTable.id),
-        ...enrollmentConditions.slice(0, 2),
-        ...(enrollmentConditions.length > 2 ? [enrollmentConditions[2]] : []),
-      ),
-    )
+    .from(studentEnrollmentsTable)
+    .innerJoin(studentsTable, eq(studentsTable.id, studentEnrollmentsTable.studentId))
     .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))
-    .where(eq(studentsTable.isArchived, false));
+    .where(
+      and(
+        eq(studentEnrollmentsTable.isArchived, false),
+        eq(studentsTable.isArchived, false),
+        enrollmentCircleFilter,
+      ),
+    );
 
-  // ── طريقة 2: جلب الطالبات عبر studentsTable.circleId مباشرة (لمن ليس لهن enrollment) ──
+  // ── طريقة 2 (احتياطية): طالبات بـ studentsTable.circleId مباشرة دون enrollment ──
   let byDirectCircle: typeof byEnrollment = [];
   if (assignedCircleIds === null || assignedCircleIds.length > 0) {
     const directWhere = and(
@@ -80,7 +77,6 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
         ? inArray(studentsTable.circleId, assignedCircleIds)
         : sql`${studentsTable.circleId} IS NOT NULL`,
     );
-
     const directRows = await db
       .select({
         studentId: studentsTable.id,
@@ -94,7 +90,6 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
       .from(studentsTable)
       .innerJoin(circlesTable, eq(circlesTable.id, studentsTable.circleId))
       .where(directWhere!);
-
     byDirectCircle = directRows as any;
   }
 
@@ -110,6 +105,7 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
     leaveEnd: string | null;
   }> = [];
 
+  // enrollment أولًا (مصدر الحقيقة) ثم direct كاحتياط
   for (const s of [...byEnrollment, ...byDirectCircle]) {
     const key = `${s.studentId}-${s.circleId}`;
     if (!seen.has(key)) {
