@@ -69,6 +69,24 @@ const NO_REVIEW_PLAN_CATEGORIES = new Set(["أطفال", "أمهات", "تصحي
 const NO_REVIEW_PLAN_DATATYPES  = new Set(["recitation", "mishkah", "children", "mothers"]);
 const LEGACY_NO_REVIEW_TRACKS   = ["ألق", "سراج", "مهج", "مشكاة نور"];
 
+const NO_SHORTCOMINGS_CATEGORIES = new Set(["أطفال", "أمهات"]);
+const NO_SHORTCOMINGS_DATATYPES  = new Set(["children", "mothers"]);
+const LEGACY_NO_SHORTCOMINGS_TRACKS = ["ألق", "سراج", "مهج"];
+
+export function shouldHideShortcomings(
+  trackName: string | null | undefined,
+  dataEntryType?: string | null,
+): boolean {
+  if (dataEntryType && NO_SHORTCOMINGS_DATATYPES.has(dataEntryType)) return true;
+  if (!trackName) return false;
+  const cfg = schoolConfig.defaultTrackTypes.find(t => t.name === trackName);
+  if (cfg) {
+    if (cfg.category && NO_SHORTCOMINGS_CATEGORIES.has(cfg.category)) return true;
+    if (NO_SHORTCOMINGS_DATATYPES.has(cfg.dataEntryType))             return true;
+  }
+  return LEGACY_NO_SHORTCOMINGS_TRACKS.includes(trackName);
+}
+
 export function shouldHideReviewPlans(
   trackName: string | null | undefined,
   dataEntryType?: string | null,

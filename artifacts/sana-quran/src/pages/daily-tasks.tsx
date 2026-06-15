@@ -242,12 +242,18 @@ export default function DailyTasksPage() {
   };
 
   const updateState = (circleId: number, patch: Partial<CircleTaskState>) => {
+    // لو المعلمة غابت: إلغاء مهام المشرفة وعدد الغياب تلقائياً
+    if (patch.teacherAttendance === "absent") {
+      patch = { ...patch, prepStatus: "not_done", motivationStatus: "not_done", reportStatus: "not_done", circleAbsenceCount: 0 };
+    }
     setTaskState(prev => ({ ...prev, [circleId]: { ...getState(circleId), ...patch } }));
     setSaved(prev => ({ ...prev, [circleId]: false }));
   };
 
   const isComplete = (circleId: number) => {
     const s = getState(circleId);
+    // لو المعلمة غابت: يكفي تسجيل الغياب فقط
+    if (s.teacherAttendance === "absent") return true;
     return s.teacherAttendance && s.prepStatus && s.motivationStatus && s.reportStatus;
   };
 
@@ -460,23 +466,31 @@ export default function DailyTasksPage() {
                       <p className="text-xs font-bold text-primary mb-3">حضور المعلمة</p>
                       <OptionGroup label="" options={teacherOptions} value={s.teacherAttendance} onChange={v => updateState(circle.id, { teacherAttendance: v })} />
 
-                      <p className="text-xs font-bold text-primary mb-2 mt-4">مهام المشرفة</p>
-                      <OptionGroup label="التحضير:" options={prepOptions} value={s.prepStatus} onChange={v => updateState(circle.id, { prepStatus: v })} />
-                      <OptionGroup label="التحفيز:" options={motivationOptions} value={s.motivationStatus} onChange={v => updateState(circle.id, { motivationStatus: v })} />
-                      <OptionGroup label="الكشف:" options={reportOptions} value={s.reportStatus} onChange={v => updateState(circle.id, { reportStatus: v })} />
+                      {s.teacherAttendance === "absent" ? (
+                        <div className="mt-3 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-xs text-red-700">
+                          المعلمة غائبة — مهام المشرفة وعدد الغياب ملغية تلقائياً
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-xs font-bold text-primary mb-2 mt-4">مهام المشرفة</p>
+                          <OptionGroup label="التحضير:" options={prepOptions} value={s.prepStatus} onChange={v => updateState(circle.id, { prepStatus: v })} />
+                          <OptionGroup label="التحفيز:" options={motivationOptions} value={s.motivationStatus} onChange={v => updateState(circle.id, { motivationStatus: v })} />
+                          <OptionGroup label="الكشف:" options={reportOptions} value={s.reportStatus} onChange={v => updateState(circle.id, { reportStatus: v })} />
 
-                      <div className="mt-3">
-                        <p className="text-xs text-muted-foreground mb-1.5 font-medium">عدد غياب الحلقة:</p>
-                        <select
-                          className="border border-border rounded-lg px-3 py-1.5 text-sm bg-white w-28"
-                          value={s.circleAbsenceCount}
-                          onChange={e => updateState(circle.id, { circleAbsenceCount: parseInt(e.target.value) })}
-                        >
-                          {Array.from({ length: 16 }, (_, i) => (
-                            <option key={i} value={i}>{i === 0 ? "لا غياب" : i}</option>
-                          ))}
-                        </select>
-                      </div>
+                          <div className="mt-3">
+                            <p className="text-xs text-muted-foreground mb-1.5 font-medium">عدد غياب الحلقة:</p>
+                            <select
+                              className="border border-border rounded-lg px-3 py-1.5 text-sm bg-white w-28"
+                              value={s.circleAbsenceCount}
+                              onChange={e => updateState(circle.id, { circleAbsenceCount: parseInt(e.target.value) })}
+                            >
+                              {Array.from({ length: 16 }, (_, i) => (
+                                <option key={i} value={i}>{i === 0 ? "لا غياب" : i}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </>
+                      )}
 
                       {individualQuestions.length > 0 && (
                         <div className="mt-4 space-y-3 pt-3 border-t border-border/50">

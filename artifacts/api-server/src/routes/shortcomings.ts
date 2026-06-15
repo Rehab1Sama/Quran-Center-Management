@@ -27,6 +27,16 @@ function computeShortcoming(
 
   const reasons: string[] = [];
   const isRecitation = trackType === "recitation";
+  const isChildren   = trackType === "children";
+  const isMothers    = trackType === "mothers";
+
+  // مسارات لا تُحاسب على التقصير تلقائياً
+  if (isChildren || isMothers || isRecitation) {
+    if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) {
+      return { isShortcoming: r.shortcomingOverride, reasons };
+    }
+    return { isShortcoming: false, reasons: [] };
+  }
 
   if (!isRecitation) {
     if (isFoundational) {

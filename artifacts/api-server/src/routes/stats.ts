@@ -84,11 +84,12 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
   const totalAbsences = records.filter(r => r.isAbsent).length;
   const totalDeficiencies = records.filter(r => {
     if (r.isAbsent) return false;
-    const isRecitation = (circleTrackTypeMap[r.circleId] ?? "girls") === "recitation";
-    const noReview = !isRecitation &&
+    if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) return r.shortcomingOverride;
+    const trackType = circleTrackTypeMap[r.circleId] ?? "girls";
+    if (trackType === "children" || trackType === "mothers" || trackType === "recitation") return false;
+    const noReview =
       (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
     const notListened = r.listenedToReciter === false;
-    if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) return r.shortcomingOverride;
     return noReview || notListened;
   }).length;
 
@@ -254,11 +255,11 @@ router.get("/stats/circles", authenticate, async (req, res): Promise<void> => {
       studentCount: cStudents.length,
       deficiencyCount: cRecords.filter(r => {
         if (r.isAbsent) return false;
-        const isRecitation = circleTrackType === "recitation";
-        const noReview = !isRecitation &&
+        if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) return r.shortcomingOverride;
+        if (circleTrackType === "children" || circleTrackType === "mothers" || circleTrackType === "recitation") return false;
+        const noReview =
           (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
         const noListened = r.listenedToReciter === false;
-        if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) return r.shortcomingOverride;
         return noReview || noListened;
       }).length,
     };
@@ -921,8 +922,8 @@ router.get("/stats/teacher-performance", authenticate, async (req, res): Promise
     if (r.isAbsent) return false;
     if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) return r.shortcomingOverride;
     const trackType = circleTrackTypeMap[r.circleId];
-    const isRecitation = trackType === "recitation";
-    const noReview = !isRecitation &&
+    if (trackType === "children" || trackType === "mothers" || trackType === "recitation") return false;
+    const noReview =
       (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
     const notListened = r.listenedToReciter === false;
     return noReview || notListened;
@@ -1042,8 +1043,8 @@ router.get("/stats/monthly-honor", authenticate, async (req, res): Promise<void>
     if (r.isAbsent) return false;
     if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) return r.shortcomingOverride;
     const trackType = circleTrackTypeMap[r.circleId];
-    const isRecitation = trackType === "recitation";
-    const noReview = !isRecitation &&
+    if (trackType === "children" || trackType === "mothers" || trackType === "recitation") return false;
+    const noReview =
       (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
     const notListened = r.listenedToReciter === false;
     return noReview || notListened;

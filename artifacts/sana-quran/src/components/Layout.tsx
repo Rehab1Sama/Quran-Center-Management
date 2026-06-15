@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useGetTodayBanner, useLogout, useGetMyMessages, useListStudents } from "@workspace/api-client-react";
 import { clearToken, getToken, setToken } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
-import { isFeatureEnabled, shouldHideReviewPlans } from "@/lib/schoolConfig";
+import { isFeatureEnabled, shouldHideReviewPlans, shouldHideShortcomings } from "@/lib/schoolConfig";
 import {
   Users, ClipboardList, BarChart3,
   UserCheck, Home, LogOut, Menu, X,
@@ -705,7 +705,8 @@ function filterNav(items: NavItem[]): NavItem[] {
 }
 
 function getNavItems(role: string, unreadCount = 0, track?: string | null, circleDataEntryType?: string | null): NavItem[] {
-  const hideReviewPlan = shouldHideReviewPlans(track, circleDataEntryType);
+  const hideReviewPlan    = shouldHideReviewPlans(track, circleDataEntryType);
+  const hideShortcomings  = shouldHideShortcomings(track, circleDataEntryType);
 
   if (role === "leader") {
     return filterNav([
@@ -808,8 +809,8 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/archived-students", label: "المؤرشفات", icon: Archive },
       { href: "/badges", label: "الأوسمة", icon: Award, feature: "badges" },
       { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
-      { href: "/shortcomings", label: "التقصير", icon: AlertTriangle, feature: "shortcomings" },
-      { href: "/stumbling-stats", label: "إحصائيات التعثر", icon: AlertTriangle, feature: "stats_stumbling" },
+      ...(!hideShortcomings ? [{ href: "/shortcomings", label: "التقصير", icon: AlertTriangle, feature: "shortcomings" }] : []),
+      ...(!hideShortcomings ? [{ href: "/stumbling-stats", label: "إحصائيات التعثر", icon: AlertTriangle, feature: "stats_stumbling" }] : []),
       ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen, feature: "review_plans" }] : []),
       { href: "/messages", label: "الرسائل", icon: MessageSquare, feature: "messages" },
       { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount, feature: "messages" },
