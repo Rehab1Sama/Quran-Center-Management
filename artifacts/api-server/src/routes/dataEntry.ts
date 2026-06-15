@@ -36,12 +36,12 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
   const userId = req.userId;
   const userRole = req.userRole;
 
-  // Students already recorded today
+  // Students already recorded today — used to mark (not exclude) them
   const todayRecords = await db
-    .select({ studentId: recordsTable.studentId })
+    .select({ studentId: recordsTable.studentId, recordId: recordsTable.id })
     .from(recordsTable)
     .where(eq(recordsTable.date, today));
-  const recordedStudentIds = new Set(todayRecords.map((r) => r.studentId));
+  const recordMap = new Map(todayRecords.map((r) => [r.studentId, r.recordId]));
 
   // For data_entry: get their assigned circle IDs
   // null = no restriction (show all), array = restrict to these circles
@@ -122,20 +122,17 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
     }
   }
 
-  // Filter out already-recorded students and those on leave
-  const result = all
-    .filter((s) => {
-      if (recordedStudentIds.has(s.studentId)) return false;
-      if (
-        s.leaveStart &&
-        s.leaveEnd &&
-        s.leaveStart <= today &&
-        today <= s.leaveEnd
-      )
-        return false;
-      return true;
-    })
-    .map((s) => ({ ...s, onLeave: false }));
+  // Mark each student with leave and record status — no longer filter out recorded students
+  const result = all.map((s) => {
+    const onLeave = !!(
+      s.leaveStart &&
+      s.leaveEnd &&
+      s.leaveStart <= today &&
+      today <= s.leaveEnd
+    );
+    const recordId = recordMap.get(s.studentId) ?? null;
+    return { ...s, onLeave, recordId, hasRecord: recordId !== null };
+  });
 
   res.json(result);
 });

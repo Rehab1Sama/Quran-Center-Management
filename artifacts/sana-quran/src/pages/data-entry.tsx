@@ -559,7 +559,7 @@ export default function DataEntryPage() {
     ? assignedCircles
     : (circles ?? []).filter((c: any) => !selectedTrack || c.track === selectedTrack);
 
-  // Students in selected circle who need data entry
+  // All students in selected circle (including those with records)
   const studentsInCircle = useMemo(() => {
     if (!selectedCircleId || !missingData) return [];
     return ((missingData as unknown) as any[]).filter(
@@ -567,9 +567,14 @@ export default function DataEntryPage() {
     );
   }, [missingData, selectedCircleId]);
 
+  const pendingStudents = useMemo(() => studentsInCircle.filter((s: any) => !s.hasRecord && !s.onLeave), [studentsInCircle]);
+  const enteredStudents = useMemo(() => studentsInCircle.filter((s: any) => s.hasRecord), [studentsInCircle]);
+  const onLeaveStudents = useMemo(() => studentsInCircle.filter((s: any) => s.onLeave && !s.hasRecord), [studentsInCircle]);
+
   const filteredStudents = useMemo(() => {
-    if (!studentSearch.trim()) return studentsInCircle;
-    return studentsInCircle.filter((s: any) => s.studentName?.includes(studentSearch));
+    const search = studentSearch.trim();
+    if (!search) return studentsInCircle;
+    return studentsInCircle.filter((s: any) => s.studentName?.includes(search));
   }, [studentsInCircle, studentSearch]);
 
   const selectedCircle = (circles ?? []).find((c: any) => c.id === selectedCircleId) as any;
@@ -898,11 +903,16 @@ export default function DataEntryPage() {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-500" />
-                طالبات لم تُدخل بياناتهن
+                <Users className="w-4 h-4 text-primary" />
+                طالبات الحلقة
                 {studentsInCircle.length > 0 && (
-                  <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">
+                  <Badge className="bg-primary/10 text-primary border-0 text-xs">
                     {studentsInCircle.length}
+                  </Badge>
+                )}
+                {pendingStudents.length > 0 && (
+                  <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">
+                    {pendingStudents.length} لم تُدخل
                   </Badge>
                 )}
               </CardTitle>
@@ -920,11 +930,9 @@ export default function DataEntryPage() {
           </CardHeader>
           <CardContent>
             {studentsInCircle.length === 0 ? (
-              <div className="text-center py-8">
-                <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-                <p className="font-semibold text-emerald-700 text-sm">
-                  تم إدخال بيانات جميع طالبات هذه الحلقة ليوم {selectedDate}
-                </p>
+              <div className="text-center py-8 text-muted-foreground">
+                <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">لا يوجد طالبات في هذه الحلقة</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -940,94 +948,90 @@ export default function DataEntryPage() {
                     />
                   </div>
                 )}
-                {filteredStudents.map((student: any) => (
-                  <div
-                    key={student.studentId}
-                    className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border hover:bg-muted/20 transition-colors"
-                  >
-                    <div>
-                      <p className="font-semibold text-sm">{student.studentName}</p>
-                      {student.track && (
-                        <p className="text-xs text-muted-foreground">{student.track}</p>
-                      )}
+                {filteredStudents.map((student: any) => {
+                  const hasRecord = !!student.hasRecord;
+                  const isOnLeave = !!student.onLeave;
+                  const recordForEdit = hasRecord
+                    ? (circleRecords as any[]).find((r: any) => r.studentId === student.studentId)
+                    : null;
+                  const canEdit =
+                    !hasRecord ||
+                    (user as any)?.role === "leader" ||
+                    (recordForEdit && new Date(recordForEdit.createdAt).getTime() > Date.now() - 2 * 60 * 60 * 1000);
+
+                  return (
+                    <div
+                      key={`${student.studentId}-${student.circleId}`}
+                      className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-colors ${
+                        hasRecord
+                          ? "border-emerald-200 bg-emerald-50/40"
+                          : isOnLeave
+                          ? "border-slate-200 bg-slate-50/40 opacity-60"
+                          : "border-border hover:bg-muted/20"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-semibold text-sm">{student.studentName}</p>
+                          {hasRecord && (
+                            <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px] px-1.5 py-0">
+                              ✓ تم الإدخال
+                            </Badge>
+                          )}
+                          {isOnLeave && (
+                            <Badge className="bg-slate-100 text-slate-500 border-0 text-[10px] px-1.5 py-0">
+                              إجازة
+                            </Badge>
+                          )}
+                        </div>
+                        {student.track && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{student.track}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        {hasRecord ? (
+                          canEdit && recordForEdit ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5 h-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                              onClick={() => openEditRecord(recordForEdit)}
+                            >
+                              <PenSquare className="w-3.5 h-3.5" />
+                              تعديل
+                            </Button>
+                          ) : null
+                        ) : isOnLeave ? null : (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1 text-rose-600 border-rose-200 hover:bg-rose-50 h-8 px-2.5"
+                              onClick={() => {
+                                setSelectedStudent(student);
+                                setForm({ ...emptyForm(), isAbsent: true });
+                                setAutoFilled(false);
+                                setDialogOpen(true);
+                              }}
+                            >
+                              غائبة
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="gap-1.5 h-8"
+                              onClick={() => openEntry(student)}
+                            >
+                              <PenSquare className="w-3.5 h-3.5" />
+                              إدخال
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex gap-1.5 shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1 text-rose-600 border-rose-200 hover:bg-rose-50 h-8 px-2.5"
-                        onClick={() => {
-                          setSelectedStudent(student);
-                          setForm({ ...emptyForm(), isAbsent: true });
-                          setAutoFilled(false);
-                          setDialogOpen(true);
-                        }}
-                      >
-                        غائبة
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="gap-1.5 h-8"
-                        onClick={() => openEntry(student)}
-                      >
-                        <PenSquare className="w-3.5 h-3.5" />
-                        إدخال
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Entered today */}
-      {selectedCircleId && !isTeacherAbsent && circleRecords.length > 0 && (
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-              تم الإدخال اليوم
-              <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">
-                {circleRecords.length}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {circleRecords.map((record: any) => {
-                const canEdit =
-                  (user as any)?.role === "leader" ||
-                  new Date(record.createdAt).getTime() > Date.now() - 2 * 60 * 60 * 1000;
-                return (
-                  <div
-                    key={record.id}
-                    className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border bg-emerald-50/30"
-                  >
-                    <div>
-                      <p className="font-semibold text-sm">
-                        {record.studentName || `طالبة #${record.studentId}`}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {record.isAbsent ? "غائبة" : "حاضرة"}
-                      </p>
-                    </div>
-                    {canEdit && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5 h-8"
-                        onClick={() => openEditRecord(record)}
-                      >
-                        <PenSquare className="w-3.5 h-3.5" />
-                        تعديل
-                      </Button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
           </CardContent>
         </Card>
       )}
