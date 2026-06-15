@@ -800,6 +800,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/", label: "مساري", icon: Users },
       { href: "/circles", label: "الحلقات", icon: BookOpen },
       { href: "/accounts", label: "حسابات الطالبات", icon: UserCheck },
+      { href: "/track-report", label: "ملخص المسار", icon: BarChart2 },
       { href: "/daily-tasks", label: "المهام اليومية", icon: ClipboardList },
       { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
       { href: "/attendance", label: "الغيابات", icon: CalendarCheck },

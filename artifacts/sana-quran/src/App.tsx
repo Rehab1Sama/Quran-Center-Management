@@ -18,6 +18,7 @@ import MyCirclePage from "@/pages/my-circle";
 import MyProgressPage from "@/pages/my-progress";
 import AudioPage from "@/pages/audio";
 import TrackPage from "@/pages/track";
+import TrackReportPage from "@/pages/track-report";
 import RegisterPage from "@/pages/register";
 import StaffRegisterPage from "@/pages/staff-register";
 import OnboardPage from "@/pages/onboard";
@@ -172,6 +173,9 @@ function AppRoutes() {
         </Route>
         <Route path="/archived-students">
           {(isLeaderOrDeputy || isTrackSupervisor) ? <ArchivedStudentsPage /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/track-report">
+          {isTrackSupervisor ? <TrackReportPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/manage-tracks">
           {isLeaderOrDeputy ? <ManageTracksPage /> : <Redirect to="/" />}
