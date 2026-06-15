@@ -348,9 +348,23 @@ export default function AccountsPage() {
   const filteredCircles = form.track
     ? (circles ?? []).filter(c => c.track === form.track)
     : (circles ?? []);
-  // حلقات مدخلة البيانات — مفلترة بالمسار المختار في النموذج
+  // الحلقات المُسندة لمدخلات أخريات (لاستثنائها عند الإسناد)
+  const otherDataEntryAssignedIds = new Set(
+    dataEntryAssignments
+      .filter(a => a.userId !== (editingUser?.id ?? null))
+      .flatMap(a => a.circleIds ?? [])
+  );
+
+  // الحلقات المُسندة لمدخلات أخريات في نافذة الإسناد المنفصلة
+  const assignDialogOtherAssignedIds = new Set(
+    dataEntryAssignments
+      .filter(a => a.userId !== assignTarget?.userId)
+      .flatMap(a => a.circleIds ?? [])
+  );
+
+  // حلقات مدخلة البيانات — مفلترة بالمسار المختار في النموذج (مستثنية حلقات المدخلات الأخريات)
   const deFormTrackCircles = form.track
-    ? (circles ?? []).filter((c: any) => !c.isArchived && c.track === form.track)
+    ? (circles ?? []).filter((c: any) => !c.isArchived && c.track === form.track && !otherDataEntryAssignedIds.has(c.id))
     : [];
 
   return (
@@ -752,6 +766,8 @@ export default function AccountsPage() {
                 if (filtered.length === 0) return <p className="text-center text-sm text-muted-foreground py-4">لا توجد حلقات</p>;
                 return filtered.map((c: any) => {
                   const checked = selectedAssignCircles.includes(c.id);
+                  const takenByOther = assignDialogOtherAssignedIds.has(c.id);
+                  if (takenByOther) return null;
                   return (
                     <button
                       key={c.id}
@@ -775,7 +791,7 @@ export default function AccountsPage() {
             </div>
             {selectedAssignCircles.length > 0 && (
               <p className="text-xs text-blue-600 font-medium">
-                ✓ {selectedAssignCircles.length} حلقة مُختارة من {(circles ?? []).filter((c: any) => !c.isArchived).length} إجمالاً
+                ✓ {selectedAssignCircles.length} حلقة مُختارة
               </p>
             )}
           </div>

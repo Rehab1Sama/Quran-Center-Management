@@ -1,13 +1,44 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { db, usersTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, usersTable, studentsTable, studentEnrollmentsTable } from "@workspace/db";
+import { eq, and, isNull, isNotNull } from "drizzle-orm";
 import { hashPassword } from "./lib/auth";
 import cron from "node-cron";
 import { runWeeklyBackup } from "./lib/backup";
 
 if (!process.env.SESSION_SECRET) {
   logger.warn("[SECURITY] SESSION_SECRET is not set — using insecure fallback. Set it before going to production!");
+}
+
+async function repairMissingEnrollments() {
+  try {
+    const studentsWithCircle = await db
+      .select({ id: studentsTable.id, circleId: studentsTable.circleId })
+      .from(studentsTable)
+      .where(and(eq(studentsTable.isArchived, false), isNotNull(studentsTable.circleId)));
+
+    let created = 0;
+    for (const s of studentsWithCircle) {
+      if (!s.circleId) continue;
+      const existing = await db
+        .select({ id: studentEnrollmentsTable.id })
+        .from(studentEnrollmentsTable)
+        .where(and(
+          eq(studentEnrollmentsTable.studentId, s.id),
+          eq(studentEnrollmentsTable.circleId, s.circleId),
+          eq(studentEnrollmentsTable.isArchived, false),
+        ));
+      if (existing.length === 0) {
+        await db.insert(studentEnrollmentsTable)
+          .values({ studentId: s.id, circleId: s.circleId, isArchived: false })
+          .onConflictDoNothing();
+        created++;
+      }
+    }
+    if (created > 0) logger.info({ created }, "Repaired missing student enrollments");
+  } catch (err) {
+    logger.error({ err }, "Failed to repair missing enrollments");
+  }
 }
 
 async function seedLeader() {
@@ -61,6 +92,7 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
   void seedLeader();
+  void repairMissingEnrollments();
 
   cron.schedule("0 2 * * 0", () => {
     logger.info("Starting weekly backup...");

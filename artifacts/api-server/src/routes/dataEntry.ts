@@ -18,7 +18,8 @@ function getWeekSunday(today: string): string {
 
 router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> => {
   const today = (req.query.date as string) ?? getMeccaTodayServer();
-  const user = (req as any).user;
+  const userId = (req as any).userId;
+  const userRole = (req as any).userRole;
 
   const todayRecords = await db.select().from(recordsTable).where(eq(recordsTable.date, today));
   const recordedStudentIds = new Set(todayRecords.map(r => r.studentId));
@@ -48,9 +49,9 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
 
   // للمدخلة: فقط الحلقات المُسندة لها
   let assignedCircleIds: Set<number> | null = null;
-  if (user?.role === "data_entry") {
+  if (userRole === "data_entry" && userId) {
     const assignments = await db.select().from(dataEntryCircleAssignmentsTable)
-      .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, user.id));
+      .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, userId));
     assignedCircleIds = new Set(assignments.map((a: any) => a.circleId));
   }
 
