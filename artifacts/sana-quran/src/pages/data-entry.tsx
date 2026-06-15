@@ -1104,6 +1104,52 @@ export default function DataEntryPage() {
               <p className="text-sm text-amber-700 font-medium">لم تُسند لكِ حلقات بعد</p>
               <p className="text-xs text-amber-500 mt-1">تواصلي مع القائدة لإسناد حلقاتك</p>
             </div>
+          ) : isDataEntry ? (
+            <div className="space-y-2">
+              {filteredCirclesForEntry.map((c: any) => {
+                const statsCircle = myStats?.assignedCircles?.find((sc: any) => Number(sc.circleId) === Number(c.id));
+                const isSelected = selectedCircleId === c.id;
+                const entered = statsCircle?.entered;
+                const teacherAbsent = statsCircle?.teacherAbsent;
+                return (
+                  <button
+                    key={c.id}
+                    data-testid="select-circle"
+                    onClick={() => setSelectedCircleId(isSelected ? null : c.id)}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border-2 transition-all text-right ${
+                      isSelected
+                        ? "border-primary bg-primary/10 shadow-sm"
+                        : entered
+                          ? "border-emerald-300 bg-emerald-50/40 hover:border-emerald-400"
+                          : teacherAbsent
+                            ? "border-orange-200 bg-orange-50/30 hover:border-orange-300"
+                            : "border-border hover:border-primary/40"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {entered ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      ) : teacherAbsent ? (
+                        <UserX className="w-4 h-4 text-orange-400 shrink-0" />
+                      ) : (
+                        <div className="w-4 h-4 rounded-full border-2 border-gray-300 shrink-0" />
+                      )}
+                      <span className={`font-medium text-sm ${isSelected ? "text-primary" : ""}`}>{c.name}</span>
+                      {c.track && <span className="text-xs text-muted-foreground">{c.track}</span>}
+                    </div>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      entered
+                        ? "bg-emerald-100 text-emerald-700"
+                        : teacherAbsent
+                          ? "bg-orange-100 text-orange-600"
+                          : "bg-amber-100 text-amber-700"
+                    }`}>
+                      {entered ? "أُدخلت ✓" : teacherAbsent ? "المعلمة غائبة" : "لم تُدخَل"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           ) : (
             <select
               className="w-full border border-input rounded-xl px-3 py-2.5 text-sm bg-background text-right font-medium"
@@ -1111,9 +1157,9 @@ export default function DataEntryPage() {
               onChange={e => setSelectedCircleId(e.target.value ? parseInt(e.target.value) : null)}
               data-testid="select-circle"
             >
-              <option value="">{!isDataEntry && !selectedTrack ? "اختر المسار أولًا" : "اختر الحلقة"}</option>
+              <option value="">{!selectedTrack ? "اختر المسار أولًا" : "اختر الحلقة"}</option>
               {filteredCirclesForEntry.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.name}{isDataEntry && c.track ? ` — ${c.track}` : ""}</option>
+                <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
           )}

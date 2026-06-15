@@ -146,6 +146,65 @@ router.post("/daily-circle-tasks", authenticate, async (req, res): Promise<void>
   });
 });
 
+router.patch("/daily-circle-tasks/:id", authenticate, async (req, res): Promise<void> => {
+  if (req.userRole !== "track_supervisor" && req.userRole !== "leader") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const id = parseInt(req.params.id as string);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { teacherAttendance, prepStatus, motivationStatus, reportStatus,
+    circleAbsenceCount, notes, customAnswers, supervisorNameId } = req.body as {
+    teacherAttendance?: string; prepStatus?: string; motivationStatus?: string;
+    reportStatus?: string; circleAbsenceCount?: number; notes?: string | null;
+    customAnswers?: { questionId: number; answer: string }[];
+    supervisorNameId?: number;
+  };
+
+  const [existing] = await db.select().from(dailyCircleTasksTable).where(eq(dailyCircleTasksTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Task not found" }); return; }
+
+  const [updated] = await db.update(dailyCircleTasksTable)
+    .set({
+      ...(teacherAttendance !== undefined && { teacherAttendance }),
+      ...(prepStatus !== undefined && { prepStatus }),
+      ...(motivationStatus !== undefined && { motivationStatus }),
+      ...(reportStatus !== undefined && { reportStatus }),
+      ...(circleAbsenceCount !== undefined && { circleAbsenceCount }),
+      ...(notes !== undefined && { notes }),
+    })
+    .where(eq(dailyCircleTasksTable.id, id))
+    .returning();
+
+  if (customAnswers && customAnswers.length > 0 && supervisorNameId) {
+    const date = existing.date;
+    for (const ca of customAnswers) {
+      await db.insert(customQuestionAnswersTable).values({
+        questionId: ca.questionId, supervisorNameId, date, answer: ca.answer,
+      }).onConflictDoUpdate({
+        target: [customQuestionAnswersTable.questionId, customQuestionAnswersTable.supervisorNameId, customQuestionAnswersTable.date],
+        set: { answer: ca.answer },
+      });
+    }
+  }
+
+  const allCircles = await db.select({ id: circlesTable.id, name: circlesTable.name }).from(circlesTable);
+  const circleMap: Record<number, string> = {};
+  allCircles.forEach(c => { circleMap[c.id] = c.name; });
+  const allNames = await db.select().from(trackSupervisorNamesTable);
+  const nameMap: Record<number, string> = {};
+  allNames.forEach(n => { nameMap[n.id] = n.name; });
+
+  res.json({
+    ...updated,
+    circleName: circleMap[updated.circleId] ?? "غير معروف",
+    supervisorName: nameMap[updated.supervisorNameId] ?? "غير معروف",
+    createdAt: updated.createdAt.toISOString(),
+    updatedAt: updated.updatedAt?.toISOString(),
+  });
+});
+
 // --- Custom Questions ---
 
 router.get("/custom-questions", authenticate, async (req, res): Promise<void> => {

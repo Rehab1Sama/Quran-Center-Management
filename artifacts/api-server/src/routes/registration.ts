@@ -261,6 +261,16 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
   const extraData = (req.body as any).extraData ?? null;
   const isNewcomer = (req.body as any).isNewcomer === true;
 
+  // منع تكرار التسجيل بنفس البريد الإلكتروني عبر نموذج التسجيل الذاتي
+  const existingUser = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.email, email.toLowerCase()));
+  if (existingUser.length > 0) {
+    res.status(409).json({ error: "هذا البريد الإلكتروني مسجّل مسبقًا، إذا نسيتِ كلمة المرور تواصلي مع القائدة" });
+    return;
+  }
+
   await db.insert(usersTable).values({
     email: email.toLowerCase(),
     name: fullName,

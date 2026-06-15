@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { CheckCircle2, ChevronDown, ChevronUp, ClipboardList, User, Clock, Plus, Trash2, Settings } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronUp, ClipboardList, User, Clock, Plus, Trash2, Settings, Pencil } from "lucide-react";
 
 import { getMeccaToday } from "@/lib/utils";
 
@@ -224,11 +224,35 @@ export default function DailyTasksPage() {
   const [taskState, setTaskState] = useState<Record<number, CircleTaskState>>({});
   const [saved, setSaved] = useState<Record<number, boolean>>({});
 
+  // عند تغيير الاسم أو تحميل المهام: امسح الحالة المؤقتة
   useEffect(() => {
     setSaved({});
     setTaskState({});
     setExpanded({});
   }, [selectedNameId]);
+
+  // تعبئة البيانات المحفوظة مسبقًا عند اختيار الاسم
+  useEffect(() => {
+    if (!selectedNameId || !existingTasks) return;
+    const myTasks = existingTasks.filter((t: any) => t.supervisorNameId === selectedNameId);
+    if (myTasks.length === 0) return;
+    setTaskState(prev => {
+      const next = { ...prev };
+      myTasks.forEach((t: any) => {
+        if (!next[t.circleId]) {
+          next[t.circleId] = {
+            teacherAttendance: t.teacherAttendance ?? "",
+            prepStatus: t.prepStatus ?? "",
+            motivationStatus: t.motivationStatus ?? "",
+            reportStatus: t.reportStatus ?? "",
+            circleAbsenceCount: t.circleAbsenceCount ?? 0,
+            customAnswers: {},
+          };
+        }
+      });
+      return next;
+    });
+  }, [selectedNameId, existingTasks]);
 
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -451,7 +475,12 @@ export default function DailyTasksPage() {
                     {doneByOther && savedBy && (
                       <span className="text-xs text-blue-500 font-medium">سجّلتها {savedBy}</span>
                     )}
-                    {circle.meetingTime && !doneByOther && (
+                    {doneByMe && (
+                      <span className="text-xs text-green-600 font-medium flex items-center gap-0.5">
+                        <Pencil className="w-3 h-3" /> اضغطي للتعديل
+                      </span>
+                    )}
+                    {circle.meetingTime && !doneByOther && !doneByMe && (
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <Clock className="w-3 h-3" />{circle.meetingTime}
                       </span>
