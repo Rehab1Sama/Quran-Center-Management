@@ -10,7 +10,7 @@ import { authenticate } from "../middlewares/authenticate";
 const router: IRouter = Router();
 
 router.get("/stats/stumbling", authenticate, async (req, res): Promise<void> => {
-  if (req.userRole !== "leader" && req.userRole !== "track_supervisor") {
+  if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
 
@@ -209,10 +209,16 @@ router.get("/stats/stumbling", authenticate, async (req, res): Promise<void> => 
     .orderBy(desc(planNotificationsTable.createdAt));
 
   const NO_PLAN_NOTIF_TRACKS = ["ألق", "سراج", "مهج", "مشكاة نور"];
-  let planNotifications = allPlanNotifications.filter(n => !NO_PLAN_NOTIF_TRACKS.includes(n.track ?? ""));
+  let planNotifications = allPlanNotifications.filter(n => {
+    if (n.type === "leave_granted") return true;
+    return !NO_PLAN_NOTIF_TRACKS.includes(n.track ?? "");
+  });
   if (req.userRole === "track_supervisor") {
     const currentUser = allUsers.find(u => u.id === req.userId);
     planNotifications = planNotifications.filter(n => n.track === currentUser?.track);
+  }
+  if (req.userRole === "deputy") {
+    planNotifications = planNotifications.filter(n => n.type === "leave_granted");
   }
 
   // ── Deputy alert (leader only) ──────────────────────────────────────────

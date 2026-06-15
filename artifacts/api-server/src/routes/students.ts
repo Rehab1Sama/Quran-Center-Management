@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, reviewPlansTable, usersTable, studentArchiveEventsTable, studentLeaveHistoryTable, studentEnrollmentsTable } from "@workspace/db";
+import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, reviewPlansTable, usersTable, studentArchiveEventsTable, studentLeaveHistoryTable, studentEnrollmentsTable, planNotificationsTable } from "@workspace/db";
 import { eq, and, gte, desc, sql, ne } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateStudentBody, UpdateStudentBody } from "@workspace/api-zod";
@@ -426,6 +426,34 @@ router.patch("/students/:id/leave", authenticate, async (req, res): Promise<void
     await db.insert(studentLeaveHistoryTable).values({
       studentId: id, leaveStart, leaveEnd, reason: reason ?? null, grantedById: req.userId ?? null,
     });
+    // Insert leave notification for leader/deputy
+    const enrollmentForNotif = circleId
+      ? await db.select({ cid: studentEnrollmentsTable.circleId }).from(studentEnrollmentsTable)
+          .where(and(eq(studentEnrollmentsTable.studentId, id), eq(studentEnrollmentsTable.circleId, circleId))).limit(1)
+      : await db.select({ cid: studentEnrollmentsTable.circleId }).from(studentEnrollmentsTable)
+          .where(and(eq(studentEnrollmentsTable.studentId, id), eq(studentEnrollmentsTable.isArchived, false))).limit(1);
+    const notifCircleId = enrollmentForNotif[0]?.cid ?? null;
+    if (notifCircleId) {
+      const [notifCircle] = await db.select().from(circlesTable).where(eq(circlesTable.id, notifCircleId));
+      if (notifCircle) {
+        const noteText = [
+          `من: ${leaveStart} إلى: ${leaveEnd}`,
+          reason ? `السبب: ${reason}` : null,
+        ].filter(Boolean).join(" · ");
+        await db.insert(planNotificationsTable).values({
+          studentId: id,
+          studentName: student.fullName,
+          circleId: notifCircleId,
+          circleName: notifCircle.name,
+          track: notifCircle.track ?? "",
+          type: "leave_granted",
+          cycleCount: 0,
+          totalPages: 0,
+          note: noteText,
+          isRead: false,
+        });
+      }
+    }
   } else if (!leaveStart && !leaveEnd) {
     const [lastLeave] = await db.select().from(studentLeaveHistoryTable)
       .where(and(

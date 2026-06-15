@@ -10,6 +10,7 @@ export const planNotificationsTable = pgTable("plan_notifications", {
   type: text("type").notNull().default("plan_created"),
   cycleCount: integer("cycle_count").notNull().default(1),
   totalPages: real("total_pages").notNull().default(0),
+  note: text("note"),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

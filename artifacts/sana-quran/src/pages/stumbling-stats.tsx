@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { getToken } from "@/lib/auth";
 import {
   ChevronDown, ChevronUp, AlertTriangle, Users, BookOpen,
-  ClipboardList, UserCheck, RefreshCw, Bell, CheckCircle2, RotateCcw, Shield,
+  ClipboardList, UserCheck, RefreshCw, Bell, CheckCircle2, RotateCcw, Shield, PlaneTakeoff,
 } from "lucide-react";
 import { shouldHideReviewPlans } from "@/lib/schoolConfig";
 
@@ -163,11 +163,13 @@ export default function StumblingStatsPage() {
     return <div className="p-8 text-center text-muted-foreground text-sm">جاري التحقق من الصلاحيات…</div>;
   }
 
-  if (!["leader", "track_supervisor"].includes(user?.role ?? "")) {
+  if (!["leader", "deputy", "track_supervisor"].includes(user?.role ?? "")) {
     return <div className="p-8 text-center text-muted-foreground">غير مصرح بالوصول</div>;
   }
 
-  const visibleNotifs = (data?.planNotifications ?? []).filter(n => !dismissedNotifs.has(n.id));
+  const allNotifs = (data?.planNotifications ?? []).filter(n => !dismissedNotifs.has(n.id));
+  const visibleNotifs = allNotifs.filter(n => n.type !== "leave_granted");
+  const leaveNotifs = allNotifs.filter((n: any) => n.type === "leave_granted");
 
   const isNoReviewPlanTrackSupervisor =
     user?.role === "track_supervisor" && shouldHideReviewPlans(user.track);
@@ -211,6 +213,52 @@ export default function StumblingStatsPage() {
 
         {data && (
           <div className="space-y-2">
+
+            {/* =================== LEAVE NOTIFICATIONS =================== */}
+            {leaveNotifs.length > 0 && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50/60 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 bg-blue-100/60">
+                  <div className="flex items-center gap-2">
+                    <PlaneTakeoff className="w-4 h-4 text-blue-600" />
+                    <span className="font-bold text-sm text-blue-800">إجازات جديدة</span>
+                    <Badge className="bg-blue-600 text-white border-0 text-xs">{leaveNotifs.length}</Badge>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const ids = new Set(leaveNotifs.map((n: any) => n.id));
+                      setDismissedNotifs(prev => new Set([...prev, ...ids]));
+                      for (const n of leaveNotifs) await markNotificationRead((n as any).id);
+                    }}
+                    className="text-[11px] text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                  >
+                    تمييز الكل كمقروء
+                  </button>
+                </div>
+                <div className="divide-y divide-blue-100">
+                  {leaveNotifs.map((n: any) => (
+                    <div key={n.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-foreground truncate">{n.studentName}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {n.circleName} · {n.track}
+                        </p>
+                        {n.note && (
+                          <p className="text-[11px] text-blue-700 font-medium mt-0.5">{n.note}</p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground/60 mt-0.5">{timeAgo(n.createdAt)}</p>
+                      </div>
+                      <button
+                        onClick={() => dismissNotif(n.id)}
+                        className="p-1.5 rounded-lg hover:bg-blue-100 transition-colors shrink-0"
+                        title="تمييز كمقروء"
+                      >
+                        <CheckCircle2 className="w-4 h-4 text-blue-400 hover:text-blue-600" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* =================== PLAN NOTIFICATIONS =================== */}
             {visibleNotifs.length > 0 && (
