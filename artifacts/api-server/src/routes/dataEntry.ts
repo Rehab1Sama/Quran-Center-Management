@@ -35,7 +35,8 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
       .select({ circleId: dataEntryCircleAssignmentsTable.circleId })
       .from(dataEntryCircleAssignmentsTable)
       .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, userId));
-    assignedCircleIds = assignments.map(a => a.circleId);
+    // مصفوفة فارغة = لا إسناد → نُعاملها كـ "كل الحلقات" (مثل my-circles fallback)
+    assignedCircleIds = assignments.length > 0 ? assignments.map(a => a.circleId) : null;
   }
 
   // ── طريقة 1 (الأساسية): جلب الطالبات عبر enrollment أولًا (مطابق لـ students list endpoint) ──
@@ -43,9 +44,7 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
   const enrollmentCircleFilter =
     assignedCircleIds !== null && assignedCircleIds.length > 0
       ? inArray(studentEnrollmentsTable.circleId, assignedCircleIds)
-      : assignedCircleIds !== null // مصفوفة فارغة = لا حلقات مُسندة
-        ? sql`false`
-        : sql`true`;
+      : sql`true`;
 
   const byEnrollment = await db
     .select({
