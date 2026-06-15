@@ -799,6 +799,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
     return filterNav([
       { href: "/", label: "مساري", icon: Users },
       { href: "/circles", label: "الحلقات", icon: BookOpen },
+      { href: "/accounts", label: "حسابات الطالبات", icon: UserCheck },
       { href: "/daily-tasks", label: "المهام اليومية", icon: ClipboardList },
       { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
       { href: "/attendance", label: "الغيابات", icon: CalendarCheck },

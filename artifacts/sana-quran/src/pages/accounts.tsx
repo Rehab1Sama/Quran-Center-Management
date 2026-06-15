@@ -129,6 +129,7 @@ function useDataEntryAssignments(canManage: boolean) {
 export default function AccountsPage() {
   const { data: currentUser } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const isLeader = currentUser?.role === "leader";
+  const isTrackSupervisor = currentUser?.role === "track_supervisor";
   const canManageAssignments = currentUser?.role === "leader" || currentUser?.role === "deputy";
   const { data: users, isLoading } = useListUsers(undefined, { query: { queryKey: ["users"] } });
   const { data: circles } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
@@ -415,47 +416,50 @@ export default function AccountsPage() {
                               <span className="text-xs text-muted-foreground">{acc.track}</span>
                             )}
                             {acc.isArchived && <span className="text-xs text-gray-500">معطّل</span>}
-                            <button
-                              onClick={() => openEdit(acc)}
-                              className="text-muted-foreground hover:text-foreground transition-colors ml-1"
-                              data-testid={`button-edit-user-${acc.id}`}
-                              title="تعديل"
-                            >
-                              <Pencil className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={() => { setResetPwdUserId(acc.id); setNewPassword(""); setResetPwdOpen(true); }}
-                              className="text-muted-foreground hover:text-blue-600 transition-colors"
-                              title="إعادة تعيين كلمة المرور"
-                            >
-                              <KeyRound className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={() => handleToggleDisable(acc)}
-                              className={`transition-colors ${acc.isArchived ? "text-muted-foreground hover:text-emerald-600" : "text-muted-foreground hover:text-destructive"}`}
-                              title={acc.isArchived ? "تفعيل الحساب" : "تعطيل الحساب"}
-                            >
-                              {acc.isArchived ? <CheckCircle2 className="w-3 h-3" /> : <Ban className="w-3 h-3" />}
-                            </button>
-                            {isLeader && acc.role !== "leader" && acc.role !== "deputy" && (
+                            {/* أزرار الإجراءات — مخفية لمسؤولة المسار */}
+                            {!isTrackSupervisor && (<>
                               <button
-                                onClick={() => handleArchiveAccount(acc.id, `${acc.role} — ${person.name}`)}
-                                className="text-muted-foreground hover:text-amber-600 transition-colors"
-                                title="أرشفة الحساب (البيانات تبقى محفوظة)"
+                                onClick={() => openEdit(acc)}
+                                className="text-muted-foreground hover:text-foreground transition-colors ml-1"
+                                data-testid={`button-edit-user-${acc.id}`}
+                                title="تعديل"
                               >
-                                <Archive className="w-3 h-3" />
+                                <Pencil className="w-3 h-3" />
                               </button>
-                            )}
-                            {isLeader && acc.role !== "leader" && acc.role !== "deputy" && (
                               <button
-                                onClick={() => { setPermDeleteTarget({ id: acc.id, label: `${person.name} (${acc.role})` }); setPermDeleteOpen(true); }}
-                                className="text-muted-foreground hover:text-destructive transition-colors"
-                                data-testid={`button-delete-user-${acc.id}`}
-                                title="حذف نهائي"
+                                onClick={() => { setResetPwdUserId(acc.id); setNewPassword(""); setResetPwdOpen(true); }}
+                                className="text-muted-foreground hover:text-blue-600 transition-colors"
+                                title="إعادة تعيين كلمة المرور"
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <KeyRound className="w-3 h-3" />
                               </button>
-                            )}
+                              <button
+                                onClick={() => handleToggleDisable(acc)}
+                                className={`transition-colors ${acc.isArchived ? "text-muted-foreground hover:text-emerald-600" : "text-muted-foreground hover:text-destructive"}`}
+                                title={acc.isArchived ? "تفعيل الحساب" : "تعطيل الحساب"}
+                              >
+                                {acc.isArchived ? <CheckCircle2 className="w-3 h-3" /> : <Ban className="w-3 h-3" />}
+                              </button>
+                              {isLeader && acc.role !== "leader" && acc.role !== "deputy" && (
+                                <button
+                                  onClick={() => handleArchiveAccount(acc.id, `${acc.role} — ${person.name}`)}
+                                  className="text-muted-foreground hover:text-amber-600 transition-colors"
+                                  title="أرشفة الحساب (البيانات تبقى محفوظة)"
+                                >
+                                  <Archive className="w-3 h-3" />
+                                </button>
+                              )}
+                              {isLeader && acc.role !== "leader" && acc.role !== "deputy" && (
+                                <button
+                                  onClick={() => { setPermDeleteTarget({ id: acc.id, label: `${person.name} (${acc.role})` }); setPermDeleteOpen(true); }}
+                                  className="text-muted-foreground hover:text-destructive transition-colors"
+                                  data-testid={`button-delete-user-${acc.id}`}
+                                  title="حذف نهائي"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )}
+                            </>)}
                           </div>
                         ))}
                       </div>
@@ -518,39 +522,49 @@ export default function AccountsPage() {
                 : "إنشاء حساب جديد"}
             </DialogTitle>
           </DialogHeader>
+          {/* عند إضافة دور لشخص موجود: بانر معلومات بدلاً من حقول */}
+          {!editingUser && form.email && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 text-xs text-blue-800 space-y-0.5 -mb-1">
+              <p className="font-semibold">إضافة دور لحساب موجود</p>
+              <p className="text-blue-600">{form.email} · ستُحفظ كلمة المرور الحالية تلقائياً</p>
+            </div>
+          )}
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>الاسم</Label>
+              <Label>الاسم {!editingUser && form.email && <span className="text-xs text-muted-foreground">(يمكن تغييره للتمييز بين أبناء نفس الأم)</span>}</Label>
               <Input
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="الاسم الكامل"
               />
             </div>
-            <div className="space-y-2">
-              <Label>البريد الإلكتروني</Label>
-              <Input
-                value={form.email}
-                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                placeholder="email@sana.sa"
-                readOnly={!!(!editingUser && form.email)}
-                className={!editingUser && form.email ? "bg-muted" : ""}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>
-                كلمة المرور{" "}
-                {(editingUser || (!editingUser && form.email)) && (
-                  <span className="text-xs text-muted-foreground">(اتركيها فارغة لعدم التغيير)</span>
-                )}
-              </Label>
-              <Input
-                type="password"
-                value={form.password}
-                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                placeholder="••••••••"
-              />
-            </div>
+            {/* إخفاء الإيميل وكلمة السر عند إضافة دور لشخص موجود */}
+            {(editingUser || !form.email) && (
+              <>
+                <div className="space-y-2">
+                  <Label>البريد الإلكتروني</Label>
+                  <Input
+                    value={form.email}
+                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    placeholder="email@sana.sa"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>
+                    كلمة المرور{" "}
+                    {editingUser && (
+                      <span className="text-xs text-muted-foreground">(اتركيها فارغة لعدم التغيير)</span>
+                    )}
+                  </Label>
+                  <Input
+                    type="password"
+                    value={form.password}
+                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                    placeholder="••••••••"
+                  />
+                </div>
+              </>
+            )}
             <div className="space-y-2">
               <Label>الدور</Label>
               <Select value={form.role} onValueChange={v => {
@@ -561,7 +575,7 @@ export default function AccountsPage() {
                   <SelectValue placeholder="اختيار الدور" />
                 </SelectTrigger>
                 <SelectContent>
-                  {ROLES.map(r => (
+                  {(isTrackSupervisor ? ROLES.filter(r => r.value === "student") : ROLES).map(r => (
                     <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
                   ))}
                 </SelectContent>

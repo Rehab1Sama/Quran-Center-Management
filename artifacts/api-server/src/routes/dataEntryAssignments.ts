@@ -109,6 +109,58 @@ router.post("/data-entry/assignments/:userId", authenticate, async (req, res): P
   res.json({ ok: true, assigned: circleIds.length });
 });
 
+// GET /api/data-entry/circles-today — حالة حلقات كل مدخلة اليوم (للقائدة والنائبة)
+router.get("/data-entry/circles-today", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const allDataEntryUsers = await db.select().from(usersTable)
+    .where(and(eq(usersTable.role, "data_entry"), eq(usersTable.isArchived, false)));
+  const allAssignments = await db.select().from(dataEntryCircleAssignmentsTable);
+  const allCircles = await db.select().from(circlesTable).where(eq(circlesTable.isArchived, false));
+
+  // الحلقات التي أُدخلت فيها سجلات اليوم (بأي مدخلة)
+  const todayRecords = await db.select({
+    circleId: recordsTable.circleId,
+    enteredById: recordsTable.enteredById,
+  }).from(recordsTable).where(eq(recordsTable.date, today));
+
+  const enteredCirclesByUser = new Map<number, Set<number>>();
+  for (const r of todayRecords) {
+    if (!r.enteredById) continue;
+    if (!enteredCirclesByUser.has(r.enteredById)) enteredCirclesByUser.set(r.enteredById, new Set());
+    enteredCirclesByUser.get(r.enteredById)!.add(r.circleId);
+  }
+
+  const result = allDataEntryUsers.map(user => {
+    const myAssignments = allAssignments.filter(a => a.dataEntryUserId === user.id);
+    const enteredToday = enteredCirclesByUser.get(user.id) ?? new Set<number>();
+
+    const circles = myAssignments.map(a => {
+      const circle = allCircles.find(c => c.id === a.circleId);
+      return {
+        circleId: a.circleId,
+        circleName: circle?.name ?? "؟",
+        track: circle?.track ?? "؟",
+        enteredToday: enteredToday.has(a.circleId),
+      };
+    });
+
+    return {
+      userId: user.id,
+      userName: user.name,
+      assignedCount: circles.length,
+      enteredCount: circles.filter(c => c.enteredToday).length,
+      circles,
+    };
+  });
+
+  res.json(result);
+});
+
 // GET /api/data-entry/my-stats — إحصائيات مدخلة البيانات (للمدخلة نفسها)
 router.get("/data-entry/my-stats", authenticate, async (req, res): Promise<void> => {
   if (req.userRole !== "data_entry") {

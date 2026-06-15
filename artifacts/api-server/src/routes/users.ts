@@ -7,10 +7,21 @@ import { CreateUserBody, UpdateUserBody, ResetUserPasswordBody } from "@workspac
 
 const router: IRouter = Router();
 
-router.get("/users", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
+router.get("/users", authenticate, async (req, res): Promise<void> => {
+  // مسؤولة المسار ترى الطالبات في مسارها فقط
+  if (req.userRole === "track_supervisor") {
+    const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+    const myTrack = me?.track ?? null;
+    const all = await db.select().from(usersTable);
+    const filtered = all.filter(u => u.role === "student" && u.track === myTrack);
+    res.json(filtered.map(({ passwordHash: _ph, ...u }) => u));
+    return;
+  }
+  if (req.userRole !== "leader") {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
   const roleFilter = req.query.role as string | undefined;
-  let query = db.select().from(usersTable);
-  const users = await query;
+  const users = await db.select().from(usersTable);
   const filtered = roleFilter ? users.filter(u => u.role === roleFilter) : users;
   res.json(filtered.map(({ passwordHash: _ph, ...u }) => u));
 });

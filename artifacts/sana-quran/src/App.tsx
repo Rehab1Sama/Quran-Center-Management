@@ -147,7 +147,7 @@ function AppRoutes() {
           {isLeader ? <DataEntryStatusPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/accounts">
-          {isLeaderOrDeputy ? <AccountsPage /> : <Redirect to="/" />}
+          {(isLeaderOrDeputy || isTrackSupervisor) ? <AccountsPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/statistics">
           {(canViewStats && isFeatureEnabled("stats_general")) ? <StatisticsPage /> : <Redirect to="/" />}

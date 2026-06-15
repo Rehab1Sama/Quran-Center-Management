@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useGetMissingDataEntry, useGetDailySnapshot, useGetCurrentUser } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, AlertCircle, Clock, Timer, Sun, Moon, Activity } from "lucide-react";
+import { CheckCircle, AlertCircle, Clock, Timer, Sun, Moon, Activity, CheckSquare, Square, ChevronDown, ChevronUp } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
@@ -32,6 +32,14 @@ interface SessionStat {
   lastActive: string | null;
 }
 
+interface CirclesTodayStat {
+  userId: number;
+  userName: string;
+  assignedCount: number;
+  enteredCount: number;
+  circles: { circleId: number; circleName: string; track: string; enteredToday: boolean }[];
+}
+
 export default function DataEntryStatusPage() {
   const { data: missing } = useGetMissingDataEntry(undefined, { query: { queryKey: ["missingData"] } });
   const { data: snapshot } = useGetDailySnapshot({ query: { queryKey: ["dailySnapshot"] } });
@@ -39,6 +47,8 @@ export default function DataEntryStatusPage() {
 
   const [sessionStats, setSessionStats] = useState<SessionStat[]>([]);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [circlesToday, setCirclesToday] = useState<CirclesTodayStat[]>([]);
+  const [expandedUser, setExpandedUser] = useState<number | null>(null);
 
   const isLeaderOrDeputy = currentUser?.role === "leader" || currentUser?.role === "deputy";
 
@@ -46,12 +56,17 @@ export default function DataEntryStatusPage() {
     if (!isLeaderOrDeputy) return;
     setStatsLoading(true);
     const token = getToken();
-    fetch(`${BASE}/api/data-entry/sessions/today`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.ok ? r.json() : [])
-      .then(data => setSessionStats(Array.isArray(data) ? data : []))
-      .catch(() => setSessionStats([]))
+    Promise.all([
+      fetch(`${BASE}/api/data-entry/sessions/today`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/data-entry/circles-today`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : []),
+    ])
+      .then(([sessions, circles]) => {
+        setSessionStats(Array.isArray(sessions) ? sessions : []);
+        setCirclesToday(Array.isArray(circles) ? circles : []);
+      })
+      .catch(() => { setSessionStats([]); setCirclesToday([]); })
       .finally(() => setStatsLoading(false));
   }, [isLeaderOrDeputy]);
 
@@ -74,6 +89,62 @@ export default function DataEntryStatusPage() {
         <h1 className="text-2xl font-bold text-foreground">حالة البيانات المُدخلة</h1>
         <p className="text-muted-foreground text-sm mt-1">الطالبات التي لم تُدخل بياناتهن بعد</p>
       </div>
+
+      {/* ===== بطاقة حالة الحلقات لكل مُدخِلة اليوم ===== */}
+      {isLeaderOrDeputy && circlesToday.length > 0 && (
+        <Card className="border-0 shadow-sm border-r-4 border-r-teal-400">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold flex items-center gap-2 text-teal-700">
+              <CheckSquare className="w-4 h-4" />
+              حلقات كل مُدخِلة — اليوم
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 pt-0">
+            {circlesToday.map(u => {
+              const isExpanded = expandedUser === u.userId;
+              const allDone = u.assignedCount > 0 && u.enteredCount === u.assignedCount;
+              const noneAssigned = u.assignedCount === 0;
+              return (
+                <div key={u.userId} className="border border-border rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => setExpandedUser(isExpanded ? null : u.userId)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted/30 transition-colors text-right"
+                  >
+                    <span className={`font-semibold text-sm flex-1 text-right ${allDone ? "text-emerald-700" : "text-foreground"}`}>
+                      {u.userName}
+                    </span>
+                    {noneAssigned ? (
+                      <Badge className="bg-gray-100 text-gray-500 border-0 text-xs">لا حلقات مُسندة</Badge>
+                    ) : allDone ? (
+                      <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">✓ اكتملت ({u.enteredCount}/{u.assignedCount})</Badge>
+                    ) : (
+                      <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">{u.enteredCount}/{u.assignedCount} مُدخَلة</Badge>
+                    )}
+                    {!noneAssigned && (
+                      isExpanded
+                        ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" />
+                        : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                    )}
+                  </button>
+                  {isExpanded && !noneAssigned && (
+                    <div className="border-t border-border/50 px-3 py-2 space-y-1 bg-muted/20">
+                      {u.circles.map(c => (
+                        <div key={c.circleId} className="flex items-center gap-2 text-xs py-0.5">
+                          {c.enteredToday
+                            ? <CheckSquare className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            : <Square className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                          <span className={`font-medium ${c.enteredToday ? "text-emerald-700" : "text-foreground"}`}>{c.circleName}</span>
+                          <span className="text-muted-foreground">· {c.track}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ===== لوحة وقت العمل الفعلي لمُدخلات البيانات ===== */}
       {isLeaderOrDeputy && (
