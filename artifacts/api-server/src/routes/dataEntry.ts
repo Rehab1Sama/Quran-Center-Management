@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, recordsTable, circlesTable, studentsTable, teacherAbsencesTable, dataEntryCircleAssignmentsTable, studentEnrollmentsTable } from "@workspace/db";
-import { eq, and, gte, inArray } from "drizzle-orm";
+import { eq, and, gte, inArray, sql, isNotNull } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
 const router: IRouter = Router();
@@ -24,26 +24,45 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
   const todayRecords = await db.select().from(recordsTable).where(eq(recordsTable.date, today));
   const recordedStudentIds = new Set(todayRecords.map(r => r.studentId));
 
+  // LEFT JOIN: يشمل الطالبات اللواتي لديهن سجل تسجيل أو لديهن circleId مباشرة على جدول students
   const studentsQuery = db
     .select({
       studentId: studentsTable.id,
       studentName: studentsTable.fullName,
-      circleId: studentEnrollmentsTable.circleId,
+      circleId: sql<number>`COALESCE(${studentEnrollmentsTable.circleId}, ${studentsTable.circleId})`.as("circleId"),
       circleName: circlesTable.name,
       track: circlesTable.track,
       leaveStart: studentEnrollmentsTable.leaveStart,
       leaveEnd: studentEnrollmentsTable.leaveEnd,
     })
     .from(studentsTable)
-    .innerJoin(
+    .leftJoin(
       studentEnrollmentsTable,
       and(
         eq(studentEnrollmentsTable.studentId, studentsTable.id),
         eq(studentEnrollmentsTable.isArchived, false),
       ),
     )
-    .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))
-    .where(eq(studentsTable.isArchived, false));
+    .innerJoin(
+      circlesTable,
+      sql`${circlesTable.id} = COALESCE(${studentEnrollmentsTable.circleId}, ${studentsTable.circleId})`,
+    )
+    .where(
+      and(
+        eq(studentsTable.isArchived, false),
+        sql`COALESCE(${studentEnrollmentsTable.circleId}, ${studentsTable.circleId}) IS NOT NULL`,
+      ),
+    )
+    .groupBy(
+      studentsTable.id,
+      studentsTable.fullName,
+      studentsTable.circleId,
+      studentEnrollmentsTable.circleId,
+      studentEnrollmentsTable.leaveStart,
+      studentEnrollmentsTable.leaveEnd,
+      circlesTable.name,
+      circlesTable.track,
+    );
 
   const students = await studentsQuery;
 
