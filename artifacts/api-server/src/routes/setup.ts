@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, tracksTable, circlesTable } from "@workspace/db";
-import { eq, and, isNull } from "drizzle-orm";
+import { db, usersTable, tracksTable, circlesTable, studentsTable, studentEnrollmentsTable } from "@workspace/db";
+import { eq, and, isNull, isNotNull } from "drizzle-orm";
 import { hashPassword } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -192,6 +192,51 @@ router.post("/setup/sync", async (_req, res): Promise<void> => {
       }
     }
     results.push(synced > 0 ? `تم ربط ${synced} حلقة بمسارها` : "جميع الحلقات مرتبطة");
+
+    // 3. Create 10 circles per track if missing
+    const allCircles = await db.select({ name: circlesTable.name, trackId: circlesTable.trackId }).from(circlesTable);
+    const circleNameSet = new Set(allCircles.map(c => c.name));
+    let circlesAdded = 0;
+    for (const t of allTracks) {
+      for (let i = 1; i <= 10; i++) {
+        const name = `${t.name} ${i}`;
+        if (!circleNameSet.has(name)) {
+          await db.insert(circlesTable).values({
+            name,
+            track: t.name,
+            trackId: t.id,
+            trackType: t.dataEntryType ?? "girls",
+            isArchived: false,
+          });
+          circlesAdded++;
+        }
+      }
+    }
+    results.push(circlesAdded > 0 ? `تم إنشاء ${circlesAdded} حلقة` : "الحلقات مكتملة");
+
+    // 4. Repair missing student enrollment records
+    const studentsWithCircle = await db
+      .select({ id: studentsTable.id, circleId: studentsTable.circleId })
+      .from(studentsTable)
+      .where(and(eq(studentsTable.isArchived, false), isNotNull(studentsTable.circleId)));
+    let enrollmentsFixed = 0;
+    for (const s of studentsWithCircle) {
+      if (!s.circleId) continue;
+      const existing = await db.select({ id: studentEnrollmentsTable.id })
+        .from(studentEnrollmentsTable)
+        .where(and(
+          eq(studentEnrollmentsTable.studentId, s.id),
+          eq(studentEnrollmentsTable.circleId, s.circleId),
+          eq(studentEnrollmentsTable.isArchived, false),
+        ));
+      if (existing.length === 0) {
+        await db.insert(studentEnrollmentsTable)
+          .values({ studentId: s.id, circleId: s.circleId, isArchived: false })
+          .onConflictDoNothing();
+        enrollmentsFixed++;
+      }
+    }
+    if (enrollmentsFixed > 0) results.push(`تم إصلاح ${enrollmentsFixed} سجل تسجيل للطالبات`);
 
     const updatedTracks = await db.select().from(tracksTable).orderBy(tracksTable.createdAt);
     res.json({ ok: true, results, tracks: updatedTracks });

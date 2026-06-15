@@ -161,7 +161,8 @@ router.get("/circles/:id", authenticate, async (req, res): Promise<void> => {
     }
   }
 
-  const studentsRaw = await db
+  // طالبات عبر سجل التسجيل (المصدر الأساسي)
+  const studentsViaEnrollment = await db
     .select({
       id: studentsTable.id,
       fullName: studentsTable.fullName,
@@ -190,6 +191,36 @@ router.get("/circles/:id", authenticate, async (req, res): Promise<void> => {
       ),
     )
     .where(eq(studentsTable.isArchived, false));
+
+  const enrolledIds = new Set(studentsViaEnrollment.map(s => s.id));
+
+  // طالبات لهن circleId مباشرة لكن بدون سجل تسجيل (بيانات قديمة)
+  const studentsViaDirect = await db
+    .select({
+      id: studentsTable.id,
+      fullName: studentsTable.fullName,
+      phone: studentsTable.phone,
+      country: studentsTable.country,
+      ageRange: studentsTable.ageRange,
+      educationLevel: studentsTable.educationLevel,
+      memorizeFrom: studentsTable.memorizeFrom,
+      extraData: studentsTable.extraData,
+      isArchived: studentsTable.isArchived,
+      isNewcomer: studentsTable.isNewcomer,
+      archivedAt: studentsTable.archivedAt,
+      createdAt: studentsTable.createdAt,
+      updatedAt: studentsTable.updatedAt,
+    })
+    .from(studentsTable)
+    .where(and(eq(studentsTable.isArchived, false), eq(studentsTable.circleId, id)));
+
+  // دمج النتيجتين مع منع التكرار
+  const studentsRaw: any[] = [...studentsViaEnrollment];
+  for (const s of studentsViaDirect) {
+    if (!enrolledIds.has(s.id)) {
+      studentsRaw.push({ ...s, circleId: id, leaveStart: null, leaveEnd: null });
+    }
+  }
 
   res.json({ ...circle, teacher, supervisor, students: studentsRaw });
 });

@@ -1,0 +1,25 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy
+        continue-on-error: true
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "RENDER_API_KEY not set — skipping manual trigger (Render autoDeploy is active)"
+            exit 0
+          fi
+          curl -f -s -X POST \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            "https://api.render.com/v1/services/srv-d882l8bbc2fs73eh9t8g/deploys" \
+            -d '{"clearCache":"do_not_clear"}'
+          echo "Deploy triggered successfully"
