@@ -3,6 +3,7 @@ import { schoolConfig } from "@/lib/schoolConfig";
 import {
   useGetMissingDataEntry,
   useCreateRecord,
+  useUpdateRecord,
   useGetCurrentUser,
   useListCircles,
   useListTracks,
@@ -11,12 +12,12 @@ import {
   useCheckTeacherAbsence,
   useMarkTeacherAbsent,
   useDeleteTeacherAbsence,
-  useUpdateRecord,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -27,13 +28,60 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { SURAHS, calculatePages, formatPages } from "@/lib/quran";
-import { PenSquare, CheckCircle, AlertCircle, BookOpen, Users, CalendarDays, Search, UserX, Undo2, XCircle, Zap, Clock, CheckCircle2, Mic, TableIcon, LayoutList } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import {
+  PenSquare,
+  CheckCircle,
+  CheckCircle2,
+  AlertCircle,
+  BookOpen,
+  Users,
+  CalendarDays,
+  Search,
+  UserX,
+  Undo2,
+  XCircle,
+  Mic,
+} from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
 
-function resolveTrackType(dataEntryType?: string | null): "girls" | "girls_near" | "girls_far" | "girls_no_review" | "simple" | "mishkah" | "fixation" {
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function getMeccaToday(): string {
+  return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function getCurrentWeekWorkingDays(): { label: string; value: string }[] {
+  const dayNames = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const todayStr = getMeccaToday();
+  const today = new Date(todayStr + "T12:00:00Z");
+  const todayDow = today.getUTCDay();
+
+  let daysBackToSunday: number;
+  if (todayDow === 5) daysBackToSunday = 5;
+  else if (todayDow === 6) daysBackToSunday = 6;
+  else daysBackToSunday = todayDow;
+
+  const weekSunday = new Date(today.getTime() - daysBackToSunday * 86400000);
+  const result: { label: string; value: string }[] = [];
+
+  for (let i = 0; i <= daysBackToSunday; i++) {
+    const d = new Date(weekSunday.getTime() + i * 86400000);
+    const dow = d.getUTCDay();
+    if (dow <= 4) {
+      const value = d.toISOString().slice(0, 10);
+      const label =
+        value === todayStr ? `اليوم (${dayNames[dow]})` : dayNames[dow];
+      result.push({ label, value });
+    }
+  }
+  return result.reverse();
+}
+
+function resolveTrackType(
+  dataEntryType?: string | null,
+): "girls" | "girls_near" | "girls_far" | "girls_no_review" | "simple" | "mishkah" | "fixation" {
   if (dataEntryType === "recitation") return "mishkah";
   if (dataEntryType === "simple_review") return "simple";
   if (dataEntryType === "children") return "simple";
@@ -45,161 +93,77 @@ function resolveTrackType(dataEntryType?: string | null): "girls" | "girls_near"
   return "girls";
 }
 
-function isGirlsVariant(trackType: string) {
-  return trackType === "girls" || trackType === "girls_near" || trackType === "girls_far" || trackType === "girls_no_review";
-}
-
-function hasListenToReciter(trackType: string) {
-  return isGirlsVariant(trackType) || trackType === "fixation" || trackType === "mishkah";
-}
-
 function getInputFields(dataEntryType?: string | null): string[] {
   const configured = (schoolConfig.defaultTrackTypes as any[]).find(
-    t => t.dataEntryType === dataEntryType || t.name === dataEntryType
+    (t) => t.dataEntryType === dataEntryType || t.name === dataEntryType,
   );
   if (configured?.inputFields?.length) return configured.inputFields as string[];
   const trackType = resolveTrackType(dataEntryType);
-  if (trackType === "girls")          return ["memorize","review_near","review_far","listen"];
-  if (trackType === "girls_near")     return ["memorize","review_near","listen"];
-  if (trackType === "girls_far")      return ["memorize","review_far","listen"];
-  if (trackType === "girls_no_review") return ["memorize","listen"];
-  if (trackType === "simple")         return ["memorize","review"];
-  if (trackType === "mishkah")        return ["recitation","listen"];
-  if (trackType === "fixation")       return ["memorize","repetitions","review","listen"];
-  return ["memorize","review_near","review_far","listen"];
+  if (trackType === "girls") return ["memorize", "review_near", "review_far", "listen"];
+  if (trackType === "girls_near") return ["memorize", "review_near", "listen"];
+  if (trackType === "girls_far") return ["memorize", "review_far", "listen"];
+  if (trackType === "girls_no_review") return ["memorize", "listen"];
+  if (trackType === "simple") return ["memorize", "review"];
+  if (trackType === "mishkah") return ["recitation", "listen"];
+  if (trackType === "fixation") return ["memorize", "repetitions", "review", "listen"];
+  return ["memorize", "review_near", "review_far", "listen"];
 }
 
-function getMeccaToday(): string {
-  return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
-// أيام عمل الأسبوع الحالي فقط: من أحد الأسبوع الحالي حتى اليوم، الأحد–الخميس فقط
-function getCurrentWeekWorkingDays(): { label: string; value: string }[] {
-  const dayNames = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
-  const todayStr = getMeccaToday();
-  const today = new Date(todayStr + "T12:00:00Z");
-  const todayDow = today.getUTCDay();
-
-  // إيجاد أحد الأسبوع الحالي
-  // إذا كان اليوم جمعة(5) أو سبت(6) نرجع للأحد السابق
-  let daysBackToSunday: number;
-  if (todayDow === 5) daysBackToSunday = 5;
-  else if (todayDow === 6) daysBackToSunday = 6;
-  else daysBackToSunday = todayDow; // الأحد=0 ... الخميس=4
-
-  const weekSunday = new Date(today.getTime() - daysBackToSunday * 86400000);
-
-  const result: { label: string; value: string }[] = [];
-  for (let i = 0; i <= daysBackToSunday; i++) {
-    const d = new Date(weekSunday.getTime() + i * 86400000);
-    const dow = d.getUTCDay();
-    if (dow <= 4) { // الأحد(0) إلى الخميس(4) فقط
-      const value = d.toISOString().slice(0, 10);
-      const label = value === todayStr
-        ? `اليوم (${dayNames[dow]})`
-        : dayNames[dow];
-      result.push({ label, value });
-    }
+function nextPosition(surahName: string, ayah: number): { surah: string; ayah: string } {
+  const idx = SURAHS.findIndex((s) => s.name === surahName);
+  if (idx === -1) return { surah: surahName, ayah: String(ayah + 1) };
+  const cur = SURAHS[idx];
+  if (ayah >= cur.ayahs) {
+    const next = SURAHS[idx + 1];
+    return next ? { surah: next.name, ayah: "1" } : { surah: surahName, ayah: String(ayah) };
   }
-  // اليوم أولًا
-  return result.reverse();
+  return { surah: surahName, ayah: String(ayah + 1) };
 }
 
-function SurahSelect({ value, onChange, testId }: {
-  value: string; onChange: (v: string) => void; testId?: string;
-}) {
-  return (
-    <select
-      className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-background text-right"
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      data-testid={testId}
-    >
-      <option value="">اختر السورة</option>
-      {SURAHS.map(s => (
-        <option key={s.number} value={s.name}>{s.number}. {s.name}</option>
-      ))}
-    </select>
-  );
-}
+// ─── Voice Input ─────────────────────────────────────────────────────────────
 
-function AyahSelect({ surahName, value, onChange, testId }: {
-  surahName: string; value: string; onChange: (v: string) => void; testId?: string;
-}) {
-  const surah = SURAHS.find(s => s.name === surahName);
-  const maxAyah = surah?.ayahs ?? 1;
-  return (
-    <select
-      className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-background text-right"
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      disabled={!surahName}
-      data-testid={testId}
-    >
-      <option value="">آية</option>
-      {Array.from({ length: maxAyah }, (_, i) => i + 1).map(n => (
-        <option key={n} value={n.toString()}>{n}</option>
-      ))}
-    </select>
-  );
-}
-
-interface SectionState {
-  surahStart: string;
-  ayahStart: string;
-  surahEnd: string;
-  ayahEnd: string;
-}
-
-const emptySection = (): SectionState => ({ surahStart: "", ayahStart: "", surahEnd: "", ayahEnd: "" });
-
-// ---- Voice Input helpers ----
 function parseVoiceInput(
   text: string,
-  onResult: (surahStart: string, ayahStart: string, surahEnd: string, ayahEnd: string) => void
+  onResult: (ss: string, as: string, se: string, ae: string) => void,
 ) {
-  const surah = SURAHS.find(s => text.includes(s.name));
+  const surah = SURAHS.find((s) => text.includes(s.name));
   if (!surah) return;
-  const normalized = text.replace(/[٠-٩]/g, (d: string) => String(d.charCodeAt(0) - 0x0660));
+  const normalized = text.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
   const numbers = normalized.match(/\d+/g)?.map(Number) ?? [];
-  if (numbers.length >= 2) {
-    onResult(surah.name, String(numbers[0]), surah.name, String(numbers[1]));
-  } else if (numbers.length === 1) {
-    onResult(surah.name, String(numbers[0]), surah.name, String(numbers[0]));
-  } else {
-    onResult(surah.name, "1", surah.name, "1");
-  }
+  if (numbers.length >= 2) onResult(surah.name, String(numbers[0]), surah.name, String(numbers[1]));
+  else if (numbers.length === 1) onResult(surah.name, String(numbers[0]), surah.name, String(numbers[0]));
+  else onResult(surah.name, "1", surah.name, "1");
 }
 
 function VoiceInputButton({
   onResult,
 }: {
-  onResult: (surahStart: string, ayahStart: string, surahEnd: string, ayahEnd: string) => void;
+  onResult: (ss: string, as: string, se: string, ae: string) => void;
 }) {
-  const [isListening, setIsListening] = useState(false);
-  const startListening = () => {
+  const [listening, setListening] = useState(false);
+  const start = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { alert("متصفحك لا يدعم التعرف على الصوت. استخدمي Chrome أو Safari."); return; }
-    const recognition = new SR();
-    recognition.lang = "ar-SA";
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
-    recognition.onresult = (event: any) => {
-      const text = event.results[0][0].transcript;
-      parseVoiceInput(text, onResult);
-    };
-    recognition.start();
+    if (!SR) {
+      alert("متصفحك لا يدعم التعرف على الصوت. استخدمي Chrome أو Safari.");
+      return;
+    }
+    const r = new SR();
+    r.lang = "ar-SA";
+    r.continuous = false;
+    r.interimResults = false;
+    r.onstart = () => setListening(true);
+    r.onend = () => setListening(false);
+    r.onerror = () => setListening(false);
+    r.onresult = (e: any) => parseVoiceInput(e.results[0][0].transcript, onResult);
+    r.start();
   };
   return (
     <button
       type="button"
-      onClick={startListening}
-      title={isListening ? "جاري الاستماع..." : "إدخال صوتي (مثال: البقرة 10 إلى 20)"}
-      className={`p-1.5 rounded-lg transition-colors border ${
-        isListening
+      onClick={start}
+      title={listening ? "جاري الاستماع..." : "إدخال صوتي (مثال: البقرة 10 إلى 20)"}
+      className={`p-1.5 rounded-lg border transition-colors ${
+        listening
           ? "bg-rose-100 border-rose-300 text-rose-600 animate-pulse"
           : "bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
       }`}
@@ -209,105 +173,60 @@ function VoiceInputButton({
   );
 }
 
-// ---- Bulk Entry Table ----
-function BulkEntryTable({
-  students,
-  inputFields,
-  bulkData,
-  onChange,
-  onSave,
-  isSaving,
-}: {
-  students: any[];
-  inputFields: string[];
-  bulkData: Record<number, { absent: boolean; memorizePages: string; reviewNearPages: string; reviewFarPages: string; reviewPages: string; listenedToReciter: boolean | null }>;
-  onChange: (studentId: number, field: string, value: any) => void;
-  onSave: () => void;
-  isSaving: boolean;
-}) {
-  const hasMemorize = inputFields.includes("memorize");
-  const hasNear = inputFields.includes("review_near");
-  const hasFar = inputFields.includes("review_far");
-  const hasReview = inputFields.includes("review");
-  const hasListen = inputFields.includes("listen");
+// ─── Surah / Ayah selectors ───────────────────────────────────────────────────
 
+function SurahSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div className="space-y-3" dir="rtl">
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-muted/50 border-b border-border">
-              <th className="px-3 py-2 text-right font-semibold text-xs text-muted-foreground">الطالبة</th>
-              <th className="px-2 py-2 text-center font-semibold text-xs text-rose-600">غائبة</th>
-              {hasMemorize && <th className="px-2 py-2 text-center font-semibold text-xs text-teal-700">حفظ (ص)</th>}
-              {(hasNear || hasReview) && <th className="px-2 py-2 text-center font-semibold text-xs text-blue-700">مراجعة قريبة (ص)</th>}
-              {hasFar && <th className="px-2 py-2 text-center font-semibold text-xs text-sky-700">مراجعة بعيدة (ص)</th>}
-              {hasListen && <th className="px-2 py-2 text-center font-semibold text-xs text-purple-700">سمعت</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {students.map((student: any, idx: number) => {
-              const d = bulkData[student.studentId] ?? { absent: false, memorizePages: "", reviewNearPages: "", reviewFarPages: "", reviewPages: "", listenedToReciter: null };
-              return (
-                <tr key={student.studentId} className={`border-b border-border/50 transition-colors ${d.absent ? "bg-rose-50/70" : idx % 2 === 0 ? "bg-background" : "bg-muted/15"}`}>
-                  <td className="px-3 py-2 font-medium text-sm max-w-[130px]">
-                    <div className="truncate">{student.studentName}</div>
-                  </td>
-                  <td className="px-2 py-2 text-center">
-                    <input type="checkbox" checked={d.absent} onChange={e => onChange(student.studentId, "absent", e.target.checked)} className="w-4 h-4 accent-rose-500" />
-                  </td>
-                  {hasMemorize && (
-                    <td className="px-2 py-2 text-center">
-                      <input type="number" min="0" max="20" step="0.5" value={d.memorizePages} onChange={e => onChange(student.studentId, "memorizePages", e.target.value)} disabled={d.absent} className="w-14 border border-input rounded px-1.5 py-1 text-center text-xs bg-background disabled:opacity-40" placeholder="0" />
-                    </td>
-                  )}
-                  {(hasNear || hasReview) && (
-                    <td className="px-2 py-2 text-center">
-                      <input type="number" min="0" max="20" step="0.5" value={d.reviewNearPages} onChange={e => onChange(student.studentId, "reviewNearPages", e.target.value)} disabled={d.absent} className="w-14 border border-input rounded px-1.5 py-1 text-center text-xs bg-background disabled:opacity-40" placeholder="0" />
-                    </td>
-                  )}
-                  {hasFar && (
-                    <td className="px-2 py-2 text-center">
-                      <input type="number" min="0" max="20" step="0.5" value={d.reviewFarPages} onChange={e => onChange(student.studentId, "reviewFarPages", e.target.value)} disabled={d.absent} className="w-14 border border-input rounded px-1.5 py-1 text-center text-xs bg-background disabled:opacity-40" placeholder="0" />
-                    </td>
-                  )}
-                  {hasListen && (
-                    <td className="px-2 py-2 text-center">
-                      <input type="checkbox" checked={d.listenedToReciter === true} onChange={e => onChange(student.studentId, "listenedToReciter", e.target.checked ? true : null)} disabled={d.absent} className="w-4 h-4 accent-purple-500 disabled:opacity-40" />
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-xs text-muted-foreground text-center">
-        أدخلي عدد الصفحات فقط — الحقول الفارغة تُحفظ كـ 0
-      </p>
-      <Button
-        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
-        onClick={onSave}
-        disabled={isSaving || students.length === 0}
-      >
-        <CheckCircle2 className="w-4 h-4" />
-        {isSaving ? "جاري الحفظ..." : `حفظ الحلقة كاملة (${students.length} طالبة)`}
-      </Button>
-    </div>
+    <select
+      className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-background text-right"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">اختر السورة</option>
+      {SURAHS.map((s) => (
+        <option key={s.number} value={s.name}>
+          {s.number}. {s.name}
+        </option>
+      ))}
+    </select>
   );
 }
 
-/** Returns the surah/ayah that comes right after the given position */
-function nextPosition(surahName: string, ayah: number): { surah: string; ayah: string } {
-  const surahIndex = SURAHS.findIndex(s => s.name === surahName);
-  if (surahIndex === -1) return { surah: surahName, ayah: String(ayah + 1) };
-  const currentSurah = SURAHS[surahIndex];
-  if (ayah >= currentSurah.ayahs) {
-    const nextSurah = SURAHS[surahIndex + 1];
-    if (nextSurah) return { surah: nextSurah.name, ayah: "1" };
-    return { surah: surahName, ayah: String(ayah) };
-  }
-  return { surah: surahName, ayah: String(ayah + 1) };
+function AyahSelect({
+  surahName,
+  value,
+  onChange,
+}: {
+  surahName: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const surah = SURAHS.find((s) => s.name === surahName);
+  const max = surah?.ayahs ?? 1;
+  return (
+    <select
+      className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-background text-right"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={!surahName}
+    >
+      <option value="">آية</option>
+      {Array.from({ length: max }, (_, i) => i + 1).map((n) => (
+        <option key={n} value={n.toString()}>
+          {n}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface SectionState {
+  surahStart: string;
+  ayahStart: string;
+  surahEnd: string;
+  ayahEnd: string;
 }
 
 interface FormState {
@@ -324,22 +243,53 @@ interface FormState {
   noReview: boolean;
 }
 
-function calcSectionPages(s: SectionState) {
+const emptySection = (): SectionState => ({
+  surahStart: "",
+  ayahStart: "",
+  surahEnd: "",
+  ayahEnd: "",
+});
+
+const emptyForm = (): FormState => ({
+  isAbsent: false,
+  memorize: emptySection(),
+  reviewNear: emptySection(),
+  reviewFar: emptySection(),
+  review: emptySection(),
+  recitation: emptySection(),
+  repetitions: "7",
+  listenedToReciter: null,
+  noReviewNear: false,
+  noReviewFar: false,
+  noReview: false,
+});
+
+function calcPages(s: SectionState) {
   return calculatePages(s.surahStart, Number(s.ayahStart), s.surahEnd, Number(s.ayahEnd));
 }
 
+// ─── SurahSection Component ───────────────────────────────────────────────────
+
 function SurahSection({
-  title, color, section, onChange, showPages, autoSuggested, locked, onToggleLock, onVoiceFill,
+  title,
+  color,
+  section,
+  onChange,
+  autoSuggested,
+  locked,
+  onToggleLock,
+  onVoiceFill,
 }: {
-  title: string; color: string; section: SectionState;
+  title: string;
+  color: string;
+  section: SectionState;
   onChange: (field: keyof SectionState, val: string) => void;
-  showPages?: boolean;
   autoSuggested?: boolean;
   locked?: boolean;
   onToggleLock?: () => void;
-  onVoiceFill?: (surahStart: string, ayahStart: string, surahEnd: string, ayahEnd: string) => void;
+  onVoiceFill?: (ss: string, as: string, se: string, ae: string) => void;
 }) {
-  const pages = calcSectionPages(section);
+  const pages = calcPages(section);
   return (
     <div className={`border rounded-xl p-4 space-y-3 ${locked ? "border-amber-300 bg-amber-50/60 opacity-80" : color}`}>
       <div className="flex items-center justify-between gap-2">
@@ -363,9 +313,7 @@ function SurahSection({
               {formatPages(pages)} وجه
             </Badge>
           )}
-          {onVoiceFill && !locked && (
-            <VoiceInputButton onResult={onVoiceFill} />
-          )}
+          {onVoiceFill && !locked && <VoiceInputButton onResult={onVoiceFill} />}
           {onToggleLock && (
             <button
               type="button"
@@ -385,33 +333,19 @@ function SurahSection({
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">من سورة</Label>
-            <SurahSelect
-              value={section.surahStart}
-              onChange={v => onChange("surahStart", v)}
-            />
+            <SurahSelect value={section.surahStart} onChange={(v) => onChange("surahStart", v)} />
           </div>
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">آية البداية</Label>
-            <AyahSelect
-              surahName={section.surahStart}
-              value={section.ayahStart}
-              onChange={v => onChange("ayahStart", v)}
-            />
+            <AyahSelect surahName={section.surahStart} value={section.ayahStart} onChange={(v) => onChange("ayahStart", v)} />
           </div>
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">إلى سورة</Label>
-            <SurahSelect
-              value={section.surahEnd}
-              onChange={v => onChange("surahEnd", v)}
-            />
+            <SurahSelect value={section.surahEnd} onChange={(v) => onChange("surahEnd", v)} />
           </div>
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">آية النهاية</Label>
-            <AyahSelect
-              surahName={section.surahEnd}
-              value={section.ayahEnd}
-              onChange={v => onChange("ayahEnd", v)}
-            />
+            <AyahSelect surahName={section.surahEnd} value={section.ayahEnd} onChange={(v) => onChange("ayahEnd", v)} />
           </div>
         </div>
       )}
@@ -419,27 +353,13 @@ function SurahSection({
   );
 }
 
-const emptyForm = (): FormState => ({
-  isAbsent: false,
-  memorize: emptySection(),
-  reviewNear: emptySection(),
-  reviewFar: emptySection(),
-  review: emptySection(),
-  recitation: emptySection(),
-  repetitions: "7",
-  listenedToReciter: null,
-  noReviewNear: false,
-  noReviewFar: false,
-  noReview: false,
-});
+// ─── Heartbeat hook ───────────────────────────────────────────────────────────
 
-function useDataEntryHeartbeat(isDataEntry: boolean) {
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
+function useHeartbeat(isDataEntry: boolean) {
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (!isDataEntry) return;
-
-    const sendHeartbeat = () => {
+    const send = () => {
       const token = getToken();
       if (!token) return;
       fetch(`${BASE}/api/data-entry/session/heartbeat`, {
@@ -447,68 +367,33 @@ function useDataEntryHeartbeat(isDataEntry: boolean) {
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
     };
-
-    sendHeartbeat();
-    timerRef.current = setInterval(sendHeartbeat, 2 * 60 * 1000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    send();
+    timer.current = setInterval(send, 2 * 60 * 1000);
+    return () => { if (timer.current) clearInterval(timer.current); };
   }, [isDataEntry]);
 }
 
-function useDataEntryMyStats(isDataEntry: boolean) {
-  const [stats, setStats] = useState<any>(null);
-
-  const fetchStats = useCallback(() => {
-    if (!isDataEntry) return;
-    const token = getToken();
-    if (!token) return;
-    fetch(`${BASE}/api/data-entry/my-stats`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(setStats)
-      .catch(() => {});
-  }, [isDataEntry]);
-
-  useEffect(() => {
-    fetchStats();
-    const t = setInterval(fetchStats, 3 * 60 * 1000);
-    return () => clearInterval(t);
-  }, [fetchStats]);
-
-  return stats;
-}
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function DataEntryPage() {
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const isDataEntry = (user as any)?.role === "data_entry";
+
+  useHeartbeat(isDataEntry);
+
   const [selectedDate, setSelectedDate] = useState(() => getCurrentWeekWorkingDays()[0].value);
-  const [selectedTrack, setSelectedTrack] = useState<string>("");
   const [selectedCircleId, setSelectedCircleId] = useState<number | null>(null);
-  const { data: tracks } = useListTracks({ query: { queryKey: ["tracks"] } });
+  const [selectedTrack, setSelectedTrack] = useState<string>("");
   const [studentSearch, setStudentSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
-  const [confirmAbsenceOpen, setConfirmAbsenceOpen] = useState(false);
   const [autoFilled, setAutoFilled] = useState(false);
-  const [thursdayDialogOpen, setThursdayDialogOpen] = useState(false);
-  const [thursdayLoading, setThursdayLoading] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
+  const [confirmAbsenceOpen, setConfirmAbsenceOpen] = useState(false);
   const [submittedDays, setSubmittedDays] = useState<string[]>([]);
-  const [bulkMode, setBulkMode] = useState(false);
-  const [bulkData, setBulkData] = useState<Record<number, { absent: boolean; memorizePages: string; reviewNearPages: string; reviewFarPages: string; reviewPages: string; listenedToReciter: boolean | null }>>({});
-  const [isBulkSaving, setIsBulkSaving] = useState(false);
 
-  useDataEntryHeartbeat(isDataEntry);
-  const myStats = useDataEntryMyStats(isDataEntry);
-
-  const { data: circles } = useListCircles(undefined, {
-    query: { queryKey: ["circles"] }
-  });
-
-  // حلقات مدخلة البيانات المُسندة لها (بدلاً من جميع الحلقات)
+  // Assigned circles for data_entry users
   const [assignedCircles, setAssignedCircles] = useState<any[]>([]);
   useEffect(() => {
     if (!isDataEntry) return;
@@ -517,31 +402,29 @@ export default function DataEntryPage() {
     fetch(`${BASE}/api/data-entry/my-circles`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then(r => r.ok ? r.json() : [])
+      .then((r) => (r.ok ? r.json() : []))
       .then(setAssignedCircles)
       .catch(() => {});
   }, [isDataEntry]);
 
-  // Auto-select user's assigned track on load
+  // Auto-select track from user profile
   useEffect(() => {
-    if ((user as any)?.track && !selectedTrack) {
-      setSelectedTrack((user as any).track);
-    }
+    if ((user as any)?.track && !selectedTrack) setSelectedTrack((user as any).track);
   }, [(user as any)?.track]);
 
-  // Fetch submitted days for selected circle (to hide from dropdown)
+  // Submitted days for selected circle (to hide already-done days)
   useEffect(() => {
     if (!selectedCircleId) { setSubmittedDays([]); return; }
-    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` };
-    fetch(`${BASE}/api/data-entry/circle-submitted-days?circleId=${selectedCircleId}`, { headers })
-      .then(r => r.ok ? r.json() : [])
+    const token = getToken();
+    fetch(`${BASE}/api/data-entry/circle-submitted-days?circleId=${selectedCircleId}`, {
+      headers: { Authorization: `Bearer ${token ?? ""}` },
+    })
+      .then((r) => (r.ok ? r.json() : []))
       .then((days: string[]) => {
         setSubmittedDays(days);
-        // If selected date is now submitted, pick first available day
-        setSelectedDate(prev => {
+        setSelectedDate((prev) => {
           if (days.includes(prev)) {
-            const allDays = getCurrentWeekWorkingDays().map(d => d.value);
-            return allDays.find(d => !days.includes(d)) ?? prev;
+            return getCurrentWeekWorkingDays().map((d) => d.value).find((d) => !days.includes(d)) ?? prev;
           }
           return prev;
         });
@@ -549,153 +432,150 @@ export default function DataEntryPage() {
       .catch(() => setSubmittedDays([]));
   }, [selectedCircleId]);
 
-  // مدخلة البيانات ترى فقط الحلقات المُسندة لها، بينما القائدة ترى الكل مع فلتر المسار
-  const filteredCirclesForEntry = isDataEntry
-    ? assignedCircles
-    : (circles ?? []).filter((c: any) => !selectedTrack || c.track === selectedTrack);
-
-  const { data: repeatedAbsences } = useGetRepeatedAbsences(
-    { minAbsences: 2 },
-    { query: { queryKey: ["repeatedAbsencesEntry"] } }
-  );
+  const { data: circles } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
+  const { data: tracks } = useListTracks({ query: { queryKey: ["tracks"] } });
 
   const { data: missingData } = useGetMissingDataEntry(
     { date: selectedDate },
-    { query: { queryKey: ["missingData", selectedDate] } }
+    { query: { queryKey: ["missingData", selectedDate] } },
   );
 
-  // Fetch last record for selected student to suggest start positions
   const { data: studentRecords } = useListRecords(
     selectedStudent ? { studentId: selectedStudent.studentId } : undefined,
-    { query: { queryKey: ["studentRecords", selectedStudent?.studentId], enabled: !!selectedStudent && dialogOpen } }
+    {
+      query: {
+        queryKey: ["studentRecords", selectedStudent?.studentId],
+        enabled: !!selectedStudent && dialogOpen,
+      },
+    },
   );
 
-  // Fetch review plan for selected student to suggest far review range
-  const [reviewPlanToday, setReviewPlanToday] = useState<{ surahStart?: number; ayahStart?: number; surahEnd?: number; ayahEnd?: number; pages?: number } | null>(null);
+  const { data: circleRecordsRaw } = useListRecords(
+    selectedCircleId ? { circleId: selectedCircleId, date: selectedDate } : undefined,
+    {
+      query: {
+        queryKey: ["circleRecords", selectedCircleId, selectedDate],
+        enabled: !!selectedCircleId,
+      },
+    },
+  );
+  const circleRecords: any[] = (circleRecordsRaw as any) ?? [];
+
+  const { data: repeatedAbsences } = useGetRepeatedAbsences(
+    { minAbsences: 2 },
+    { query: { queryKey: ["repeatedAbsences"] } },
+  );
+
+  const { data: teacherAbsenceStatus, refetch: refetchTeacherAbsence } = useCheckTeacherAbsence(
+    selectedCircleId ?? 0,
+    { date: selectedDate },
+    {
+      query: {
+        queryKey: ["teacherAbsence", selectedCircleId, selectedDate],
+        enabled: !!selectedCircleId,
+      },
+    },
+  );
+  const isTeacherAbsent = !!teacherAbsenceStatus?.absent;
+
+  const markTeacherAbsent = useMarkTeacherAbsent();
+  const deleteTeacherAbsence = useDeleteTeacherAbsence();
+  const createRecord = useCreateRecord();
+  const updateRecord = useUpdateRecord();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  // Review plan for selected student
+  const [reviewPlanToday, setReviewPlanToday] = useState<any>(null);
   useEffect(() => {
     if (!selectedStudent || !dialogOpen) { setReviewPlanToday(null); return; }
     const token = getToken();
     fetch(`${BASE}/api/students/${selectedStudent.studentId}/review-plan`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
-      .then(r => r.ok ? r.json() : null)
+      .then((r) => (r.ok ? r.json() : null))
       .then((data: any) => {
-        if (data?.todayEntry?.surahStart && data?.todayEntry?.surahEnd) {
+        if (data?.todayEntry?.surahStart && data?.todayEntry?.surahEnd)
           setReviewPlanToday(data.todayEntry);
-        } else {
-          setReviewPlanToday(null);
-        }
+        else setReviewPlanToday(null);
       })
       .catch(() => setReviewPlanToday(null));
   }, [selectedStudent?.studentId, dialogOpen]);
 
-  // Fetch all records for selected circle+date (for "entered today" section)
-  const { data: circleRecordsRaw } = useListRecords(
-    selectedCircleId ? { circleId: selectedCircleId, date: selectedDate } : undefined,
-    { query: { queryKey: ["circleRecords", selectedCircleId, selectedDate], enabled: !!selectedCircleId } }
-  );
-  const circleRecordsData: any[] = (circleRecordsRaw as any) ?? [];
-
-  // Auto-fill start surah/ayah from last non-absent record
+  // Auto-fill form from last record
   useEffect(() => {
     if (!dialogOpen || !studentRecords || autoFilled) return;
-    const sorted = [...studentRecords].sort((a: any, b: any) => b.date.localeCompare(a.date));
-    const last = sorted.find((r: any) => !r.isAbsent);
+    const sorted = [...(studentRecords as any[])].sort((a, b) => b.date.localeCompare(a.date));
+    const last = sorted.find((r) => !r.isAbsent);
     if (!last) return;
     const updates: Partial<FormState> = {};
-    if ((last as any).memorizeSurahEnd && (last as any).memorizeAyahEnd) {
-      const next = nextPosition((last as any).memorizeSurahEnd, (last as any).memorizeAyahEnd);
+    if (last.memorizeSurahEnd && last.memorizeAyahEnd) {
+      const next = nextPosition(last.memorizeSurahEnd, last.memorizeAyahEnd);
       updates.memorize = { ...emptySection(), surahStart: next.surah, ayahStart: next.ayah };
     }
-    // مراجعة قريبة: نفس النطاق الذي أُدخل بالأمس (ذاكرة ذكية)
-    if ((last as any).reviewNearSurahStart && (last as any).reviewNearSurahEnd) {
+    if (last.reviewNearSurahStart && last.reviewNearSurahEnd) {
       updates.reviewNear = {
-        surahStart: (last as any).reviewNearSurahStart,
-        ayahStart: (last as any).reviewNearAyahStart?.toString() ?? "1",
-        surahEnd: (last as any).reviewNearSurahEnd,
-        ayahEnd: (last as any).reviewNearAyahEnd?.toString() ?? "1",
+        surahStart: last.reviewNearSurahStart,
+        ayahStart: last.reviewNearAyahStart?.toString() ?? "1",
+        surahEnd: last.reviewNearSurahEnd,
+        ayahEnd: last.reviewNearAyahEnd?.toString() ?? "1",
       };
     }
-    // مراجعة بعيدة: نفس النطاق الذي أُدخل بالأمس
-    if ((last as any).reviewFarSurahStart && (last as any).reviewFarSurahEnd) {
+    if (last.reviewFarSurahStart && last.reviewFarSurahEnd) {
       updates.reviewFar = {
-        surahStart: (last as any).reviewFarSurahStart,
-        ayahStart: (last as any).reviewFarAyahStart?.toString() ?? "1",
-        surahEnd: (last as any).reviewFarSurahEnd,
-        ayahEnd: (last as any).reviewFarAyahEnd?.toString() ?? "1",
+        surahStart: last.reviewFarSurahStart,
+        ayahStart: last.reviewFarAyahStart?.toString() ?? "1",
+        surahEnd: last.reviewFarSurahEnd,
+        ayahEnd: last.reviewFarAyahEnd?.toString() ?? "1",
       };
     }
-    if ((last as any).reviewSurahStart && (last as any).reviewSurahEnd) {
+    if (last.reviewSurahStart && last.reviewSurahEnd) {
       updates.review = {
-        surahStart: (last as any).reviewSurahStart,
-        ayahStart: (last as any).reviewAyahStart?.toString() ?? "1",
-        surahEnd: (last as any).reviewSurahEnd,
-        ayahEnd: (last as any).reviewAyahEnd?.toString() ?? "1",
+        surahStart: last.reviewSurahStart,
+        ayahStart: last.reviewAyahStart?.toString() ?? "1",
+        surahEnd: last.reviewSurahEnd,
+        ayahEnd: last.reviewAyahEnd?.toString() ?? "1",
       };
     }
-    if ((last as any).recitationSurahEnd && (last as any).recitationAyahEnd) {
-      const next = nextPosition((last as any).recitationSurahEnd, (last as any).recitationAyahEnd);
+    if (last.recitationSurahEnd && last.recitationAyahEnd) {
+      const next = nextPosition(last.recitationSurahEnd, last.recitationAyahEnd);
       updates.recitation = { ...emptySection(), surahStart: next.surah, ayahStart: next.ayah };
     }
     if (Object.keys(updates).length > 0) {
-      setForm(f => ({ ...f, ...updates }));
+      setForm((f) => ({ ...f, ...updates }));
       setAutoFilled(true);
     }
   }, [studentRecords, dialogOpen, autoFilled]);
 
-  const queryClient = useQueryClient();
-  const createRecord = useCreateRecord();
-  const updateRecord = useUpdateRecord();
-  const { toast } = useToast();
+  // Available days (hide submitted days when circle is selected)
+  const availableDays = useMemo(() => {
+    const all = getCurrentWeekWorkingDays();
+    if (!selectedCircleId || submittedDays.length === 0) return all;
+    return all.filter((d) => !submittedDays.includes(d.value));
+  }, [submittedDays, selectedCircleId]);
 
-  const { data: teacherAbsenceStatus, refetch: refetchTeacherAbsence } = useCheckTeacherAbsence(
-    selectedCircleId ?? 0,
-    { date: selectedDate },
-    { query: { queryKey: ["teacherAbsence", selectedCircleId, selectedDate], enabled: !!selectedCircleId } }
-  );
-  const markTeacherAbsent = useMarkTeacherAbsent();
-  const deleteTeacherAbsence = useDeleteTeacherAbsence();
+  // Circles shown in UI
+  const visibleCircles = isDataEntry
+    ? assignedCircles
+    : (circles ?? []).filter((c: any) => !selectedTrack || c.track === selectedTrack);
 
-  const isTeacherAbsent = !!teacherAbsenceStatus?.absent;
-
-  const handleMarkTeacherAbsent = () => {
-    if (!selectedCircleId) return;
-    if (!confirm(`هل تريدين تسجيل غياب المعلمة لهذه الحلقة يوم ${selectedDate}؟\nسيتم تعطيل إدخال البيانات لهذا اليوم.`)) return;
-    markTeacherAbsent.mutate(
-      { id: selectedCircleId, data: { date: selectedDate } },
-      {
-        onSuccess: () => {
-          toast({ title: "تم تسجيل غياب المعلمة" });
-          refetchTeacherAbsence();
-        },
-        onError: () => toast({ title: "خطأ في التسجيل", variant: "destructive" }),
-      }
-    );
-  };
-
-  const handleUndoTeacherAbsence = () => {
-    if (!selectedCircleId) return;
-    deleteTeacherAbsence.mutate(
-      { id: selectedCircleId, params: { date: selectedDate } },
-      {
-        onSuccess: () => {
-          toast({ title: "تم إلغاء غياب المعلمة" });
-          refetchTeacherAbsence();
-        },
-        onError: () => toast({ title: "خطأ في الإلغاء", variant: "destructive" }),
-      }
-    );
-  };
-
+  // Students in selected circle who need data entry
   const studentsInCircle = useMemo(() => {
     if (!selectedCircleId || !missingData) return [];
-    return ((missingData as unknown) as any[]).filter((s: any) => Number(s.circleId) === selectedCircleId);
+    return ((missingData as unknown) as any[]).filter(
+      (s: any) => Number(s.circleId) === Number(selectedCircleId),
+    );
   }, [missingData, selectedCircleId]);
 
   const filteredStudents = useMemo(() => {
     if (!studentSearch.trim()) return studentsInCircle;
     return studentsInCircle.filter((s: any) => s.studentName?.includes(studentSearch));
   }, [studentsInCircle, studentSearch]);
+
+  const selectedCircle = (circles ?? []).find((c: any) => c.id === selectedCircleId) as any;
+  const inputFields = getInputFields(selectedCircle?.dataEntryType);
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
 
   const openEntry = (student: any) => {
     setSelectedStudent(student);
@@ -705,45 +585,6 @@ export default function DataEntryPage() {
     setDialogOpen(true);
   };
 
-  const formFromRecord = (record: any): FormState => ({
-    isAbsent: record.isAbsent ?? false,
-    memorize: {
-      surahStart: record.memorizeSurahStart ?? "",
-      ayahStart: record.memorizeAyahStart?.toString() ?? "",
-      surahEnd: record.memorizeSurahEnd ?? "",
-      ayahEnd: record.memorizeAyahEnd?.toString() ?? "",
-    },
-    reviewNear: {
-      surahStart: record.reviewNearSurahStart ?? "",
-      ayahStart: record.reviewNearAyahStart?.toString() ?? "",
-      surahEnd: record.reviewNearSurahEnd ?? "",
-      ayahEnd: record.reviewNearAyahEnd?.toString() ?? "",
-    },
-    reviewFar: {
-      surahStart: record.reviewFarSurahStart ?? "",
-      ayahStart: record.reviewFarAyahStart?.toString() ?? "",
-      surahEnd: record.reviewFarSurahEnd ?? "",
-      ayahEnd: record.reviewFarAyahEnd?.toString() ?? "",
-    },
-    review: {
-      surahStart: record.reviewSurahStart ?? "",
-      ayahStart: record.reviewAyahStart?.toString() ?? "",
-      surahEnd: record.reviewSurahEnd ?? "",
-      ayahEnd: record.reviewAyahEnd?.toString() ?? "",
-    },
-    recitation: {
-      surahStart: record.recitationSurahStart ?? "",
-      ayahStart: record.recitationAyahStart?.toString() ?? "",
-      surahEnd: record.recitationSurahEnd ?? "",
-      ayahEnd: record.recitationAyahEnd?.toString() ?? "",
-    },
-    repetitions: record.repetitions?.toString() ?? "7",
-    listenedToReciter: record.listenedToReciter ?? null,
-    noReviewNear: !record.reviewNearSurahStart,
-    noReviewFar: !record.reviewFarSurahStart,
-    noReview: !record.reviewSurahStart,
-  });
-
   const openEditRecord = (record: any) => {
     setSelectedStudent({
       studentId: record.studentId,
@@ -752,20 +593,58 @@ export default function DataEntryPage() {
       track: selectedCircle?.track ?? "",
     });
     setEditingRecordId(record.id);
-    setForm(formFromRecord(record));
+    setForm({
+      isAbsent: record.isAbsent ?? false,
+      memorize: {
+        surahStart: record.memorizeSurahStart ?? "",
+        ayahStart: record.memorizeAyahStart?.toString() ?? "",
+        surahEnd: record.memorizeSurahEnd ?? "",
+        ayahEnd: record.memorizeAyahEnd?.toString() ?? "",
+      },
+      reviewNear: {
+        surahStart: record.reviewNearSurahStart ?? "",
+        ayahStart: record.reviewNearAyahStart?.toString() ?? "",
+        surahEnd: record.reviewNearSurahEnd ?? "",
+        ayahEnd: record.reviewNearAyahEnd?.toString() ?? "",
+      },
+      reviewFar: {
+        surahStart: record.reviewFarSurahStart ?? "",
+        ayahStart: record.reviewFarAyahStart?.toString() ?? "",
+        surahEnd: record.reviewFarSurahEnd ?? "",
+        ayahEnd: record.reviewFarAyahEnd?.toString() ?? "",
+      },
+      review: {
+        surahStart: record.reviewSurahStart ?? "",
+        ayahStart: record.reviewAyahStart?.toString() ?? "",
+        surahEnd: record.reviewSurahEnd ?? "",
+        ayahEnd: record.reviewAyahEnd?.toString() ?? "",
+      },
+      recitation: {
+        surahStart: record.recitationSurahStart ?? "",
+        ayahStart: record.recitationAyahStart?.toString() ?? "",
+        surahEnd: record.recitationSurahEnd ?? "",
+        ayahEnd: record.recitationAyahEnd?.toString() ?? "",
+      },
+      repetitions: record.repetitions?.toString() ?? "7",
+      listenedToReciter: record.listenedToReciter ?? null,
+      noReviewNear: !record.reviewNearSurahStart,
+      noReviewFar: !record.reviewFarSurahStart,
+      noReview: !record.reviewSurahStart,
+    });
     setAutoFilled(true);
     setDialogOpen(true);
   };
 
   const updateSection = (section: keyof FormState, field: keyof SectionState, val: string) => {
-    setForm(f => ({
-      ...f,
-      [section]: { ...(f[section] as SectionState), [field]: val },
-    }));
+    setForm((f) => ({ ...f, [section]: { ...(f[section] as SectionState), [field]: val } }));
   };
 
+  const invalidateQueries = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["missingData", selectedDate] });
+    queryClient.invalidateQueries({ queryKey: ["circleRecords", selectedCircleId, selectedDate] });
+  }, [queryClient, selectedDate, selectedCircleId]);
+
   const handleSave = () => {
-    const inputFields = getInputFields(selectedCircle?.dataEntryType);
     const payload: any = {
       studentId: selectedStudent.studentId,
       circleId: selectedStudent.circleId,
@@ -784,42 +663,38 @@ export default function DataEntryPage() {
         payload.memorizeAyahStart = Number(form.memorize.ayahStart) || 1;
         payload.memorizeSurahEnd = form.memorize.surahEnd;
         payload.memorizeAyahEnd = Number(form.memorize.ayahEnd) || 1;
-        payload.memorizePages = calcSectionPages(form.memorize);
+        payload.memorizePages = calcPages(form.memorize);
       }
-      if (inputFields.includes("review_near") && form.reviewNear.surahStart && form.reviewNear.surahEnd) {
+      if (inputFields.includes("review_near") && !form.noReviewNear && form.reviewNear.surahStart && form.reviewNear.surahEnd) {
         payload.reviewNearSurahStart = form.reviewNear.surahStart;
         payload.reviewNearAyahStart = Number(form.reviewNear.ayahStart) || 1;
         payload.reviewNearSurahEnd = form.reviewNear.surahEnd;
         payload.reviewNearAyahEnd = Number(form.reviewNear.ayahEnd) || 1;
-        payload.reviewNearPages = calcSectionPages(form.reviewNear);
+        payload.reviewNearPages = calcPages(form.reviewNear);
       }
-      if (inputFields.includes("review_far") && form.reviewFar.surahStart && form.reviewFar.surahEnd) {
+      if (inputFields.includes("review_far") && !form.noReviewFar && form.reviewFar.surahStart && form.reviewFar.surahEnd) {
         payload.reviewFarSurahStart = form.reviewFar.surahStart;
         payload.reviewFarAyahStart = Number(form.reviewFar.ayahStart) || 1;
         payload.reviewFarSurahEnd = form.reviewFar.surahEnd;
         payload.reviewFarAyahEnd = Number(form.reviewFar.ayahEnd) || 1;
-        payload.reviewFarPages = calcSectionPages(form.reviewFar);
+        payload.reviewFarPages = calcPages(form.reviewFar);
       }
-      if (inputFields.includes("review") && form.review.surahStart && form.review.surahEnd) {
+      if (inputFields.includes("review") && !form.noReview && form.review.surahStart && form.review.surahEnd) {
         payload.reviewSurahStart = form.review.surahStart;
         payload.reviewAyahStart = Number(form.review.ayahStart) || 1;
         payload.reviewSurahEnd = form.review.surahEnd;
         payload.reviewAyahEnd = Number(form.review.ayahEnd) || 1;
-        payload.reviewPages = calcSectionPages(form.review);
+        payload.reviewPages = calcPages(form.review);
       }
       if (inputFields.includes("recitation") && form.recitation.surahStart && form.recitation.surahEnd) {
         payload.recitationSurahStart = form.recitation.surahStart;
         payload.recitationAyahStart = Number(form.recitation.ayahStart) || 1;
         payload.recitationSurahEnd = form.recitation.surahEnd;
         payload.recitationAyahEnd = Number(form.recitation.ayahEnd) || 1;
-        payload.recitationPages = calcSectionPages(form.recitation);
+        payload.recitationPages = calcPages(form.recitation);
       }
-      if (inputFields.includes("repetitions")) {
-        payload.repetitions = Number(form.repetitions) || null;
-      }
-      if (inputFields.includes("listen")) {
-        payload.listenedToReciter = form.listenedToReciter;
-      }
+      if (inputFields.includes("repetitions")) payload.repetitions = Number(form.repetitions) || null;
+      if (inputFields.includes("listen")) payload.listenedToReciter = form.listenedToReciter;
     }
 
     if (editingRecordId) {
@@ -827,225 +702,75 @@ export default function DataEntryPage() {
         { id: editingRecordId, data: payload },
         {
           onSuccess: () => {
-            toast({ title: "تم تحديث البيانات بنجاح ✓" });
-            queryClient.invalidateQueries({ queryKey: ["missingData", selectedDate] });
-            queryClient.invalidateQueries({ queryKey: ["circleRecords", selectedCircleId, selectedDate] });
+            toast({ title: "تم تحديث البيانات ✓" });
+            invalidateQueries();
             setDialogOpen(false);
             setEditingRecordId(null);
           },
-          onError: (err: any) => {
-            toast({ title: "خطأ في التحديث", description: err?.data?.error ?? err?.message, variant: "destructive" });
-          },
-        }
+          onError: (err: any) =>
+            toast({ title: "خطأ في التحديث", description: err?.data?.error ?? err?.message, variant: "destructive" }),
+        },
       );
     } else {
       createRecord.mutate(
         { data: payload },
         {
           onSuccess: () => {
-            toast({ title: "تم حفظ البيانات بنجاح ✓" });
-            queryClient.invalidateQueries({ queryKey: ["missingData", selectedDate] });
-            queryClient.invalidateQueries({ queryKey: ["circleRecords", selectedCircleId, selectedDate] });
+            toast({ title: "تم حفظ البيانات ✓" });
+            invalidateQueries();
             setDialogOpen(false);
           },
-          onError: (err: any) => {
-            toast({ title: "خطأ في الحفظ", description: err?.data?.error ?? err?.message, variant: "destructive" });
-          },
-        }
+          onError: (err: any) =>
+            toast({ title: "خطأ في الحفظ", description: err?.data?.error ?? err?.message, variant: "destructive" }),
+        },
       );
     }
   };
 
-  // ---- إدخال دفعي سريع ----
-  const initBulkData = () => {
-    const init: typeof bulkData = {};
-    studentsInCircle.forEach((s: any) => {
-      init[s.studentId] = { absent: false, memorizePages: "", reviewNearPages: "", reviewFarPages: "", reviewPages: "", listenedToReciter: null };
-    });
-    setBulkData(init);
-  };
-
-  const handleBulkChange = (studentId: number, field: string, value: any) => {
-    setBulkData(prev => ({
-      ...prev,
-      [studentId]: { ...( prev[studentId] ?? { absent: false, memorizePages: "", reviewNearPages: "", reviewFarPages: "", reviewPages: "", listenedToReciter: null }), [field]: value },
-    }));
-  };
-
-  const handleBulkSave = async () => {
+  const handleMarkTeacherAbsent = () => {
     if (!selectedCircleId) return;
-    setIsBulkSaving(true);
-    const token = getToken();
-    const inputFields = getInputFields(selectedCircle?.dataEntryType);
-    const hasNear = inputFields.includes("review_near");
-    const hasFar = inputFields.includes("review_far");
-    const hasReview = inputFields.includes("review");
-    const hasListen = inputFields.includes("listen");
-    let successCount = 0;
-    let errorCount = 0;
-
-    for (const student of studentsInCircle) {
-      const d = bulkData[student.studentId] ?? { absent: false, memorizePages: "", reviewNearPages: "", reviewFarPages: "", reviewPages: "", listenedToReciter: null };
-      const payload: any = {
-        studentId: student.studentId,
-        circleId: student.circleId,
-        date: selectedDate,
-        isAbsent: d.absent,
-        memorizePages: d.absent ? 0 : parseFloat(d.memorizePages) || 0,
-        reviewNearPages: d.absent || !hasNear ? 0 : parseFloat(d.reviewNearPages) || 0,
-        reviewFarPages: d.absent || !hasFar ? 0 : parseFloat(d.reviewFarPages) || 0,
-        reviewPages: d.absent || !hasReview ? 0 : parseFloat(d.reviewPages) || 0,
-        recitationPages: 0,
-      };
-      if (!d.absent && hasListen && d.listenedToReciter !== null) {
-        payload.listenedToReciter = d.listenedToReciter;
-      }
-      try {
-        const res = await fetch(`${BASE}/api/records`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) successCount++; else errorCount++;
-      } catch { errorCount++; }
-    }
-
-    queryClient.invalidateQueries({ queryKey: ["missingData", selectedDate] });
-    queryClient.invalidateQueries({ queryKey: ["circleRecords", selectedCircleId, selectedDate] });
-    setIsBulkSaving(false);
-    setBulkMode(false);
-    setBulkData({});
-    toast({
-      title: `تم حفظ ${successCount} طالبة بنجاح ✓`,
-      description: errorCount > 0 ? `${errorCount} طالبة لم تُحفظ` : undefined,
-      variant: errorCount > 0 ? "destructive" : "default",
-    });
+    if (!confirm(`هل تريدين تسجيل غياب المعلمة لهذه الحلقة يوم ${selectedDate}؟`)) return;
+    markTeacherAbsent.mutate(
+      { id: selectedCircleId, data: { date: selectedDate } },
+      {
+        onSuccess: () => { toast({ title: "تم تسجيل غياب المعلمة" }); refetchTeacherAbsence(); },
+        onError: () => toast({ title: "خطأ في التسجيل", variant: "destructive" }),
+      },
+    );
   };
 
-  // إدخال الخميس تلقائيًا للقائدة
-  const handleThursdayBulk = async () => {
-    setThursdayLoading(true);
-    try {
-      const res = await fetch("/api/records/thursday-bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: selectedDate }),
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "حدث خطأ");
-      toast({
-        title: "تم إدخال بيانات الخميس",
-        description: `تم إدخال ${data.created} طالبة · تخطي ${data.skipped}`,
-      });
-      setThursdayDialogOpen(false);
-    } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
-    } finally {
-      setThursdayLoading(false);
-    }
+  const handleUndoTeacherAbsence = () => {
+    if (!selectedCircleId) return;
+    deleteTeacherAbsence.mutate(
+      { id: selectedCircleId, params: { date: selectedDate } },
+      {
+        onSuccess: () => { toast({ title: "تم إلغاء غياب المعلمة" }); refetchTeacherAbsence(); },
+        onError: () => toast({ title: "خطأ في الإلغاء", variant: "destructive" }),
+      },
+    );
   };
 
-  const selectedCircle = circles?.find((c: any) => c.id === selectedCircleId);
-  const trackType = resolveTrackType(selectedCircle?.dataEntryType);
-  const inputFields = getInputFields(selectedCircle?.dataEntryType);
+  // ── Pages summary ────────────────────────────────────────────────────────────
+  const memPages = calcPages(form.memorize);
+  const revNearPages = calcPages(form.reviewNear);
+  const revFarPages = calcPages(form.reviewFar);
+  const revPages = calcPages(form.review);
+  const recPages = calcPages(form.recitation);
+  const hasPages = memPages > 0 || revNearPages > 0 || revFarPages > 0 || revPages > 0 || recPages > 0;
 
-  // أيام العمل لإدخال البيانات: أحد–خميس دائمًا (الجمعة والسبت مستثنيان)
-  // إذا كانت الحلقة محددة، تُخفى الأيام التي أُدخلت بياناتها بالفعل
-  const days = useMemo(() => {
-    const all = getCurrentWeekWorkingDays();
-    if (!selectedCircleId || submittedDays.length === 0) return all;
-    return all.filter(d => !submittedDays.includes(d.value));
-  }, [submittedDays, selectedCircleId]);
-
-  // هل اليوم المختار خميس؟
-  const isThursdaySelected = new Date(selectedDate + "T12:00:00Z").getUTCDay() === 4;
-
-  const memPages = calcSectionPages(form.memorize);
-  const revNearPages = calcSectionPages(form.reviewNear);
-  const revFarPages = calcSectionPages(form.reviewFar);
-  const revPages = calcSectionPages(form.review);
-  const recPages = calcSectionPages(form.recitation);
-
-  // المعدل اليومي الاعتيادي للحفظ من آخر 10 سجلات بها حفظ
-  const avgMemorize = useMemo(() => {
-    if (!studentRecords) return null;
-    const withMemo = [...(studentRecords as any[])]
-      .filter(r => !r.isAbsent && (r.memorizePages ?? 0) > 0)
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 10);
-    if (withMemo.length < 3) return null;
-    const avg = withMemo.reduce((s, r) => s + (r.memorizePages ?? 0), 0) / withMemo.length;
-    return Math.round(avg * 2) / 2;
-  }, [studentRecords]);
-
-  // عتبة التحذير: 1.5× المعدل أو 2 وجه (صفحة كاملة) للطالبة الجديدة
-  const memorizeWarning = memPages > 0 && (
-    avgMemorize !== null ? memPages > avgMemorize * 1.5 : memPages > 2
-  );
+  // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-5" dir="rtl">
+      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">إدخال البيانات</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          {user?.track && `مسار ${user.track} · `}اختر اليوم والحلقة لإدخال بيانات الطالبات
+          اختري الحلقة ثم الطالبة لإدخال بياناتها
         </p>
       </div>
 
-      {/* لوحة إحصائيات مدخلة البيانات اليومية */}
-      {isDataEntry && myStats && (
-        <Card className="border-0 shadow-sm bg-gradient-to-l from-blue-50 to-indigo-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold flex items-center gap-2 text-indigo-800">
-              <Clock className="w-4 h-4" />
-              نشاطي اليوم
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-3 gap-3 mb-3">
-              <div className="bg-white rounded-xl p-2.5 text-center shadow-sm">
-                <p className="text-lg font-bold text-indigo-700">{myStats.assignedCircles?.length ?? 0}</p>
-                <p className="text-[10px] text-muted-foreground">حلقة مُسندة</p>
-              </div>
-              <div className="bg-white rounded-xl p-2.5 text-center shadow-sm">
-                <p className="text-lg font-bold text-emerald-600">{myStats.enteredToday?.length ?? 0}</p>
-                <p className="text-[10px] text-muted-foreground">أُدخلت</p>
-              </div>
-              <div className="bg-white rounded-xl p-2.5 text-center shadow-sm">
-                <p className="text-lg font-bold text-amber-600">{myStats.notEnteredToday?.length ?? 0}</p>
-                <p className="text-[10px] text-muted-foreground">لم تُدخَل</p>
-              </div>
-            </div>
-            {myStats.assignedCircles && myStats.assignedCircles.length > 0 && (
-              <div className="space-y-1">
-                {myStats.assignedCircles.map((c: any) => (
-                  <div key={c.circleId} className="flex items-center gap-2 text-xs">
-                    {c.entered ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                    ) : c.teacherAbsent ? (
-                      <span className="w-3.5 h-3.5 text-orange-400 shrink-0 flex items-center">✕</span>
-                    ) : (
-                      <span className="w-3.5 h-3.5 border border-gray-300 rounded-full shrink-0 flex" />
-                    )}
-                    <span className={c.entered ? "text-emerald-700 font-medium" : c.teacherAbsent ? "text-orange-500 line-through" : "text-foreground"}>
-                      {c.circleName}
-                    </span>
-                    {c.teacherAbsent && <span className="text-orange-400 text-[10px]">(غائبة)</span>}
-                  </div>
-                ))}
-              </div>
-            )}
-            {(!myStats.assignedCircles || myStats.assignedCircles.length === 0) && (
-              <p className="text-sm text-muted-foreground text-center py-2">
-                لم تُسند لكِ حلقات بعد — تواصلي مع القائدة
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step 1: Date */}
+      {/* Step 1 — Date */}
       <Card className="border-0 shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-bold flex items-center gap-2">
@@ -1057,41 +782,30 @@ export default function DataEntryPage() {
           <select
             className="w-full border border-input rounded-xl px-3 py-2.5 text-sm bg-background text-right font-medium"
             value={selectedDate}
-            onChange={e => { setSelectedDate(e.target.value); setSelectedCircleId(null); }}
-            data-testid="select-date"
+            onChange={(e) => { setSelectedDate(e.target.value); setSelectedCircleId(null); }}
           >
-            {days.map(d => (
+            {availableDays.map((d) => (
               <option key={d.value} value={d.value}>{d.label}</option>
             ))}
           </select>
-          {(user as any)?.role === "leader" && (
-            <button
-              className="mt-3 w-full rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-bold text-sm py-3.5 flex items-center justify-center gap-2.5 shadow-md transition-colors"
-              onClick={() => setThursdayDialogOpen(true)}
-            >
-              <Zap className="w-5 h-5" />
-              ⚡ إدخال مراجعة الخميس تلقائيًا
-              {!isThursdaySelected && <span className="text-xs font-normal opacity-90">(ليوم الخميس)</span>}
-            </button>
-          )}
         </CardContent>
       </Card>
 
-      {/* Step 2: Track then Circle */}
+      {/* Step 2 — Circle */}
       <Card className="border-0 shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-bold flex items-center gap-2">
             <Users className="w-4 h-4 text-primary" />
-            {isDataEntry ? "الحلقة" : "المسار والحلقة"}
+            {isDataEntry ? "الحلقة المُسندة إليكِ" : "المسار والحلقة"}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
+          {/* Track filter — for non-data_entry only */}
           {!isDataEntry && (
             <select
               className="w-full border border-input rounded-xl px-3 py-2.5 text-sm bg-background text-right font-medium"
               value={selectedTrack}
-              onChange={e => { setSelectedTrack(e.target.value); setSelectedCircleId(null); }}
-              data-testid="select-track"
+              onChange={(e) => { setSelectedTrack(e.target.value); setSelectedCircleId(null); }}
             >
               <option value="">كل المسارات</option>
               {(tracks ?? []).map((t: any) => (
@@ -1099,53 +813,35 @@ export default function DataEntryPage() {
               ))}
             </select>
           )}
+
+          {/* Assigned circles as buttons (data_entry) */}
           {isDataEntry && assignedCircles.length === 0 ? (
-            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-center">
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-center">
               <p className="text-sm text-amber-700 font-medium">لم تُسند لكِ حلقات بعد</p>
               <p className="text-xs text-amber-500 mt-1">تواصلي مع القائدة لإسناد حلقاتك</p>
             </div>
           ) : isDataEntry ? (
             <div className="space-y-2">
-              {filteredCirclesForEntry.map((c: any) => {
-                const statsCircle = myStats?.assignedCircles?.find((sc: any) => Number(sc.circleId) === Number(c.id));
+              {visibleCircles.map((c: any) => {
                 const isSelected = selectedCircleId === c.id;
-                const entered = statsCircle?.entered;
-                const teacherAbsent = statsCircle?.teacherAbsent;
                 return (
                   <button
                     key={c.id}
-                    data-testid="select-circle"
                     onClick={() => setSelectedCircleId(isSelected ? null : c.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border-2 transition-all text-right ${
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-right ${
                       isSelected
                         ? "border-primary bg-primary/10 shadow-sm"
-                        : entered
-                          ? "border-emerald-300 bg-emerald-50/40 hover:border-emerald-400"
-                          : teacherAbsent
-                            ? "border-orange-200 bg-orange-50/30 hover:border-orange-300"
-                            : "border-border hover:border-primary/40"
+                        : "border-border hover:border-primary/40 hover:bg-muted/30"
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      {entered ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                      ) : teacherAbsent ? (
-                        <UserX className="w-4 h-4 text-orange-400 shrink-0" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full border-2 border-gray-300 shrink-0" />
-                      )}
-                      <span className={`font-medium text-sm ${isSelected ? "text-primary" : ""}`}>{c.name}</span>
-                      {c.track && <span className="text-xs text-muted-foreground">{c.track}</span>}
-                    </div>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                      entered
-                        ? "bg-emerald-100 text-emerald-700"
-                        : teacherAbsent
-                          ? "bg-orange-100 text-orange-600"
-                          : "bg-amber-100 text-amber-700"
-                    }`}>
-                      {entered ? "أُدخلت ✓" : teacherAbsent ? "المعلمة غائبة" : "لم تُدخَل"}
+                    <span className={`font-semibold text-sm ${isSelected ? "text-primary" : ""}`}>
+                      {c.name}
                     </span>
+                    {c.track && (
+                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                        {c.track}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -1154,11 +850,10 @@ export default function DataEntryPage() {
             <select
               className="w-full border border-input rounded-xl px-3 py-2.5 text-sm bg-background text-right font-medium"
               value={selectedCircleId?.toString() ?? ""}
-              onChange={e => setSelectedCircleId(e.target.value ? parseInt(e.target.value) : null)}
-              data-testid="select-circle"
+              onChange={(e) => setSelectedCircleId(e.target.value ? parseInt(e.target.value) : null)}
             >
-              <option value="">{!selectedTrack ? "اختر المسار أولًا" : "اختر الحلقة"}</option>
-              {filteredCirclesForEntry.map((c: any) => (
+              <option value="">{!selectedTrack ? "اختري المسار أولًا" : "اختري الحلقة"}</option>
+              {visibleCircles.map((c: any) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
@@ -1166,7 +861,7 @@ export default function DataEntryPage() {
         </CardContent>
       </Card>
 
-      {/* Teacher Absence Banner */}
+      {/* Teacher Absent Banner */}
       {selectedCircleId && isTeacherAbsent && (
         <Card className="border-2 border-orange-300 bg-orange-50 shadow-sm">
           <CardContent className="p-4">
@@ -1177,7 +872,9 @@ export default function DataEntryPage() {
                 </div>
                 <div>
                   <p className="font-bold text-orange-800 text-sm">المعلمة غائبة</p>
-                  <p className="text-xs text-orange-600 mt-0.5">إدخال البيانات مغلق لهذه الحلقة ليوم {selectedDate}</p>
+                  <p className="text-xs text-orange-600 mt-0.5">
+                    إدخال البيانات مغلق لهذه الحلقة ليوم {selectedDate}
+                  </p>
                 </div>
               </div>
               <Button
@@ -1195,9 +892,9 @@ export default function DataEntryPage() {
         </Card>
       )}
 
-      {/* Step 3: Student list */}
+      {/* Step 3 — Students list */}
       {selectedCircleId && !isTeacherAbsent && (
-        <Card className="border-0 shadow-sm" data-testid="card-students">
+        <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
@@ -1209,49 +906,26 @@ export default function DataEntryPage() {
                   </Badge>
                 )}
               </CardTitle>
-              <div className="flex items-center gap-1.5 shrink-0">
-                {studentsInCircle.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className={`gap-1.5 h-8 text-xs ${bulkMode ? "bg-violet-50 border-violet-300 text-violet-700 hover:bg-violet-100" : "text-violet-600 border-violet-200 hover:bg-violet-50"}`}
-                    onClick={() => {
-                      if (!bulkMode) { initBulkData(); }
-                      setBulkMode(m => !m);
-                    }}
-                  >
-                    {bulkMode ? <LayoutList className="w-3.5 h-3.5" /> : <TableIcon className="w-3.5 h-3.5" />}
-                    {bulkMode ? "إدخال فردي" : "إدخال دفعي"}
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700 h-8"
-                  onClick={handleMarkTeacherAbsent}
-                  disabled={markTeacherAbsent.isPending}
-                >
-                  <UserX className="w-3.5 h-3.5" />
-                  المعلمة غائبة
-                </Button>
-              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 h-8 text-xs shrink-0"
+                onClick={handleMarkTeacherAbsent}
+                disabled={markTeacherAbsent.isPending}
+              >
+                <UserX className="w-3.5 h-3.5" />
+                المعلمة غائبة
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
             {studentsInCircle.length === 0 ? (
               <div className="text-center py-8">
                 <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-                <p className="font-semibold text-emerald-700 text-sm">تم إدخال بيانات جميع طالبات هذه الحلقة ليوم {selectedDate}</p>
+                <p className="font-semibold text-emerald-700 text-sm">
+                  تم إدخال بيانات جميع طالبات هذه الحلقة ليوم {selectedDate}
+                </p>
               </div>
-            ) : bulkMode ? (
-              <BulkEntryTable
-                students={studentsInCircle}
-                inputFields={getInputFields(selectedCircle?.dataEntryType)}
-                bulkData={bulkData}
-                onChange={handleBulkChange}
-                onSave={handleBulkSave}
-                isSaving={isBulkSaving}
-              />
             ) : (
               <div className="space-y-2">
                 {studentsInCircle.length > 5 && (
@@ -1259,7 +933,7 @@ export default function DataEntryPage() {
                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                     <Input
                       value={studentSearch}
-                      onChange={e => setStudentSearch(e.target.value)}
+                      onChange={(e) => setStudentSearch(e.target.value)}
                       placeholder="ابحثي باسم الطالبة..."
                       className="pr-9 text-right"
                       dir="rtl"
@@ -1269,47 +943,37 @@ export default function DataEntryPage() {
                 {filteredStudents.map((student: any) => (
                   <div
                     key={student.studentId}
-                    className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-colors ${student.onLeave ? "border-blue-200 bg-blue-50/50" : "border-border hover:bg-muted/30"}`}
-                    data-testid={`row-student-${student.studentId}`}
+                    className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border hover:bg-muted/20 transition-colors"
                   >
                     <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold text-sm">{student.studentName}</p>
-                        {student.onLeave && (
-                          <span className="text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5">إجازة</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">{student.track}</p>
+                      <p className="font-semibold text-sm">{student.studentName}</p>
+                      {student.track && (
+                        <p className="text-xs text-muted-foreground">{student.track}</p>
+                      )}
                     </div>
-                    {student.onLeave ? (
-                      <span className="text-xs text-blue-500 font-medium shrink-0">لا يُحاسب بالحضور</span>
-                    ) : (
-                      <div className="flex gap-1.5 shrink-0">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1 text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 h-8 px-2.5"
-                          onClick={() => {
-                            setSelectedStudent(student);
-                            setForm({ ...emptyForm(), isAbsent: true });
-                            setAutoFilled(false);
-                            setDialogOpen(true);
-                          }}
-                          data-testid={`button-absent-${student.studentId}`}
-                        >
-                          غائبة
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => openEntry(student)}
-                          className="gap-1.5 h-8"
-                          data-testid={`button-enter-${student.studentId}`}
-                        >
-                          <PenSquare className="w-3.5 h-3.5" />
-                          إدخال
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex gap-1.5 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 text-rose-600 border-rose-200 hover:bg-rose-50 h-8 px-2.5"
+                        onClick={() => {
+                          setSelectedStudent(student);
+                          setForm({ ...emptyForm(), isAbsent: true });
+                          setAutoFilled(false);
+                          setDialogOpen(true);
+                        }}
+                      >
+                        غائبة
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="gap-1.5 h-8"
+                        onClick={() => openEntry(student)}
+                      >
+                        <PenSquare className="w-3.5 h-3.5" />
+                        إدخال
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1318,26 +982,36 @@ export default function DataEntryPage() {
         </Card>
       )}
 
-      {/* Entered Today Section */}
-      {selectedCircleId && !isTeacherAbsent && circleRecordsData.length > 0 && (
+      {/* Entered today */}
+      {selectedCircleId && !isTeacherAbsent && circleRecords.length > 0 && (
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-bold flex items-center gap-2">
-              <span className="w-4 h-4 text-emerald-500">✓</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
               تم الإدخال اليوم
-              <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">{circleRecordsData.length}</Badge>
+              <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">
+                {circleRecords.length}
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {circleRecordsData.map((record: any) => {
-                const canEdit = (user as any)?.role === "leader" ||
-                  (new Date(record.createdAt).getTime() > Date.now() - 2 * 60 * 60 * 1000);
+              {circleRecords.map((record: any) => {
+                const canEdit =
+                  (user as any)?.role === "leader" ||
+                  new Date(record.createdAt).getTime() > Date.now() - 2 * 60 * 60 * 1000;
                 return (
-                  <div key={record.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border bg-emerald-50/30">
+                  <div
+                    key={record.id}
+                    className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border bg-emerald-50/30"
+                  >
                     <div>
-                      <p className="font-semibold text-sm">{record.studentName || `طالبة #${record.studentId}`}</p>
-                      <p className="text-xs text-muted-foreground">{record.isAbsent ? "غائبة" : "حاضرة"}</p>
+                      <p className="font-semibold text-sm">
+                        {record.studentName || `طالبة #${record.studentId}`}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {record.isAbsent ? "غائبة" : "حاضرة"}
+                      </p>
                     </div>
                     {canEdit && (
                       <Button
@@ -1359,13 +1033,23 @@ export default function DataEntryPage() {
       )}
 
       {/* Entry Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingRecordId(null); }}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setEditingRecordId(null);
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-right flex items-center gap-2">
               <span>{selectedStudent?.studentName}</span>
-              <Badge variant="outline" className="text-xs">{selectedStudent?.track}</Badge>
-              {editingRecordId && <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">تعديل</Badge>}
+              {selectedStudent?.track && (
+                <Badge variant="outline" className="text-xs">{selectedStudent.track}</Badge>
+              )}
+              {editingRecordId && (
+                <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">تعديل</Badge>
+              )}
             </DialogTitle>
             <p className="text-xs text-muted-foreground text-right">{selectedDate}</p>
           </DialogHeader>
@@ -1373,22 +1057,20 @@ export default function DataEntryPage() {
           <div className="space-y-4 py-2">
             {/* Absent toggle */}
             {(() => {
-              const repeatedInfo = repeatedAbsences?.find((r: any) => r.studentId === selectedStudent?.studentId);
+              const repeatedInfo = (repeatedAbsences as any[])?.find(
+                (r: any) => r.studentId === selectedStudent?.studentId,
+              );
               return (
                 <>
                   <label className="flex items-center gap-3 p-3 border border-rose-200 rounded-xl bg-rose-50/50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={form.isAbsent}
-                      onChange={e => {
-                        if (e.target.checked && repeatedInfo) {
-                          setConfirmAbsenceOpen(true);
-                        } else {
-                          setForm(f => ({ ...f, isAbsent: e.target.checked }));
-                        }
+                      onChange={(e) => {
+                        if (e.target.checked && repeatedInfo) setConfirmAbsenceOpen(true);
+                        else setForm((f) => ({ ...f, isAbsent: e.target.checked }));
                       }}
                       className="w-4 h-4 accent-rose-500"
-                      data-testid="checkbox-absent"
                     />
                     <div className="flex-1">
                       <span className="text-sm font-semibold text-rose-600">تسجيل غياب</span>
@@ -1400,7 +1082,6 @@ export default function DataEntryPage() {
                     </div>
                   </label>
 
-                  {/* Confirm absence dialog for repeated absentees */}
                   <Dialog open={confirmAbsenceOpen} onOpenChange={setConfirmAbsenceOpen}>
                     <DialogContent className="max-w-sm" dir="rtl">
                       <DialogHeader>
@@ -1411,17 +1092,27 @@ export default function DataEntryPage() {
                       </DialogHeader>
                       <div className="py-2 text-sm text-muted-foreground">
                         <p>
-                          <strong className="text-foreground">{selectedStudent?.studentName}</strong> غابت{" "}
-                          <strong className="text-rose-600">{repeatedInfo?.absenceCount} مرة</strong> في الفترة الأخيرة.
+                          <strong className="text-foreground">{selectedStudent?.studentName}</strong>{" "}
+                          غابت{" "}
+                          <strong className="text-rose-600">
+                            {repeatedAbsences &&
+                              (repeatedAbsences as any[]).find(
+                                (r: any) => r.studentId === selectedStudent?.studentId,
+                              )?.absenceCount}{" "}
+                            مرة
+                          </strong>{" "}
+                          في الفترة الأخيرة.
                         </p>
                         <p className="mt-2">هل أنتِ متأكدة من تسجيل غيابها مجددًا؟</p>
                       </div>
                       <DialogFooter className="gap-2">
-                        <Button variant="outline" onClick={() => setConfirmAbsenceOpen(false)}>إلغاء</Button>
+                        <Button variant="outline" onClick={() => setConfirmAbsenceOpen(false)}>
+                          إلغاء
+                        </Button>
                         <Button
                           className="bg-rose-600 hover:bg-rose-700 text-white"
                           onClick={() => {
-                            setForm(f => ({ ...f, isAbsent: true }));
+                            setForm((f) => ({ ...f, isAbsent: true }));
                             setConfirmAbsenceOpen(false);
                           }}
                         >
@@ -1434,9 +1125,9 @@ export default function DataEntryPage() {
               );
             })()}
 
+            {/* Entry fields (hidden when absent) */}
             {!form.isAbsent && (
               <>
-                {/* الحفظ */}
                 {inputFields.includes("memorize") && (
                   <SurahSection
                     title="الحفظ"
@@ -1444,27 +1135,12 @@ export default function DataEntryPage() {
                     section={form.memorize}
                     onChange={(f, v) => updateSection("memorize", f, v)}
                     autoSuggested={autoFilled && !!form.memorize.surahStart}
-                    onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, memorize: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae } }))}
+                    onVoiceFill={(ss, as, se, ae) =>
+                      setForm((f) => ({ ...f, memorize: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae } }))
+                    }
                   />
                 )}
 
-                {/* تحذير تجاوز المعدل الاعتيادي في الحفظ */}
-                {inputFields.includes("memorize") && memorizeWarning && (
-                  <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 text-sm">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
-                    <div>
-                      <p className="font-semibold">الحفظ أعلى من المعتاد</p>
-                      <p className="text-xs text-amber-600 mt-0.5">
-                        {formatPages(memPages)} وجه اليوم
-                        {avgMemorize !== null
-                          ? ` · معدلها المعتاد ${formatPages(avgMemorize)} وجه`
-                          : " · أكثر من وجه كامل"}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* المراجعة القريبة */}
                 {inputFields.includes("review_near") && (
                   <SurahSection
                     title="المراجعة القريبة"
@@ -1473,36 +1149,52 @@ export default function DataEntryPage() {
                     onChange={(f, v) => updateSection("reviewNear", f, v)}
                     autoSuggested={autoFilled && !!form.reviewNear.surahStart}
                     locked={form.noReviewNear}
-                    onToggleLock={() => setForm(f => ({
-                      ...f,
-                      noReviewNear: !f.noReviewNear,
-                      reviewNear: !f.noReviewNear ? emptySection() : f.reviewNear,
-                    }))}
-                    onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, reviewNear: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae }, noReviewNear: false }))}
+                    onToggleLock={() =>
+                      setForm((f) => ({
+                        ...f,
+                        noReviewNear: !f.noReviewNear,
+                        reviewNear: !f.noReviewNear ? emptySection() : f.reviewNear,
+                      }))
+                    }
+                    onVoiceFill={(ss, as, se, ae) =>
+                      setForm((f) => ({
+                        ...f,
+                        reviewNear: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae },
+                        noReviewNear: false,
+                      }))
+                    }
                   />
                 )}
 
-                {/* المراجعة البعيدة */}
                 {inputFields.includes("review_far") && (
                   <div className="space-y-1.5">
                     {reviewPlanToday && !form.noReviewFar && (
                       <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-xl px-3 py-2">
                         <span className="text-xs text-teal-700 flex-1">
-                          📋 خطة اليوم: {SURAHS.find(s => s.number === reviewPlanToday.surahStart)?.arabicName ?? reviewPlanToday.surahStart} ← {SURAHS.find(s => s.number === reviewPlanToday.surahEnd)?.arabicName ?? reviewPlanToday.surahEnd}
-                          {reviewPlanToday.pages != null && <span className="font-bold mr-1">({formatPages(reviewPlanToday.pages)} وجه)</span>}
+                          📋 خطة اليوم:{" "}
+                          {SURAHS.find((s) => s.number === reviewPlanToday.surahStart)?.name ??
+                            reviewPlanToday.surahStart}{" "}
+                          ←{" "}
+                          {SURAHS.find((s) => s.number === reviewPlanToday.surahEnd)?.name ??
+                            reviewPlanToday.surahEnd}
+                          {reviewPlanToday.pages != null && (
+                            <span className="font-bold mr-1">({formatPages(reviewPlanToday.pages)} وجه)</span>
+                          )}
                         </span>
                         <button
                           type="button"
-                          onClick={() => setForm(f => ({
-                            ...f,
-                            reviewFar: {
-                              surahStart: reviewPlanToday.surahStart!,
-                              ayahStart: reviewPlanToday.ayahStart?.toString() ?? "1",
-                              surahEnd: reviewPlanToday.surahEnd!,
-                              ayahEnd: reviewPlanToday.ayahEnd?.toString() ?? "1",
-                            },
-                            noReviewFar: false,
-                          }))}
+                          onClick={() =>
+                            setForm((f) => ({
+                              ...f,
+                              reviewFar: {
+                                surahStart: reviewPlanToday.surahStart!,
+                                ayahStart: reviewPlanToday.ayahStart?.toString() ?? "1",
+                                surahEnd: reviewPlanToday.surahEnd!,
+                                ayahEnd: reviewPlanToday.ayahEnd?.toString() ?? "1",
+                              },
+                              noReviewFar: false,
+                            }))
+                          }
                           className="text-xs bg-teal-600 text-white px-2.5 py-1 rounded-lg font-semibold hover:bg-teal-700 transition-colors shrink-0"
                         >
                           تطبيق
@@ -1516,17 +1208,24 @@ export default function DataEntryPage() {
                       onChange={(f, v) => updateSection("reviewFar", f, v)}
                       autoSuggested={autoFilled && !!form.reviewFar.surahStart}
                       locked={form.noReviewFar}
-                      onToggleLock={() => setForm(f => ({
-                        ...f,
-                        noReviewFar: !f.noReviewFar,
-                        reviewFar: !f.noReviewFar ? emptySection() : f.reviewFar,
-                      }))}
-                      onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, reviewFar: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae }, noReviewFar: false }))}
+                      onToggleLock={() =>
+                        setForm((f) => ({
+                          ...f,
+                          noReviewFar: !f.noReviewFar,
+                          reviewFar: !f.noReviewFar ? emptySection() : f.reviewFar,
+                        }))
+                      }
+                      onVoiceFill={(ss, as, se, ae) =>
+                        setForm((f) => ({
+                          ...f,
+                          reviewFar: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae },
+                          noReviewFar: false,
+                        }))
+                      }
                     />
                   </div>
                 )}
 
-                {/* المراجعة العامة */}
                 {inputFields.includes("review") && (
                   <SurahSection
                     title="المراجعة"
@@ -1535,16 +1234,23 @@ export default function DataEntryPage() {
                     onChange={(f, v) => updateSection("review", f, v)}
                     autoSuggested={autoFilled && !!form.review.surahStart}
                     locked={form.noReview}
-                    onToggleLock={() => setForm(f => ({
-                      ...f,
-                      noReview: !f.noReview,
-                      review: !f.noReview ? emptySection() : f.review,
-                    }))}
-                    onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, review: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae }, noReview: false }))}
+                    onToggleLock={() =>
+                      setForm((f) => ({
+                        ...f,
+                        noReview: !f.noReview,
+                        review: !f.noReview ? emptySection() : f.review,
+                      }))
+                    }
+                    onVoiceFill={(ss, as, se, ae) =>
+                      setForm((f) => ({
+                        ...f,
+                        review: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae },
+                        noReview: false,
+                      }))
+                    }
                   />
                 )}
 
-                {/* التلاوة */}
                 {inputFields.includes("recitation") && (
                   <SurahSection
                     title="التلاوة"
@@ -1552,11 +1258,12 @@ export default function DataEntryPage() {
                     section={form.recitation}
                     onChange={(f, v) => updateSection("recitation", f, v)}
                     autoSuggested={autoFilled && !!form.recitation.surahStart}
-                    onVoiceFill={(ss, as, se, ae) => setForm(f => ({ ...f, recitation: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae } }))}
+                    onVoiceFill={(ss, as, se, ae) =>
+                      setForm((f) => ({ ...f, recitation: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae } }))
+                    }
                   />
                 )}
 
-                {/* عدد التكرار */}
                 {inputFields.includes("repetitions") && (
                   <div className="border border-amber-200 bg-amber-50/40 rounded-xl p-4">
                     <p className="font-semibold text-sm flex items-center gap-2 mb-3">
@@ -1566,16 +1273,17 @@ export default function DataEntryPage() {
                     <select
                       className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background text-right"
                       value={form.repetitions}
-                      onChange={e => setForm(f => ({ ...f, repetitions: e.target.value }))}
+                      onChange={(e) => setForm((f) => ({ ...f, repetitions: e.target.value }))}
                     >
-                      {Array.from({ length: 100 }, (_, i) => i + 1).map(n => (
-                        <option key={n} value={n.toString()}>{n} {n === 7 ? "(افتراضي)" : ""}</option>
+                      {Array.from({ length: 100 }, (_, i) => i + 1).map((n) => (
+                        <option key={n} value={n.toString()}>
+                          {n} {n === 7 ? "(افتراضي)" : ""}
+                        </option>
                       ))}
                     </select>
                   </div>
                 )}
 
-                {/* سماع القارئ */}
                 {inputFields.includes("listen") && (
                   <div className="border border-teal-200 bg-teal-50/40 rounded-xl p-4">
                     <p className="font-semibold text-sm mb-3 flex items-center gap-2">
@@ -1584,7 +1292,8 @@ export default function DataEntryPage() {
                     </p>
                     <div className="flex gap-3">
                       <button
-                        onClick={() => setForm(f => ({ ...f, listenedToReciter: true }))}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, listenedToReciter: true }))}
                         className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
                           form.listenedToReciter === true
                             ? "border-teal-500 bg-teal-100 text-teal-700"
@@ -1594,7 +1303,8 @@ export default function DataEntryPage() {
                         ✓ نعم
                       </button>
                       <button
-                        onClick={() => setForm(f => ({ ...f, listenedToReciter: false }))}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, listenedToReciter: false }))}
                         className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
                           form.listenedToReciter === false
                             ? "border-rose-400 bg-rose-50 text-rose-600"
@@ -1607,8 +1317,8 @@ export default function DataEntryPage() {
                   </div>
                 )}
 
-                {/* Summary */}
-                {(memPages > 0 || revNearPages > 0 || revFarPages > 0 || revPages > 0 || recPages > 0) && (
+                {/* Pages summary */}
+                {hasPages && (
                   <div className="border border-border rounded-xl p-3 bg-muted/30">
                     <p className="text-xs font-bold text-muted-foreground mb-2">ملخص الأوجه</p>
                     <div className="flex flex-wrap gap-2">
@@ -1645,42 +1355,16 @@ export default function DataEntryPage() {
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>إلغاء</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              إلغاء
+            </Button>
             <Button
               onClick={handleSave}
-              disabled={createRecord.isPending}
-              data-testid="button-save-record"
+              disabled={createRecord.isPending || updateRecord.isPending}
             >
-              {createRecord.isPending ? "جاري الحفظ..." : "حفظ البيانات"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* حوار تأكيد إدخال الخميس التلقائي */}
-      <Dialog open={thursdayDialogOpen} onOpenChange={setThursdayDialogOpen}>
-        <DialogContent dir="rtl" className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-amber-500" />
-              إدخال مراجعة الخميس تلقائيًا
-            </DialogTitle>
-          </DialogHeader>
-          <div className="text-sm text-muted-foreground space-y-2">
-            <p>سيتم إدخال <strong>مراجعة عامة</strong> يوم الخميس لجميع الطالبات تلقائيًا.</p>
-            <p>المراجعة = مجموع ما حفظته كل طالبة من <strong>الأحد إلى الأربعاء</strong> هذا الأسبوع.</p>
-            <p className="text-amber-700 bg-amber-50 rounded-lg px-3 py-2 text-xs">
-              الطالبات اللاتي ليس لديهن حفظ هذا الأسبوع أو تم إدخال بياناتهن مسبقًا سيتم تخطيهن.
-            </p>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setThursdayDialogOpen(false)}>إلغاء</Button>
-            <Button
-              className="bg-amber-500 hover:bg-amber-600 text-white"
-              onClick={handleThursdayBulk}
-              disabled={thursdayLoading}
-            >
-              {thursdayLoading ? "جاري الإدخال..." : "نعم، أدخل للكل"}
+              {createRecord.isPending || updateRecord.isPending
+                ? "جاري الحفظ..."
+                : "حفظ البيانات"}
             </Button>
           </DialogFooter>
         </DialogContent>

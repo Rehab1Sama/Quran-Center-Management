@@ -1,51 +1,66 @@
 import { Router, type IRouter } from "express";
-import { db, recordsTable, circlesTable, studentsTable, teacherAbsencesTable, dataEntryCircleAssignmentsTable, studentEnrollmentsTable } from "@workspace/db";
+import {
+  db,
+  recordsTable,
+  circlesTable,
+  studentsTable,
+  teacherAbsencesTable,
+  dataEntryCircleAssignmentsTable,
+  studentEnrollmentsTable,
+} from "@workspace/db";
 import { eq, and, gte, inArray, sql } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
 const router: IRouter = Router();
 
-function getMeccaTodayServer(): string {
+function getMeccaToday(): string {
   return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function getWeekSunday(today: string): string {
   const d = new Date(today + "T00:00:00Z");
-  const dow = d.getUTCDay(); // 0=Sun
+  const dow = d.getUTCDay();
   d.setUTCDate(d.getUTCDate() - dow);
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * GET /api/data-entry/missing?date=YYYY-MM-DD
+ *
+ * Returns students who haven't had data entered for the given date.
+ * For data_entry role: only students from their assigned circles.
+ * If no assignments exist → returns all students (same fallback as my-circles).
+ */
 router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> => {
-  const today = (req.query.date as string) ?? getMeccaTodayServer();
+  const today = (req.query.date as string) ?? getMeccaToday();
   const userId = req.userId;
   const userRole = req.userRole;
 
-  // سجلات اليوم — لتصفية من أُدخلت بياناتهن مسبقاً
+  // Students already recorded today
   const todayRecords = await db
     .select({ studentId: recordsTable.studentId })
     .from(recordsTable)
     .where(eq(recordsTable.date, today));
-  const recordedStudentIds = new Set(todayRecords.map(r => r.studentId));
+  const recordedStudentIds = new Set(todayRecords.map((r) => r.studentId));
 
-  // للمدخلة: نجلب الحلقات المُسندة لها من قاعدة البيانات
+  // For data_entry: get their assigned circle IDs
+  // null = no restriction (show all), array = restrict to these circles
   let assignedCircleIds: number[] | null = null;
   if (userRole === "data_entry" && userId) {
-    const assignments = await db
+    const rows = await db
       .select({ circleId: dataEntryCircleAssignmentsTable.circleId })
       .from(dataEntryCircleAssignmentsTable)
       .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, userId));
-    // مصفوفة فارغة = لا إسناد → نُعاملها كـ "كل الحلقات" (مثل my-circles fallback)
-    assignedCircleIds = assignments.length > 0 ? assignments.map(a => a.circleId) : null;
+    // Empty assignments → same fallback as my-circles: show all circles
+    assignedCircleIds = rows.length > 0 ? rows.map((r) => r.circleId) : null;
   }
 
-  // ── طريقة 1 (الأساسية): جلب الطالبات عبر enrollment أولًا (مطابق لـ students list endpoint) ──
-  // نبدأ من enrollment ثم نضم studentsTable — نفس أسلوب GET /students?circleId=X
-  const enrollmentCircleFilter =
-    assignedCircleIds !== null && assignedCircleIds.length > 0
+  const circleFilter =
+    assignedCircleIds && assignedCircleIds.length > 0
       ? inArray(studentEnrollmentsTable.circleId, assignedCircleIds)
       : sql`true`;
 
+  // Primary source: enrollment table (source of truth)
   const byEnrollment = await db
     .select({
       studentId: studentsTable.id,
@@ -63,38 +78,33 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
       and(
         eq(studentEnrollmentsTable.isArchived, false),
         eq(studentsTable.isArchived, false),
-        enrollmentCircleFilter,
+        circleFilter,
       ),
     );
 
-  // ── طريقة 2 (احتياطية): طالبات بـ studentsTable.circleId مباشرة دون enrollment ──
-  let byDirectCircle: typeof byEnrollment = [];
-  if (assignedCircleIds === null || assignedCircleIds.length > 0) {
-    const directWhere = and(
-      eq(studentsTable.isArchived, false),
-      assignedCircleIds !== null && assignedCircleIds.length > 0
-        ? inArray(studentsTable.circleId, assignedCircleIds)
-        : sql`${studentsTable.circleId} IS NOT NULL`,
-    );
-    const directRows = await db
-      .select({
-        studentId: studentsTable.id,
-        studentName: studentsTable.fullName,
-        circleId: studentsTable.circleId,
-        circleName: circlesTable.name,
-        track: circlesTable.track,
-        leaveStart: sql<string | null>`null`.as("leave_start"),
-        leaveEnd: sql<string | null>`null`.as("leave_end"),
-      })
-      .from(studentsTable)
-      .innerJoin(circlesTable, eq(circlesTable.id, studentsTable.circleId))
-      .where(directWhere!);
-    byDirectCircle = directRows as any;
-  }
+  const directCircleFilter =
+    assignedCircleIds && assignedCircleIds.length > 0
+      ? inArray(studentsTable.circleId, assignedCircleIds)
+      : sql`${studentsTable.circleId} IS NOT NULL`;
 
-  // ── دمج النتيجتين وإزالة التكرار بـ (studentId + circleId) ──
+  // Fallback source: students with circleId directly on the row
+  const byDirect = await db
+    .select({
+      studentId: studentsTable.id,
+      studentName: studentsTable.fullName,
+      circleId: studentsTable.circleId,
+      circleName: circlesTable.name,
+      track: circlesTable.track,
+      leaveStart: sql<string | null>`null`.as("leave_start"),
+      leaveEnd: sql<string | null>`null`.as("leave_end"),
+    })
+    .from(studentsTable)
+    .innerJoin(circlesTable, eq(circlesTable.id, studentsTable.circleId))
+    .where(and(eq(studentsTable.isArchived, false), directCircleFilter));
+
+  // Merge, deduplicate by (studentId + circleId), enrollment wins
   const seen = new Set<string>();
-  const allStudents: Array<{
+  const all: Array<{
     studentId: number;
     studentName: string;
     circleId: number;
@@ -104,51 +114,77 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
     leaveEnd: string | null;
   }> = [];
 
-  // enrollment أولًا (مصدر الحقيقة) ثم direct كاحتياط
-  for (const s of [...byEnrollment, ...byDirectCircle]) {
+  for (const s of [...byEnrollment, ...(byDirect as any)]) {
     const key = `${s.studentId}-${s.circleId}`;
     if (!seen.has(key)) {
       seen.add(key);
-      allStudents.push(s as any);
+      all.push(s as any);
     }
   }
 
-  // ── تصفية من أُدخلت بياناتهن أو في إجازة ──
-  const result = allStudents
-    .filter(s => {
+  // Filter out already-recorded students and those on leave
+  const result = all
+    .filter((s) => {
       if (recordedStudentIds.has(s.studentId)) return false;
-      const onLeave = !!(s.leaveStart && s.leaveEnd && s.leaveStart <= today && today <= s.leaveEnd);
-      if (onLeave) return false;
+      if (
+        s.leaveStart &&
+        s.leaveEnd &&
+        s.leaveStart <= today &&
+        today <= s.leaveEnd
+      )
+        return false;
       return true;
     })
-    .map(s => ({ ...s, onLeave: false }));
+    .map((s) => ({ ...s, onLeave: false }));
 
   res.json(result);
 });
 
-// Returns dates in current week (Sun–Sat) where the circle already has records or teacher absence
-router.get("/data-entry/circle-submitted-days", authenticate, async (req, res): Promise<void> => {
-  const circleId = parseInt((req.query.circleId as string) ?? "0");
-  if (!circleId) { res.json([]); return; }
+/**
+ * GET /api/data-entry/circle-submitted-days?circleId=X
+ *
+ * Returns dates in the current week where the circle already has records
+ * or a teacher absence, so the frontend can hide those dates.
+ */
+router.get(
+  "/data-entry/circle-submitted-days",
+  authenticate,
+  async (req, res): Promise<void> => {
+    const circleId = parseInt((req.query.circleId as string) ?? "0");
+    if (!circleId) {
+      res.json([]);
+      return;
+    }
 
-  const today = getMeccaTodayServer();
-  const weekStart = getWeekSunday(today);
+    const today = getMeccaToday();
+    const weekStart = getWeekSunday(today);
 
-  // Records for this circle this week
-  const records = await db.select({ date: recordsTable.date })
-    .from(recordsTable)
-    .where(and(eq(recordsTable.circleId, circleId), gte(recordsTable.date, weekStart)));
+    const records = await db
+      .select({ date: recordsTable.date })
+      .from(recordsTable)
+      .where(
+        and(
+          eq(recordsTable.circleId, circleId),
+          gte(recordsTable.date, weekStart),
+        ),
+      );
 
-  // Teacher absences for this circle this week
-  const absences = await db.select({ date: teacherAbsencesTable.date })
-    .from(teacherAbsencesTable)
-    .where(and(eq(teacherAbsencesTable.circleId, circleId), gte(teacherAbsencesTable.date, weekStart)));
+    const absences = await db
+      .select({ date: teacherAbsencesTable.date })
+      .from(teacherAbsencesTable)
+      .where(
+        and(
+          eq(teacherAbsencesTable.circleId, circleId),
+          gte(teacherAbsencesTable.date, weekStart),
+        ),
+      );
 
-  const daysSet = new Set<string>();
-  for (const r of records) daysSet.add(r.date);
-  for (const a of absences) daysSet.add(a.date);
+    const days = new Set<string>();
+    for (const r of records) days.add(r.date);
+    for (const a of absences) days.add(a.date);
 
-  res.json([...daysSet]);
-});
+    res.json([...days]);
+  },
+);
 
 export default router;
