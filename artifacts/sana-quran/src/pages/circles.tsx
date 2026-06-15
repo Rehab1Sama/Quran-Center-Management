@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronDown, ChevronUp, Archive, RotateCcw, UserCircle, Link2, PlaneTakeoff, XCircle } from "lucide-react";
+import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronDown, ChevronUp, Archive, RotateCcw, UserCircle, Link2, PlaneTakeoff, XCircle, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -86,7 +86,7 @@ function CircleStudentsPanel({ circleId, canGrantLeave }: { circleId: number; ca
     if (leaveEnd < leaveStart) { toast({ title: "تاريخ النهاية يجب أن يكون بعد البداية", variant: "destructive" }); return; }
     setLeaveSaving(true);
     try {
-      const token = localStorage.getItem("auth_token");
+      const token = localStorage.getItem("sana_auth_token");
       const res = await fetch(`/api/students/${leaveModal.studentId}/leave`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -106,7 +106,7 @@ function CircleStudentsPanel({ circleId, canGrantLeave }: { circleId: number; ca
   const handleCancelLeave = async (s: any) => {
     if (!confirm(`هل تريدين إلغاء إجازة "${s.fullName}"؟`)) return;
     try {
-      const token = localStorage.getItem("auth_token");
+      const token = localStorage.getItem("sana_auth_token");
       const res = await fetch(`/api/students/${s.id}/leave`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -299,8 +299,30 @@ export default function CirclesPage() {
   const [editData, setEditData] = useState({ meetingTime: "", newStudentCapacity: "", whatsappLink: "" });
   const [saving, setSaving] = useState(false);
   const [expandedCircle, setExpandedCircle] = useState<number | null>(null);
+  const [seeding, setSeeding] = useState(false);
 
+  const isLeader = currentUser?.role === "leader";
   const canGrantLeave = ["leader", "deputy", "track_supervisor"].includes(currentUser?.role ?? "");
+
+  const handleSeedTracks = async () => {
+    if (!confirm("سيتم إنشاء ١٠ حلقات لكل مسار (١١ مسار = ١١٠ حلقة) إذا لم تكن موجودة. هل تريدين المتابعة؟")) return;
+    setSeeding(true);
+    try {
+      const token = localStorage.getItem("sana_auth_token");
+      const res = await fetch("/api/circles/seed-tracks", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast({ title: data.message });
+      refetch();
+    } catch (e: any) {
+      toast({ title: e.message ?? "خطأ في المزامنة", variant: "destructive" });
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   const tracks = Array.from(new Set(
     (circles ?? []).flatMap(c => (typeof c.track === "string" && c.track) ? [c.track] : [])
@@ -352,9 +374,23 @@ export default function CirclesPage() {
 
   return (
     <div className="space-y-6" dir="rtl">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">الحلقات</h1>
-        <p className="text-muted-foreground text-sm mt-1">جميع حلقات المقرأة — يمكن ضبط وقت الاجتماع والسعة لكل حلقة عبر زر الإعدادات</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">الحلقات</h1>
+          <p className="text-muted-foreground text-sm mt-1">جميع حلقات المقرأة — يمكن ضبط وقت الاجتماع والسعة لكل حلقة عبر زر الإعدادات</p>
+        </div>
+        {isLeader && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSeedTracks}
+            disabled={seeding}
+            className="flex items-center gap-2 text-sm"
+          >
+            <RefreshCw className={`w-4 h-4 ${seeding ? "animate-spin" : ""}`} />
+            {seeding ? "جاري المزامنة..." : "مزامنة الحلقات"}
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

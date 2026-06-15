@@ -33,17 +33,15 @@ router.get("/circles", authenticate, async (req, res): Promise<void> => {
     circles = circles.filter(c => c.track === req.userTrack);
   }
 
-  // Data entry: فقط الحلقات المُسندة لها من قِبل القائدة/النائبة
+  // Data entry: فقط الحلقات المُسندة لها — وإذا لم يُسند لها شيء ترى الكل
   if (req.userRole === "data_entry") {
     const assignments = await db.select().from(dataEntryCircleAssignmentsTable)
       .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId!));
     if (assignments.length > 0) {
       const assignedIds = new Set(assignments.map(a => a.circleId));
       circles = circles.filter(c => assignedIds.has(c.id));
-    } else {
-      // لا يوجد إسناد — لا ترى شيئًا
-      circles = [];
     }
+    // إذا لم يُسند لها حلقات → ترى جميع الحلقات النشطة (سلوك افتراضي)
   }
 
   // Teachers/supervisors can only see their circle
@@ -194,6 +192,35 @@ router.get("/circles/:id", authenticate, async (req, res): Promise<void> => {
     .where(eq(studentsTable.isArchived, false));
 
   res.json({ ...circle, teacher, supervisor, students: studentsRaw });
+});
+
+// ── Seed circles for all tracks (10 per track) ─────────────────────────────
+const SEED_TRACKS = [
+  "بريق", "إشراق", "سُنى", "ضياء", "وهج",
+  "مهج", "مشكاة نور", "ألق", "سراج", "قبس", "البهور",
+];
+const ARABIC_NUMS = ["١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩", "١٠"];
+
+router.post("/circles/seed-tracks", authenticate, async (req, res): Promise<void> => {
+  if (req.userRole !== "leader") {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const existing = await db.select({ name: circlesTable.name }).from(circlesTable);
+  const existingNames = new Set(existing.map(c => c.name));
+  const toInsert: Array<typeof circlesTable.$inferInsert> = [];
+  for (const track of SEED_TRACKS) {
+    for (let i = 0; i < 10; i++) {
+      const name = `${track} ${ARABIC_NUMS[i]}`;
+      if (!existingNames.has(name)) {
+        toInsert.push({ name, track, trackType: "girls", isArchived: false });
+      }
+    }
+  }
+  if (toInsert.length === 0) {
+    res.json({ created: 0, message: "جميع الحلقات موجودة مسبقًا" }); return;
+  }
+  await db.insert(circlesTable).values(toInsert);
+  res.json({ created: toInsert.length, message: `تم إنشاء ${toInsert.length} حلقة بنجاح` });
 });
 
 router.patch("/circles/:id", authenticate, async (req, res): Promise<void> => {

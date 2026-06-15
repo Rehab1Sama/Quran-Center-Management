@@ -19,8 +19,10 @@ router.get("/data-entry/my-circles", authenticate, async (req, res): Promise<voi
     .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId!));
 
   if (assignments.length === 0) {
-    // إذا لم تُعيَّن حلقات، ترجع قائمة فارغة (الوصول محدود)
-    res.json([]); return;
+    // إذا لم تُعيَّن حلقات → ترجع جميع الحلقات النشطة (سلوك افتراضي)
+    const allCircles = await db.select().from(circlesTable)
+      .where(eq(circlesTable.isArchived, false));
+    res.json(allCircles); return;
   }
 
   const circleIds = assignments.map(a => a.circleId);
