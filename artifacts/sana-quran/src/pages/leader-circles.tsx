@@ -487,7 +487,7 @@ export default function LeaderCirclesPage() {
                                   ) : circle.students.map(s => (
                                     <div key={s.id} className="flex items-center justify-between gap-2">
                                       <span className="text-sm">{s.fullName}</span>
-                                      {isLeader && (
+                                      {(isLeader || isTrackSup) && (
                                         <button
                                           onClick={() => setTransferModal({ type: "student", circleId: circle.id, label: `نقل: ${s.fullName}`, studentId: s.id })}
                                           className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 flex-shrink-0"
