@@ -19,7 +19,7 @@ type EnrichedCircle = {
   id: number; name: string; track: string;
   meetingTime: string | null; whatsappLink: string | null;
   teacherName: string | null; supervisorName: string | null;
-  students: { id: number; fullName: string }[];
+  students: { id: number; fullName: string; email: string | null }[];
 };
 
 function ClockFace({ time }: { time: string }) {
@@ -666,11 +666,21 @@ export default function TrackPage() {
                                   </button>
                                   <button
                                     onClick={() => {
-                                      setRoleLookupStep("email");
-                                      setRoleLookupEmail("");
-                                      setRoleFoundUser(null);
-                                      setRoleNotFound(false);
-                                      setRoleForm({ name: student.fullName, email: "", password: "", role: "student", track: myTrack ?? "", circleId: circle.id.toString() });
+                                      if (student.email) {
+                                        // إيميل الطالبة موجود — تخطَّ خطوة البحث مباشرةً
+                                        setRoleFoundUser({ id: student.id, name: student.fullName, email: student.email });
+                                        setRoleLookupEmail(student.email);
+                                        setRoleNotFound(false);
+                                        setRoleLookupStep("details");
+                                        setRoleForm({ name: student.fullName, email: student.email, password: "__reuse__", role: "student", track: myTrack ?? "", circleId: circle.id.toString() });
+                                      } else {
+                                        // لا يوجد إيميل مرتبط — اعرض خطوة البحث
+                                        setRoleLookupStep("email");
+                                        setRoleLookupEmail("");
+                                        setRoleFoundUser(null);
+                                        setRoleNotFound(false);
+                                        setRoleForm({ name: student.fullName, email: "", password: "", role: "student", track: myTrack ?? "", circleId: circle.id.toString() });
+                                      }
                                       setAddRoleOpen(true);
                                     }}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors text-xs font-semibold"
@@ -742,12 +752,16 @@ export default function TrackPage() {
           ) : (
             <div className="space-y-4 py-2">
               {roleFoundUser ? (
-                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-emerald-700 font-semibold">تم إيجاد الحساب</p>
-                    <p className="text-xs text-emerald-600">ستُحفظ كلمة المرور الحالية تلقائياً</p>
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                    <p className="text-xs text-emerald-700 font-semibold">الحساب موجود — سيُضاف الدور الجديد</p>
                   </div>
+                  <div className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
+                    <p className="text-xs text-muted-foreground">البريد الإلكتروني</p>
+                    <p className="text-sm font-medium text-foreground">{roleFoundUser.email}</p>
+                  </div>
+                  <p className="text-xs text-emerald-600 px-1">كلمة المرور الحالية للطالبة ستبقى كما هي تلقائياً</p>
                 </div>
               ) : (
                 <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">

@@ -80,9 +80,19 @@ router.get("/circles/enriched", authenticate, async (req, res): Promise<void> =>
 
   const allUsers = await db.select({
     id: usersTable.id, name: usersTable.name, phone: usersTable.phone,
+    email: usersTable.email, role: usersTable.role, circleId: usersTable.circleId,
   }).from(usersTable);
   const userMap: Record<number, { name: string; phone: string | null }> = {};
   allUsers.forEach(u => { userMap[u.id] = { name: u.name, phone: u.phone }; });
+
+  // بناء خريطة إيميل الطالبات: مفتاح = الاسم الكامل + circleId
+  const studentEmailMap: Record<string, string> = {};
+  for (const u of allUsers) {
+    if (u.role === "student") {
+      const key = `${u.name}__${u.circleId ?? ""}`;
+      studentEmailMap[key] = u.email;
+    }
+  }
 
   const allEnrollments = await db.select({
     studentId: studentEnrollmentsTable.studentId,
@@ -93,10 +103,12 @@ router.get("/circles/enriched", authenticate, async (req, res): Promise<void> =>
     .from(studentEnrollmentsTable)
     .innerJoin(studentsTable, eq(studentsTable.id, studentEnrollmentsTable.studentId))
     .where(and(eq(studentEnrollmentsTable.isArchived, false), eq(studentsTable.isArchived, false)));
-  const studentsByCircle: Record<number, { id: number; fullName: string }[]> = {};
+  const studentsByCircle: Record<number, { id: number; fullName: string; email: string | null }[]> = {};
   for (const e of allEnrollments) {
     if (!studentsByCircle[e.circleId]) studentsByCircle[e.circleId] = [];
-    studentsByCircle[e.circleId].push({ id: e.studentId, fullName: e.fullName });
+    const key = `${e.fullName}__${e.circleId}`;
+    const email = studentEmailMap[key] ?? null;
+    studentsByCircle[e.circleId].push({ id: e.studentId, fullName: e.fullName, email });
   }
 
   const enriched = circles.map(c => ({
