@@ -145,7 +145,7 @@ export default function LoginPage() {
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-5">
+                <form onSubmit={handleSubmit} className="space-y-5" noValidate>
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-sm font-semibold">البريد الإلكتروني</Label>
                     <Input
