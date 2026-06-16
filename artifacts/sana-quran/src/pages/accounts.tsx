@@ -570,13 +570,6 @@ export default function AccountsPage() {
                 : "إنشاء حساب جديد"}
             </DialogTitle>
           </DialogHeader>
-          {/* عند إضافة دور لشخص موجود: بانر معلومات بدلاً من حقول */}
-          {isAddRoleMode && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 text-xs text-blue-800 space-y-0.5 -mb-1">
-              <p className="font-semibold">إضافة دور لحساب موجود</p>
-              <p className="text-blue-600">{form.email} · ستُحفظ كلمة المرور الحالية تلقائياً</p>
-            </div>
-          )}
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>الاسم {isAddRoleMode && <span className="text-xs text-muted-foreground">(يمكن تغييره للتمييز بين أبناء نفس الأم)</span>}</Label>
@@ -586,55 +579,83 @@ export default function AccountsPage() {
                 placeholder="الاسم الكامل"
               />
             </div>
-            {/* إخفاء الإيميل وكلمة السر عند إضافة دور لشخص موجود */}
-            {(editingUser || !isAddRoleMode) && (
-              <>
-                <div className="space-y-2">
-                  <Label>البريد الإلكتروني</Label>
-                  <Input
-                    value={form.email}
-                    onChange={e => {
-                      setForm(f => ({ ...f, email: e.target.value }));
-                      setEmailConfirmedDuplicate(false);
-                    }}
-                    placeholder="email@sana.sa"
-                    className={showEmailDuplicateWarning ? "border-amber-400 focus-visible:ring-amber-300" : ""}
-                  />
-                  {showEmailDuplicateWarning && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 space-y-2">
-                      {duplicateNames.map(name => (
-                        <p key={name} className="text-sm font-semibold text-red-700">
-                          ⚠️ يا {name}، تم تسجيل حسابك من قبل، الرجاء عدم تكرار التسجيل بنفس الاسم.
-                        </p>
-                      ))}
-                      <p className="text-xs text-red-500">
-                        إذا كان التسجيل مقصوداً (أمّ لأكثر من طالبة، أو أختان بنفس الإيميل) اضغطي للمتابعة.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setEmailConfirmedDuplicate(true)}
-                        className="text-xs font-semibold text-red-700 underline hover:text-red-900"
-                      >
-                        المتابعة رغم التكرار
-                      </button>
-                    </div>
-                  )}
+            {/* الإيميل وكلمة السر: مقفلتان في وضع إضافة دور، قابلتان للتعديل في وضع الإنشاء أو التعديل */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                البريد الإلكتروني
+                {isAddRoleMode && <span className="text-xs text-muted-foreground">(مقفل — كما سجّلته صاحبة الحساب)</span>}
+              </Label>
+              <div className="relative">
+                <Input
+                  value={form.email}
+                  onChange={e => {
+                    if (isAddRoleMode) return;
+                    setForm(f => ({ ...f, email: e.target.value }));
+                    setEmailConfirmedDuplicate(false);
+                  }}
+                  readOnly={isAddRoleMode}
+                  placeholder="email@sana.sa"
+                  className={[
+                    isAddRoleMode ? "bg-muted text-muted-foreground cursor-not-allowed select-none pr-8" : "",
+                    showEmailDuplicateWarning ? "border-amber-400 focus-visible:ring-amber-300" : "",
+                  ].filter(Boolean).join(" ")}
+                />
+                {isAddRoleMode && (
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">🔒</span>
+                )}
+              </div>
+              {showEmailDuplicateWarning && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 space-y-2">
+                  {duplicateNames.map(name => (
+                    <p key={name} className="text-sm font-semibold text-red-700">
+                      ⚠️ يا {name}، تم تسجيل حسابك من قبل، الرجاء عدم تكرار التسجيل بنفس الاسم.
+                    </p>
+                  ))}
+                  <p className="text-xs text-red-500">
+                    إذا كان التسجيل مقصوداً (أمّ لأكثر من طالبة، أو أختان بنفس الإيميل) اضغطي للمتابعة.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setEmailConfirmedDuplicate(true)}
+                    className="text-xs font-semibold text-red-700 underline hover:text-red-900"
+                  >
+                    المتابعة رغم التكرار
+                  </button>
                 </div>
-                <div className="space-y-2">
-                  <Label>
-                    كلمة المرور{" "}
-                    {editingUser && (
-                      <span className="text-xs text-muted-foreground">(اتركيها فارغة لعدم التغيير)</span>
-                    )}
-                  </Label>
+              )}
+            </div>
+            {!isAddRoleMode && (
+              <div className="space-y-2">
+                <Label>
+                  كلمة المرور{" "}
+                  {editingUser && (
+                    <span className="text-xs text-muted-foreground">(اتركيها فارغة لعدم التغيير)</span>
+                  )}
+                </Label>
+                <Input
+                  type="password"
+                  value={form.password}
+                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  placeholder="••••••••"
+                />
+              </div>
+            )}
+            {isAddRoleMode && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  كلمة المرور
+                  <span className="text-xs text-muted-foreground">(مقفلة — محفوظة كما هي)</span>
+                </Label>
+                <div className="relative">
                   <Input
                     type="password"
-                    value={form.password}
-                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                    placeholder="••••••••"
+                    value="placeholder"
+                    readOnly
+                    className="bg-muted text-muted-foreground cursor-not-allowed pr-8"
                   />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">🔒</span>
                 </div>
-              </>
+              </div>
             )}
             <div className="space-y-2">
               <Label>الدور</Label>
@@ -646,7 +667,7 @@ export default function AccountsPage() {
                   <SelectValue placeholder="اختيار الدور" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(isTrackSupervisor ? ROLES.filter(r => r.value === "student") : ROLES).map(r => (
+                  {(isTrackSupervisor ? ROLES.filter(r => ["student", "teacher", "supervisor"].includes(r.value)) : ROLES).map(r => (
                     <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
                   ))}
                 </SelectContent>
