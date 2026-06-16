@@ -55,6 +55,7 @@ function whatsappHref(phone: string | null | undefined): string | null {
 
 function TransferModal({
   title,
+  studentName,
   circles,
   currentCircleId,
   onConfirm,
@@ -62,6 +63,7 @@ function TransferModal({
   loading,
 }: {
   title: string;
+  studentName?: string;
   circles: AllCircleOption[];
   currentCircleId: number;
   onConfirm: (targetCircleId: number) => void;
@@ -69,8 +71,51 @@ function TransferModal({
   loading: boolean;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
+  const [step, setStep] = useState<"select" | "confirm">("select");
   const [search, setSearch] = useState("");
   const options = circles.filter(c => c.id !== currentCircleId && (!search || c.name.includes(search) || c.track.includes(search)));
+  const fromCircle = circles.find(c => c.id === currentCircleId);
+  const toCircle = circles.find(c => c.id === selected);
+
+  if (step === "confirm" && selected) {
+    return (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" dir="rtl">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+          <div className="p-4 border-b border-border flex items-center justify-between">
+            <h3 className="font-bold text-base">تأكيد النقل</h3>
+            <button onClick={onClose} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
+          </div>
+          <div className="p-4 space-y-3">
+            {studentName && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-amber-800 text-center">
+                {studentName}
+              </div>
+            )}
+            <div className="flex items-center gap-2 justify-center text-sm">
+              <div className="flex-1 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2.5 text-center">
+                <p className="text-xs text-rose-500 mb-0.5">من</p>
+                <p className="font-semibold text-rose-800 text-xs">{fromCircle?.name ?? "—"}</p>
+                <p className="text-xs text-rose-600">{fromCircle?.track ?? ""}</p>
+              </div>
+              <ArrowLeftRight className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div className="flex-1 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-center">
+                <p className="text-xs text-emerald-500 mb-0.5">إلى</p>
+                <p className="font-semibold text-emerald-800 text-xs">{toCircle?.name ?? "—"}</p>
+                <p className="text-xs text-emerald-600">{toCircle?.track ?? ""}</p>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground text-center">ستختفي الطالبة من الحلقة القديمة وتنتقل للجديدة فوراً.</p>
+          </div>
+          <div className="p-3 flex gap-2 border-t">
+            <Button size="sm" className="flex-1" disabled={loading} onClick={() => onConfirm(selected)}>
+              {loading ? "جاري النقل..." : "تأكيد النقل"}
+            </Button>
+            <Button size="sm" variant="outline" className="flex-1" onClick={() => setStep("select")}>رجوع</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" dir="rtl">
@@ -99,8 +144,8 @@ function TransferModal({
           {options.length === 0 && <p className="text-center text-sm text-muted-foreground py-4">لا توجد حلقات</p>}
         </div>
         <div className="p-3 flex gap-2 border-t">
-          <Button size="sm" className="flex-1" disabled={!selected || loading} onClick={() => selected && onConfirm(selected)}>
-            {loading ? "جاري النقل..." : "نقل"}
+          <Button size="sm" className="flex-1" disabled={!selected} onClick={() => selected && setStep("confirm")}>
+            التالي
           </Button>
           <Button size="sm" variant="outline" className="flex-1" onClick={onClose}>إلغاء</Button>
         </div>
@@ -131,6 +176,7 @@ export default function LeaderCirclesPage() {
     circleId: number;
     label: string;
     studentId?: number;
+    studentName?: string;
   } | null>(null);
   const [transferLoading, setTransferLoading] = useState(false);
 
@@ -489,7 +535,7 @@ export default function LeaderCirclesPage() {
                                       <span className="text-sm">{s.fullName}</span>
                                       {(isLeader || isTrackSup) && (
                                         <button
-                                          onClick={() => setTransferModal({ type: "student", circleId: circle.id, label: `نقل: ${s.fullName}`, studentId: s.id })}
+                                          onClick={() => setTransferModal({ type: "student", circleId: circle.id, label: `نقل طالبة`, studentId: s.id, studentName: s.fullName })}
                                           className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 flex-shrink-0"
                                           title="نقل لحلقة أخرى"
                                         >
@@ -528,6 +574,7 @@ export default function LeaderCirclesPage() {
       {transferModal && (
         <TransferModal
           title={transferModal.label}
+          studentName={transferModal.studentName}
           circles={allCircles}
           currentCircleId={transferModal.circleId}
           onConfirm={handleTransfer}

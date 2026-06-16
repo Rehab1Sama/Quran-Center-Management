@@ -172,6 +172,8 @@ export default function AccountsPage() {
   const [roleFilter, setRoleFilter] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
+  const [isAddRoleMode, setIsAddRoleMode] = useState(false);
+  const [emailConfirmedDuplicate, setEmailConfirmedDuplicate] = useState(false);
   const [resetPwdOpen, setResetPwdOpen] = useState(false);
   const [resetPwdUserId, setResetPwdUserId] = useState<number | null>(null);
   const [newPassword, setNewPassword] = useState("");
@@ -186,13 +188,16 @@ export default function AccountsPage() {
 
   const openCreate = () => {
     setEditingUser(null);
+    setIsAddRoleMode(false);
     setForm({ name: "", email: "", password: "", role: "", track: "", circleId: "" });
     setDeFormCircles([]);
+    setEmailConfirmedDuplicate(false);
     setDialogOpen(true);
   };
 
   const openEdit = (user: UserRow) => {
     setEditingUser(user);
+    setIsAddRoleMode(false);
     setForm({
       name: user.name,
       email: user.email,
@@ -201,18 +206,19 @@ export default function AccountsPage() {
       track: user.track ?? "",
       circleId: user.circleId?.toString() ?? "",
     });
-    // تحميل الحلقات المُسندة لمدخلة البيانات
     if (user.role === "data_entry") {
       const existing = dataEntryAssignments.find(a => a.userId === user.id);
       setDeFormCircles(existing?.circleIds ?? []);
     } else {
       setDeFormCircles([]);
     }
+    setEmailConfirmedDuplicate(false);
     setDialogOpen(true);
   };
 
   const openAddRole = (person: PersonGroup) => {
     setEditingUser(null);
+    setIsAddRoleMode(true);
     setForm({
       name: person.name,
       email: person.email,
@@ -222,6 +228,7 @@ export default function AccountsPage() {
       circleId: "",
     });
     setDeFormCircles([]);
+    setEmailConfirmedDuplicate(false);
     setDialogOpen(true);
   };
 
@@ -358,6 +365,16 @@ export default function AccountsPage() {
     if (roleFilter && !p.accounts.some(a => a.role === roleFilter)) return false;
     return true;
   });
+
+  // Detect duplicate email during new account creation (not editing, not add-role flow)
+  const emailDuplicates = (!editingUser && !isAddRoleMode && form.email.trim().length > 3)
+    ? (users ?? [] as UserRow[]).filter((u: any) =>
+        u.email.toLowerCase() === form.email.trim().toLowerCase()
+      )
+    : [];
+  // Group duplicates by name to avoid repeating the same name multiple times
+  const duplicateNames = [...new Set((emailDuplicates as UserRow[]).map(u => u.name))];
+  const showEmailDuplicateWarning = emailDuplicates.length > 0 && !emailConfirmedDuplicate;
   const needsTrack = ["track_supervisor", "teacher", "supervisor", "student"].includes(form.role);
   const needsCircle = ["teacher", "supervisor", "student"].includes(form.role);
   // Use allCirclesForForm (fetched from /api/circles/names — all circles, all tracks)
@@ -554,7 +571,7 @@ export default function AccountsPage() {
             </DialogTitle>
           </DialogHeader>
           {/* عند إضافة دور لشخص موجود: بانر معلومات بدلاً من حقول */}
-          {!editingUser && form.email && (
+          {isAddRoleMode && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 text-xs text-blue-800 space-y-0.5 -mb-1">
               <p className="font-semibold">إضافة دور لحساب موجود</p>
               <p className="text-blue-600">{form.email} · ستُحفظ كلمة المرور الحالية تلقائياً</p>
@@ -562,7 +579,7 @@ export default function AccountsPage() {
           )}
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>الاسم {!editingUser && form.email && <span className="text-xs text-muted-foreground">(يمكن تغييره للتمييز بين أبناء نفس الأم)</span>}</Label>
+              <Label>الاسم {isAddRoleMode && <span className="text-xs text-muted-foreground">(يمكن تغييره للتمييز بين أبناء نفس الأم)</span>}</Label>
               <Input
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -570,15 +587,38 @@ export default function AccountsPage() {
               />
             </div>
             {/* إخفاء الإيميل وكلمة السر عند إضافة دور لشخص موجود */}
-            {(editingUser || !form.email) && (
+            {(editingUser || !isAddRoleMode) && (
               <>
                 <div className="space-y-2">
                   <Label>البريد الإلكتروني</Label>
                   <Input
                     value={form.email}
-                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    onChange={e => {
+                      setForm(f => ({ ...f, email: e.target.value }));
+                      setEmailConfirmedDuplicate(false);
+                    }}
                     placeholder="email@sana.sa"
+                    className={showEmailDuplicateWarning ? "border-amber-400 focus-visible:ring-amber-300" : ""}
                   />
+                  {showEmailDuplicateWarning && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 space-y-2">
+                      {duplicateNames.map(name => (
+                        <p key={name} className="text-sm font-semibold text-red-700">
+                          ⚠️ يا {name}، تم تسجيل حسابك من قبل، الرجاء عدم تكرار التسجيل بنفس الاسم.
+                        </p>
+                      ))}
+                      <p className="text-xs text-red-500">
+                        إذا كان التسجيل مقصوداً (أمّ لأكثر من طالبة، أو أختان بنفس الإيميل) اضغطي للمتابعة.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setEmailConfirmedDuplicate(true)}
+                        className="text-xs font-semibold text-red-700 underline hover:text-red-900"
+                      >
+                        المتابعة رغم التكرار
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>
