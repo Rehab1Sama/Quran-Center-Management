@@ -261,23 +261,24 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
   const extraData = (req.body as any).extraData ?? null;
   const isNewcomer = (req.body as any).isNewcomer === true;
 
-  // منع تكرار التسجيل بنفس الاسم + البريد الإلكتروني (لمنع الخطأ غير المقصود)
-  const existingUser = await db
-    .select({ id: usersTable.id, name: usersTable.name })
+  // منع تكرار التسجيل بنفس الاسم + البريد الإلكتروني + نفس الحلقة فقط
+  const existingUsers = await db
+    .select({ id: usersTable.id, name: usersTable.name, circleId: usersTable.circleId })
     .from(usersTable)
     .where(eq(usersTable.email, email.toLowerCase()));
-  const duplicateByName = existingUser.find(
-    u => u.name.trim().toLowerCase() === fullName.trim().toLowerCase()
+  const duplicate = existingUsers.find(u =>
+    u.name.trim().toLowerCase() === fullName.trim().toLowerCase() &&
+    (u.circleId ?? null) === (circleId ?? null)
   );
-  if (duplicateByName) {
+  if (duplicate) {
     res.status(409).json({
-      error: `يا ${fullName.trim().split(" ")[0]}، تم تسجيل حسابك من قبل. الرجاء عدم تكرار التسجيل بنفس الاسم`,
+      error: `يا ${fullName.trim().split(" ")[0]}، تم تسجيل حسابك في هذه الحلقة من قبل. الرجاء عدم تكرار التسجيل`,
       duplicateName: fullName.trim().split(" ")[0],
     });
     return;
   }
 
-  await db.insert(usersTable).values({
+  const [newUser] = await db.insert(usersTable).values({
     email: email.toLowerCase(),
     name: fullName,
     passwordHash: hashPassword(password),
@@ -291,6 +292,15 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
     registrationStatus: "approved",
     emailVerificationToken: null,
   }).returning();
+
+  // ربط المعلمة/المشرفة بالحلقة تلقائياً عند التسجيل
+  if (newUser && circleId) {
+    if (role === "teacher") {
+      await db.update(circlesTable).set({ teacherId: newUser.id }).where(eq(circlesTable.id, circleId));
+    } else if (role === "supervisor") {
+      await db.update(circlesTable).set({ supervisorId: newUser.id }).where(eq(circlesTable.id, circleId));
+    }
+  }
 
   if (!role || role === "student") {
     let targetCircleId = circleId;
