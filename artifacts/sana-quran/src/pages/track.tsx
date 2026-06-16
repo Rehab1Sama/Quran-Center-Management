@@ -138,6 +138,10 @@ export default function TrackPage() {
   const [roleNotFound, setRoleNotFound] = useState(false);
   const [roleLookupStep, setRoleLookupStep] = useState<"email" | "details">("email");
   const [roleForm, setRoleForm] = useState({ name: "", email: "", password: "", role: "student" as "student" | "teacher" | "supervisor", track: "", circleId: "" });
+  const [roleDialogTab, setRoleDialogTab] = useState<"role" | "transfer">("role");
+  const [transferTargetCircleId, setTransferTargetCircleId] = useState("");
+  const [transferStudentId, setTransferStudentId] = useState<number | null>(null);
+  const [transferring, setTransferring] = useState(false);
 
   // الحلقات المفصّلة
   const [enrichedCircles, setEnrichedCircles] = useState<EnrichedCircle[]>([]);
@@ -187,6 +191,28 @@ export default function TrackPage() {
         },
       }
     );
+  };
+
+  const handleTransferInDialog = async () => {
+    if (!transferStudentId || !transferTargetCircleId) return;
+    setTransferring(true);
+    try {
+      const token = localStorage.getItem("sana_auth_token");
+      const res = await fetch(`/api/students/${transferStudentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ circleId: parseInt(transferTargetCircleId) }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "تم النقل بنجاح" });
+      queryClient.invalidateQueries({ queryKey: ["allStudents"] });
+      await fetchEnrichedCircles();
+      setAddRoleOpen(false);
+    } catch {
+      toast({ title: "خطأ في النقل", variant: "destructive" });
+    } finally {
+      setTransferring(false);
+    }
   };
 
   const fetchEnrichedCircles = async () => {
@@ -666,15 +692,16 @@ export default function TrackPage() {
                                   </button>
                                   <button
                                     onClick={() => {
+                                      setRoleDialogTab("role");
+                                      setTransferTargetCircleId("");
+                                      setTransferStudentId(student.id);
                                       if (student.email) {
-                                        // إيميل الطالبة موجود — تخطَّ خطوة البحث مباشرةً
                                         setRoleFoundUser({ id: student.id, name: student.fullName, email: student.email });
                                         setRoleLookupEmail(student.email);
                                         setRoleNotFound(false);
                                         setRoleLookupStep("details");
                                         setRoleForm({ name: student.fullName, email: student.email, password: "__reuse__", role: "student", track: myTrack ?? "", circleId: circle.id.toString() });
                                       } else {
-                                        // لا يوجد إيميل مرتبط — اعرض خطوة البحث
                                         setRoleLookupStep("email");
                                         setRoleLookupEmail("");
                                         setRoleFoundUser(null);
@@ -722,6 +749,9 @@ export default function TrackPage() {
           setRoleFoundUser(null);
           setRoleNotFound(false);
           setRoleForm({ name: "", email: "", password: "", role: "student", track: "", circleId: "" });
+          setRoleDialogTab("role");
+          setTransferTargetCircleId("");
+          setTransferStudentId(null);
         }
       }}>
         <DialogContent className="max-w-md" dir="rtl">
@@ -751,97 +781,139 @@ export default function TrackPage() {
             </div>
           ) : (
             <div className="space-y-4 py-2">
+              {/* معلومات الطالبة */}
               {roleFoundUser ? (
                 <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 space-y-1">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
-                    <p className="text-xs text-emerald-700 font-semibold">الحساب موجود — سيُضاف الدور الجديد</p>
+                    <p className="text-xs text-emerald-700 font-semibold">الحساب موجود</p>
                   </div>
                   <div className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
-                    <p className="text-xs text-muted-foreground">البريد الإلكتروني</p>
-                    <p className="text-sm font-medium text-foreground">{roleFoundUser.email}</p>
+                    <p className="text-xs text-muted-foreground">الاسم</p>
+                    <p className="text-sm font-medium">{roleFoundUser.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">البريد الإلكتروني</p>
+                    <p className="text-xs font-medium text-foreground">{roleFoundUser.email}</p>
                   </div>
-                  <p className="text-xs text-emerald-600 px-1">كلمة المرور الحالية للطالبة ستبقى كما هي تلقائياً</p>
                 </div>
               ) : (
                 <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
                   <p className="text-xs text-amber-700 font-semibold">حساب جديد</p>
-                  <p className="text-xs text-amber-600">لم يُعثر على حساب بهذا البريد — سيتم إنشاء حساب جديد</p>
+                  <p className="text-xs text-amber-600">سيتم إنشاء حساب جديد بهذا البريد</p>
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label>الاسم الكامل</Label>
-                <Input
-                  value={roleForm.name}
-                  onChange={e => setRoleForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="الاسم الكامل"
-                />
-              </div>
-
-              {!roleFoundUser && (
-                <div className="space-y-2">
-                  <Label>كلمة المرور</Label>
-                  <Input
-                    type="password"
-                    value={roleForm.password}
-                    onChange={e => setRoleForm(f => ({ ...f, password: e.target.value }))}
-                    placeholder="••••••••"
-                  />
+              {/* تبويبات: إضافة دور / نقل الحلقة */}
+              {transferStudentId && (
+                <div className="flex rounded-xl overflow-hidden border border-border text-sm font-semibold">
+                  <button
+                    onClick={() => setRoleDialogTab("role")}
+                    className={`flex-1 py-2 transition-colors ${roleDialogTab === "role" ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"}`}
+                  >
+                    إضافة دور
+                  </button>
+                  <button
+                    onClick={() => setRoleDialogTab("transfer")}
+                    className={`flex-1 py-2 transition-colors ${roleDialogTab === "transfer" ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"}`}
+                  >
+                    نقل الحلقة
+                  </button>
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label>الدور</Label>
-                <Select value={roleForm.role} onValueChange={v => setRoleForm(f => ({ ...f, role: v as any }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="student">طالبة</SelectItem>
-                    <SelectItem value="teacher">معلمة</SelectItem>
-                    <SelectItem value="supervisor">مشرفة</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {roleDialogTab === "role" ? (
+                <>
+                  {!roleFoundUser && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>الاسم الكامل</Label>
+                        <Input value={roleForm.name} onChange={e => setRoleForm(f => ({ ...f, name: e.target.value }))} placeholder="الاسم الكامل" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>كلمة المرور</Label>
+                        <Input type="password" value={roleForm.password} onChange={e => setRoleForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••••" />
+                      </div>
+                    </>
+                  )}
 
-              <div className="space-y-2">
-                <Label>المسار</Label>
-                <Select value={roleForm.track} onValueChange={v => setRoleForm(f => ({ ...f, track: v, circleId: "" }))}>
-                  <SelectTrigger><SelectValue placeholder="اختيار المسار" /></SelectTrigger>
-                  <SelectContent>
-                    {(allTracks ?? []).map(t => (
-                      <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div className="space-y-2">
+                    <Label>الدور</Label>
+                    <Select value={roleForm.role} onValueChange={v => setRoleForm(f => ({ ...f, role: v as any }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="student">طالبة</SelectItem>
+                        <SelectItem value="teacher">معلمة</SelectItem>
+                        <SelectItem value="supervisor">مشرفة</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              {roleForm.track && (
-                <div className="space-y-2">
-                  <Label>الحلقة</Label>
-                  <Select value={roleForm.circleId} onValueChange={v => setRoleForm(f => ({ ...f, circleId: v }))}>
-                    <SelectTrigger><SelectValue placeholder="اختيار الحلقة" /></SelectTrigger>
-                    <SelectContent>
-                      {(circles ?? []).filter(c => c.track === roleForm.track).map(c => (
-                        <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                  <div className="space-y-2">
+                    <Label>المسار</Label>
+                    <Select value={roleForm.track} onValueChange={v => setRoleForm(f => ({ ...f, track: v, circleId: "" }))}>
+                      <SelectTrigger><SelectValue placeholder="اختيار المسار" /></SelectTrigger>
+                      <SelectContent>
+                        {(allTracks ?? []).map(t => (
+                          <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {roleForm.track && (
+                    <div className="space-y-2">
+                      <Label>الحلقة</Label>
+                      <Select value={roleForm.circleId} onValueChange={v => setRoleForm(f => ({ ...f, circleId: v }))}>
+                        <SelectTrigger><SelectValue placeholder="اختيار الحلقة" /></SelectTrigger>
+                        <SelectContent>
+                          {(circles ?? []).filter(c => c.track === roleForm.track).map(c => (
+                            <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <DialogFooter className="gap-2 pt-2">
+                    <Button variant="outline" onClick={() => { setRoleLookupStep("email"); setRoleFoundUser(null); setRoleNotFound(false); }}>رجوع</Button>
+                    <Button
+                      onClick={handleAddRole}
+                      disabled={!roleForm.name || !roleForm.track || !roleForm.circleId || (!roleFoundUser && !roleForm.password) || createUser.isPending}
+                    >
+                      {createUser.isPending ? "جاري الإضافة..." : "إضافة الدور"}
+                    </Button>
+                  </DialogFooter>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>الحلقة المراد النقل إليها</Label>
+                    <Select value={transferTargetCircleId} onValueChange={setTransferTargetCircleId}>
+                      <SelectTrigger><SelectValue placeholder="اختيار الحلقة" /></SelectTrigger>
+                      <SelectContent>
+                        {(circleNames ?? [])
+                          .filter(c => c.id.toString() !== roleForm.circleId)
+                          .map(c => (
+                            <SelectItem key={c.id} value={c.id.toString()}>
+                              {c.name} <span className="text-muted-foreground text-xs">({c.track})</span>
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="rounded-xl bg-blue-50 border border-blue-100 p-3">
+                    <p className="text-xs text-blue-700">ستنتقل الطالبة من حلقتها الحالية إلى الحلقة المختارة، وستُحفظ بياناتها كاملاً.</p>
+                  </div>
+                  <DialogFooter className="gap-2 pt-2">
+                    <Button variant="outline" onClick={() => setRoleDialogTab("role")}>رجوع</Button>
+                    <Button
+                      onClick={handleTransferInDialog}
+                      disabled={!transferTargetCircleId || transferring}
+                    >
+                      {transferring ? "جاري النقل..." : "نقل الطالبة"}
+                    </Button>
+                  </DialogFooter>
+                </>
               )}
-
-              <DialogFooter className="gap-2 pt-2">
-                <Button variant="outline" onClick={() => { setRoleLookupStep("email"); setRoleFoundUser(null); setRoleNotFound(false); }}>رجوع</Button>
-                <Button
-                  onClick={handleAddRole}
-                  disabled={
-                    !roleForm.name || !roleForm.track || !roleForm.circleId ||
-                    (!roleFoundUser && !roleForm.password) ||
-                    createUser.isPending
-                  }
-                >
-                  {createUser.isPending ? "جاري الإضافة..." : "إضافة الدور"}
-                </Button>
-              </DialogFooter>
             </div>
           )}
         </DialogContent>

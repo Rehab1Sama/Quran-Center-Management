@@ -214,6 +214,9 @@ function VoiceInputButton({
   onResult: (ss: string, as: string, se: string, ae: string) => void;
 }) {
   const [listening, setListening] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const [showText, setShowText] = useState(false);
+  const [textDraft, setTextDraft] = useState("");
   const [suggest, setSuggest] = useState<SuggestState | null>(null);
 
   const resolve = (parsed: ParsedVoice, overrideStart?: string, overrideEnd?: string) => {
@@ -224,6 +227,8 @@ function VoiceInputButton({
   };
 
   const handleTranscript = (text: string) => {
+    setShowText(false);
+    setTextDraft("");
     const parsed = parseVoiceTranscript(text);
     const startResult = findSurahFuzzy(parsed.startSurahRaw);
     if (!startResult.match && startResult.suggestions.length > 0) {
@@ -253,38 +258,99 @@ function VoiceInputButton({
     }
   };
 
-  const start = () => {
+  const startMic = () => {
+    setMicError(null);
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { alert("متصفحك لا يدعم التعرف على الصوت. استخدمي Chrome أو Safari."); return; }
+    if (!SR) {
+      setMicError("متصفحك لا يدعم الميكروفون");
+      setShowText(true);
+      return;
+    }
     const r = new SR();
     r.lang = "ar-SA";
     r.continuous = false;
     r.interimResults = false;
     r.onstart = () => setListening(true);
     r.onend = () => setListening(false);
-    r.onerror = () => setListening(false);
+    r.onerror = (ev: any) => {
+      setListening(false);
+      const msg = ev?.error === "not-allowed"
+        ? "لم تُمنح صلاحية الميكروفون — استخدمي الكتابة اليدوية"
+        : ev?.error === "no-speech"
+        ? "لم يُكشف صوت — حاولي مجدداً أو استخدمي الكتابة"
+        : "خطأ في الميكروفون";
+      setMicError(msg);
+      setShowText(true);
+    };
     r.onresult = (e: any) => handleTranscript(e.results[0][0].transcript);
     r.start();
   };
 
   return (
     <>
-      <button
-        type="button"
-        onClick={start}
-        title={
-          listening
-            ? "جاري الاستماع..."
-            : "إدخال صوتي — مثال: سورة البداية البقرة وآية البداية ١ سورة النهاية البقرة وآية النهاية ١٠"
-        }
-        className={`p-1.5 rounded-lg border transition-colors ${
-          listening
-            ? "bg-rose-100 border-rose-300 text-rose-600 animate-pulse"
-            : "bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-        }`}
-      >
-        <Mic className="w-3.5 h-3.5" />
-      </button>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={startMic}
+          title={listening ? "جاري الاستماع..." : "إدخال صوتي"}
+          className={`p-1.5 rounded-lg border transition-colors ${
+            listening
+              ? "bg-rose-100 border-rose-300 text-rose-600 animate-pulse"
+              : "bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <Mic className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => { setMicError(null); setShowText(true); }}
+          title="كتابة نصية يدوية"
+          className="p-1.5 rounded-lg border border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-xs font-bold"
+        >
+          ✏️
+        </button>
+      </div>
+
+      {/* نافذة الكتابة اليدوية */}
+      {showText && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-4">
+            <div>
+              <h3 className="font-bold text-base flex items-center gap-2">✏️ كتابة يدوية</h3>
+              {micError && (
+                <p className="text-xs text-rose-600 mt-1 bg-rose-50 rounded-lg px-2 py-1">{micError}</p>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                اكتبي النص بأي صيغة، مثال:<br />
+                <span className="font-medium text-foreground">سورة البداية البقرة آية البداية ١ سورة النهاية البقرة آية النهاية ١٠</span>
+              </p>
+            </div>
+            <textarea
+              value={textDraft}
+              onChange={e => setTextDraft(e.target.value)}
+              placeholder="اكتبي هنا..."
+              rows={3}
+              className="w-full border border-input rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => { if (textDraft.trim()) handleTranscript(textDraft.trim()); }}
+                disabled={!textDraft.trim()}
+                className="flex-1 bg-primary text-primary-foreground rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity"
+              >
+                تحليل وتعبئة
+              </button>
+              <button
+                onClick={() => { setShowText(false); setTextDraft(""); setMicError(null); }}
+                className="flex-1 border border-border rounded-xl py-2.5 text-sm text-muted-foreground hover:bg-muted transition-colors"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {suggest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" dir="rtl">
