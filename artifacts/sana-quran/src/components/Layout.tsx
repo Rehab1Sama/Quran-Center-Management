@@ -11,7 +11,7 @@ import {
   BarChart2, MessageSquare, Search, Clock, Archive, Layers,
   Calendar, ShoppingBag, Award, Shuffle, GraduationCap, AlertTriangle,
   ArrowLeftRight, Loader2, BookOpen, PlaneTakeoff, Bell, CheckCheck,
-  TrendingUp, Globe, Moon, Sun,
+  TrendingUp, Globe, Moon, Sun, Database,
 } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 import logoUrl from "@/assets/logo.jpg";
@@ -738,6 +738,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/reports", label: "التقارير الأسبوعية", icon: TrendingUp, feature: "stats_weekly" },
       { href: "/white-label", label: "نسخ للبيع", icon: Globe },
       { href: "/unlinked-staff", label: "موظفات غير مرتبطات", icon: UserX },
+      { href: "/db-settings", label: "إعدادات قاعدة البيانات", icon: Database },
       { href: "/export", label: "تصدير البيانات", icon: FileDown },
     ]);
   }

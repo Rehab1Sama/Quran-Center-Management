@@ -35,6 +35,7 @@ import reportsRouter from "./reports";
 import whiteLabelRouter from "./whiteLabel";
 import schoolConfigRouter from "./schoolConfig";
 import firstSetupRouter from "./firstSetup";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -74,5 +75,6 @@ router.use(reportsRouter);
 router.use(whiteLabelRouter);
 router.use(schoolConfigRouter);
 router.use(firstSetupRouter);
+router.use(adminRouter);
 
 export default router;

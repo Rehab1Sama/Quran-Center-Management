@@ -54,6 +54,7 @@ import ReportsPage from "@/pages/reports";
 import WhiteLabelPage from "@/pages/white-label";
 import FirstSetupPage from "@/pages/first-setup";
 import UnlinkedStaffPage from "@/pages/unlinked-staff";
+import DbSettingsPage from "@/pages/db-settings";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 import { canEnterData, isFeatureEnabled, shouldHideReviewPlans } from "@/lib/schoolConfig";
@@ -263,6 +264,9 @@ function AppRoutes() {
         </Route>
         <Route path="/unlinked-staff">
           {isLeaderOrDeputy ? <UnlinkedStaffPage /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/db-settings">
+          {isLeader ? <DbSettingsPage /> : <Redirect to="/" />}
         </Route>
 
         <Route path="/students/:id">
