@@ -12,11 +12,13 @@ if (!connectionString) {
   );
 }
 
-const isSupabase = !!process.env.SUPABASE_DATABASE_URL;
+const isRemoteDb = connectionString.includes("supabase") ||
+  connectionString.includes("neon") ||
+  (!connectionString.includes("localhost") && !connectionString.includes("helium") && !connectionString.includes("127.0.0.1"));
 
 export const pool = new Pool({
   connectionString,
-  ...(isSupabase ? { ssl: { rejectUnauthorized: false } } : {}),
+  ...(isRemoteDb ? { ssl: { rejectUnauthorized: false } } : {}),
 });
 
 export const db = drizzle(pool, { schema });
