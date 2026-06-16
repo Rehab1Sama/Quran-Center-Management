@@ -544,7 +544,7 @@ export default function TrackPage() {
                 const enriched = enrichedCircles.find(e => e.id === circle.id);
                 const isExpanded = expandedCircle === circle.id;
                 const isEditingThis = editingCircle === circle.id;
-                const displayStudents = enriched ? enriched.students : circleStudents.map(s => ({ id: s.id, fullName: s.fullName }));
+                const displayStudents = enriched ? enriched.students : circleStudents.map(s => ({ id: s.id, fullName: s.fullName, email: null as string | null }));
                 const meetingTime = enriched?.meetingTime ?? (circle as any).meetingTime ?? null;
                 const whatsappLink = enriched?.whatsappLink ?? (circle as any).whatsappLink ?? null;
                 const h24 = meetingTime ? parseInt(meetingTime.split(":")[0]) : null;

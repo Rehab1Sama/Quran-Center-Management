@@ -3,3 +3,4 @@
 - [Build pipeline](build-pipeline.md) — esbuild used (not tsc); TS errors in pre-existing files don't block build but should be fixed with explicit type annotations.
 - [White-label system](white-label-system.md) — whitelabel_configs table + /api/white-label/* + /api/school-config routes; env vars pattern for Render deployments; schoolConfig.ts frontend reader.
 - [ThemeProvider dark mode](theme-dark-mode.md) — ThemeProvider.tsx was colour-only (white-label); dark mode context added via useTheme()/toggleDark(); toggle button in Layout sidebar; CSS vars under .dark in index.css; key: sana_dark in localStorage.
+- [Lib declarations build](lib-declarations.md) — api-client-react and api-zod need `npx tsc -p tsconfig.json` run inside each package after fresh install to generate dist/*.d.ts; esbuild doesn't need this but tsc type-checking does.
