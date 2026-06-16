@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronDown, ChevronUp, Archive, RotateCcw, UserCircle, Link2, PlaneTakeoff, XCircle, RefreshCw } from "lucide-react";
+import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronDown, ChevronUp, Archive, RotateCcw, UserCircle, Link2, PlaneTakeoff, XCircle, RefreshCw, Sun, Moon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -296,12 +296,13 @@ export default function CirclesPage() {
   const [search, setSearch] = useState("");
   const [selectedTrack, setSelectedTrack] = useState<string>("");
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editData, setEditData] = useState({ meetingTime: "", newStudentCapacity: "", whatsappLink: "" });
+  const [editData, setEditData] = useState({ meetingTime: "", period: "am" as "am" | "pm", newStudentCapacity: "", whatsappLink: "" });
   const [saving, setSaving] = useState(false);
   const [expandedCircle, setExpandedCircle] = useState<number | null>(null);
   const [seeding, setSeeding] = useState(false);
 
   const isLeader = currentUser?.role === "leader";
+  const canEdit = currentUser?.role === "leader" || currentUser?.role === "track_supervisor";
   const canGrantLeave = ["leader", "deputy", "track_supervisor"].includes(currentUser?.role ?? "");
 
   const handleSeedTracks = async () => {
@@ -344,8 +345,13 @@ export default function CirclesPage() {
   const startEdit = (circle: (typeof filtered)[0]) => {
     setEditingId(circle.id);
     const c = circle as { meetingTime?: string | null; newStudentCapacity?: number | null; whatsappLink?: string | null };
+    const mt = c.meetingTime ?? "";
+    const h = mt ? parseInt(mt.split(":")[0]) : 0;
+    const period: "am" | "pm" = h >= 12 ? "pm" : "am";
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
     setEditData({
-      meetingTime: c.meetingTime ?? "",
+      meetingTime: mt ? `${String(h12).padStart(2,"0")}:${mt.split(":")[1]}` : "",
+      period,
       newStudentCapacity: c.newStudentCapacity?.toString() ?? "",
       whatsappLink: c.whatsappLink ?? "",
     });
@@ -354,10 +360,16 @@ export default function CirclesPage() {
   const saveEdit = async (circleId: number) => {
     setSaving(true);
     try {
+      let time = editData.meetingTime;
+      if (time) {
+        const [hh] = time.split(":").map(Number);
+        if (editData.period === "pm" && hh < 12) time = `${hh + 12}:${time.split(":")[1]}`;
+        if (editData.period === "am" && hh === 12) time = `00:${time.split(":")[1]}`;
+      }
       await updateCircle.mutateAsync({
         id: circleId,
         data: {
-          meetingTime: editData.meetingTime || null,
+          meetingTime: time || null,
           newStudentCapacity: editData.newStudentCapacity ? Number(editData.newStudentCapacity) : null,
           whatsappLink: editData.whatsappLink || null,
         },
@@ -448,20 +460,25 @@ export default function CirclesPage() {
                           <div className="flex-1 min-w-0">
                             <h3 className="font-bold text-base text-foreground">{circle.name}</h3>
                             {c.teacherName && (
-                              <p className="text-sm text-muted-foreground mt-0.5">{c.teacherName}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">معلمة: {c.teacherName}</p>
+                            )}
+                            {(c as any).supervisorName && (
+                              <p className="text-xs text-muted-foreground">مشرفة: {(c as any).supervisorName}</p>
                             )}
                           </div>
                           <div className="flex items-center gap-1">
                             <Badge className={`flex-shrink-0 text-xs ${TRACK_COLORS[track] ?? "bg-gray-100 text-gray-700"}`}>
                               {track}
                             </Badge>
+                            {canEdit && (
                             <button
                               onClick={() => isEditing ? setEditingId(null) : startEdit(c)}
                               className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
-                              title="إعدادات التسجيل"
+                              title="إعدادات الحلقة"
                             >
                               {isEditing ? <X className="w-3.5 h-3.5" /> : <Settings2 className="w-3.5 h-3.5" />}
                             </button>
+                          )}
                           </div>
                         </div>
 
@@ -501,11 +518,27 @@ export default function CirclesPage() {
                         {/* Inline edit form */}
                         {isEditing && (
                           <div className="mt-3 pt-3 border-t border-border/50 space-y-3">
-                            <div className="space-y-1">
+                            <div className="space-y-2">
                               <Label className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
                                 وقت الاجتماع
                               </Label>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditData(d => ({ ...d, period: "am" }))}
+                                  className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-semibold border-2 transition-all ${editData.period === "am" ? "border-amber-400 bg-amber-50 text-amber-700" : "border-border text-muted-foreground"}`}
+                                >
+                                  <Sun className="w-3 h-3" /> صباحي
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditData(d => ({ ...d, period: "pm" }))}
+                                  className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-semibold border-2 transition-all ${editData.period === "pm" ? "border-indigo-400 bg-indigo-50 text-indigo-700" : "border-border text-muted-foreground"}`}
+                                >
+                                  <Moon className="w-3 h-3" /> مسائي
+                                </button>
+                              </div>
                               <input
                                 type="time"
                                 value={editData.meetingTime}

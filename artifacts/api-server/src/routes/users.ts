@@ -26,12 +26,23 @@ router.get("/users", authenticate, async (req, res): Promise<void> => {
   res.json(filtered.map(({ passwordHash: _ph, ...u }) => u));
 });
 
+router.get("/users/by-email", authenticate, async (req, res): Promise<void> => {
+  const email = ((req.query.email as string) ?? "").toLowerCase().trim();
+  if (!email) { res.status(400).json({ error: "Email required" }); return; }
+  const [user] = await db.select({
+    id: usersTable.id, name: usersTable.name, email: usersTable.email,
+  }).from(usersTable).where(eq(usersTable.email, email));
+  if (!user) { res.status(404).json({ error: "لم يُعثر على حساب بهذا البريد" }); return; }
+  res.json(user);
+});
+
 router.post("/users", authenticate, async (req, res): Promise<void> => {
-  // مسؤولة المسار يمكنها فقط إضافة حسابات بدور "طالبة"
+  // مسؤولة المسار يمكنها إضافة طالبات ومعلمات ومشرفات فقط
   if (req.userRole === "track_supervisor") {
     const body = req.body as { role?: string };
-    if (body.role !== "student") {
-      res.status(403).json({ error: "مسؤولة المسار يمكنها إضافة طالبات فقط" });
+    const allowed = ["student", "teacher", "supervisor"];
+    if (!body.role || !allowed.includes(body.role)) {
+      res.status(403).json({ error: "مسؤولة المسار يمكنها إضافة طالبات ومعلمات ومشرفات فقط" });
       return;
     }
   } else if (req.userRole !== "leader") {

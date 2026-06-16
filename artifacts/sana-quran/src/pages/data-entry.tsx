@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { SURAHS, calculatePages, formatPages } from "@/lib/quran";
+import { SURAHS, calculatePages, formatPages, type Surah } from "@/lib/quran";
 import {
   PenSquare,
   CheckCircle,
@@ -122,18 +122,91 @@ function nextPosition(surahName: string, ayah: number): { surah: string; ayah: s
 
 // ─── Voice Input ─────────────────────────────────────────────────────────────
 
-function parseVoiceInput(
-  text: string,
-  onResult: (ss: string, as: string, se: string, ae: string) => void,
-) {
-  const surah = SURAHS.find((s) => text.includes(s.name));
-  if (!surah) return;
-  const normalized = text.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
-  const numbers = normalized.match(/\d+/g)?.map(Number) ?? [];
-  if (numbers.length >= 2) onResult(surah.name, String(numbers[0]), surah.name, String(numbers[1]));
-  else if (numbers.length === 1) onResult(surah.name, String(numbers[0]), surah.name, String(numbers[0]));
-  else onResult(surah.name, "1", surah.name, "1");
+function normalizeAr(s: string): string {
+  return s
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/[\u064E-\u0652]/g, "")
+    .trim();
 }
+
+function findSurahFuzzy(raw: string): { match: Surah | null; suggestions: Surah[] } {
+  if (!raw.trim()) return { match: null, suggestions: [] };
+  const norm = normalizeAr(raw.trim());
+  const exact = SURAHS.find((s) => {
+    const sn = normalizeAr(s.name);
+    return sn === norm || norm.includes(sn) || sn.includes(norm);
+  });
+  if (exact) return { match: exact, suggestions: [] };
+  const scores = SURAHS.map((s) => {
+    const sn = normalizeAr(s.name);
+    let score = 0;
+    const chars = new Set(sn.split(""));
+    for (const ch of norm) if (chars.has(ch)) score += 2;
+    if (norm.length >= 2 && sn.startsWith(norm.slice(0, 2))) score += 8;
+    if (sn.length >= 2 && norm.startsWith(sn.slice(0, 2))) score += 6;
+    return { surah: s, score };
+  }).sort((a, b) => b.score - a.score);
+  const top = scores[0];
+  if (top.score <= 0) return { match: null, suggestions: [] };
+  const second = scores[1];
+  if (top.score >= second.score + 6) return { match: top.surah, suggestions: [] };
+  return { match: null, suggestions: scores.slice(0, 5).map((x) => x.surah) };
+}
+
+function extractAfterKeyword(text: string, keyword: string, stopKeywords: string[]): string {
+  const idx = text.indexOf(keyword);
+  if (idx === -1) return "";
+  let seg = text.slice(idx + keyword.length).replace(/^\s*[,،و]\s*/, "").trim();
+  for (const kw of stopKeywords) {
+    const ni = seg.indexOf(kw);
+    if (ni !== -1) seg = seg.slice(0, ni).trim();
+  }
+  return seg;
+}
+
+function extractFirstNumber(s: string): string {
+  const norm = s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+  const m = norm.match(/\d+/);
+  return m ? m[0] : "";
+}
+
+type ParsedVoice = { startSurahRaw: string; startAyah: string; endSurahRaw: string; endAyah: string };
+
+function parseVoiceTranscript(text: string): ParsedVoice {
+  const t = text
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/وآية/g, " وآية")
+    .replace(/وسورة/g, " وسورة");
+  const ALL_STOPS = [
+    "سورة البداية", "آية البداية", "وآية البداية",
+    "سورة النهاية", "آية النهاية", "وآية النهاية",
+    "من سورة", "من آية", "إلى سورة", "إلى آية", "إلى", "سورة", "آية",
+  ];
+  const tryGet = (kws: string[]): string => {
+    for (const kw of kws) {
+      const seg = extractAfterKeyword(t, kw, ALL_STOPS.filter((k) => k !== kw));
+      if (seg.trim()) return seg.trim();
+    }
+    return "";
+  };
+  const startSurahRaw =
+    tryGet(["سورة البداية", "من سورة"]) ||
+    extractAfterKeyword(t, "سورة", ALL_STOPS.filter((k) => k !== "سورة")).trim();
+  const startAyahRaw = tryGet(["آية البداية", "وآية البداية", "من آية"]);
+  const startAyah = extractFirstNumber(startAyahRaw) || extractFirstNumber(t) || "1";
+  const endSurahRaw = tryGet(["سورة النهاية", "إلى سورة"]) || startSurahRaw;
+  const endAyahRaw = tryGet(["آية النهاية", "وآية النهاية", "إلى آية"]);
+  let endAyah = extractFirstNumber(endAyahRaw);
+  if (!endAyah) {
+    const allNums = t.match(/\d+/g);
+    endAyah = allNums && allNums.length > 1 ? allNums[allNums.length - 1] : startAyah;
+  }
+  return { startSurahRaw, startAyah, endSurahRaw, endAyah };
+}
+
+type SuggestState = { field: "start" | "end"; raw: string; suggestions: Surah[]; parsed: ParsedVoice };
 
 function VoiceInputButton({
   onResult,
@@ -141,12 +214,48 @@ function VoiceInputButton({
   onResult: (ss: string, as: string, se: string, ae: string) => void;
 }) {
   const [listening, setListening] = useState(false);
-  const start = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) {
-      alert("متصفحك لا يدعم التعرف على الصوت. استخدمي Chrome أو Safari.");
+  const [suggest, setSuggest] = useState<SuggestState | null>(null);
+
+  const resolve = (parsed: ParsedVoice, overrideStart?: string, overrideEnd?: string) => {
+    const startName = overrideStart ?? findSurahFuzzy(parsed.startSurahRaw).match?.name;
+    const endName = overrideEnd ?? (findSurahFuzzy(parsed.endSurahRaw).match?.name ?? startName);
+    if (!startName) return;
+    onResult(startName, parsed.startAyah || "1", endName || startName, parsed.endAyah || parsed.startAyah || "1");
+  };
+
+  const handleTranscript = (text: string) => {
+    const parsed = parseVoiceTranscript(text);
+    const startResult = findSurahFuzzy(parsed.startSurahRaw);
+    if (!startResult.match && startResult.suggestions.length > 0) {
+      setSuggest({ field: "start", raw: parsed.startSurahRaw, suggestions: startResult.suggestions, parsed });
       return;
     }
+    const endResult = findSurahFuzzy(parsed.endSurahRaw);
+    if (!endResult.match && endResult.suggestions.length > 0 && parsed.endSurahRaw !== parsed.startSurahRaw) {
+      setSuggest({ field: "end", raw: parsed.endSurahRaw, suggestions: endResult.suggestions, parsed });
+      return;
+    }
+    resolve(parsed);
+  };
+
+  const pickSuggestion = (surah: Surah) => {
+    if (!suggest) return;
+    const { field, parsed } = suggest;
+    setSuggest(null);
+    if (field === "start") {
+      const endResult = findSurahFuzzy(parsed.endSurahRaw);
+      if (!endResult.match && endResult.suggestions.length > 0 && parsed.endSurahRaw !== parsed.startSurahRaw) {
+        setSuggest({ field: "end", raw: parsed.endSurahRaw, suggestions: endResult.suggestions, parsed });
+      }
+      resolve(parsed, surah.name, endResult?.match?.name ?? surah.name);
+    } else {
+      resolve(parsed, undefined, surah.name);
+    }
+  };
+
+  const start = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { alert("متصفحك لا يدعم التعرف على الصوت. استخدمي Chrome أو Safari."); return; }
     const r = new SR();
     r.lang = "ar-SA";
     r.continuous = false;
@@ -154,22 +263,61 @@ function VoiceInputButton({
     r.onstart = () => setListening(true);
     r.onend = () => setListening(false);
     r.onerror = () => setListening(false);
-    r.onresult = (e: any) => parseVoiceInput(e.results[0][0].transcript, onResult);
+    r.onresult = (e: any) => handleTranscript(e.results[0][0].transcript);
     r.start();
   };
+
   return (
-    <button
-      type="button"
-      onClick={start}
-      title={listening ? "جاري الاستماع..." : "إدخال صوتي (مثال: البقرة 10 إلى 20)"}
-      className={`p-1.5 rounded-lg border transition-colors ${
-        listening
-          ? "bg-rose-100 border-rose-300 text-rose-600 animate-pulse"
-          : "bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-      }`}
-    >
-      <Mic className="w-3.5 h-3.5" />
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={start}
+        title={
+          listening
+            ? "جاري الاستماع..."
+            : "إدخال صوتي — مثال: سورة البداية البقرة وآية البداية ١ سورة النهاية البقرة وآية النهاية ١٠"
+        }
+        className={`p-1.5 rounded-lg border transition-colors ${
+          listening
+            ? "bg-rose-100 border-rose-300 text-rose-600 animate-pulse"
+            : "bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+        }`}
+      >
+        <Mic className="w-3.5 h-3.5" />
+      </button>
+
+      {suggest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-4">
+            <div>
+              <h3 className="font-bold text-base">اختاري السورة</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                لم أتعرف على{" "}
+                <span className="font-semibold text-foreground">«{suggest.raw}»</span>{" "}
+                بدقة — اختاري من القائمة:
+              </p>
+            </div>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {suggest.suggestions.map((s) => (
+                <button
+                  key={s.number}
+                  onClick={() => pickSuggestion(s)}
+                  className="w-full text-right px-4 py-3 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all text-sm font-medium"
+                >
+                  {s.number}. {s.name}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setSuggest(null)}
+              className="w-full text-center text-sm text-muted-foreground hover:text-foreground py-1"
+            >
+              إلغاء
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

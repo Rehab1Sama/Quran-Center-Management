@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useListCircles, useListCircleNames, useGetCurrentUser, useListStudents, useUpdateStudent, useArchiveStudent, useGetMonthlyAttendanceReport, useCreateUser, useListTracks } from "@workspace/api-client-react";
 import MessagesSection from "@/components/MessagesSection";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, Users, ChevronDown, ChevronUp, Archive, ArrowLeftRight, Search, UserCircle, BarChart2, Link2, Clock, UserPlus } from "lucide-react";
+import { BookOpen, Users, ChevronDown, ChevronUp, Archive, ArrowLeftRight, Search, UserCircle, BarChart2, Link2, Clock, UserPlus, Settings2, Check, X, Sun, Moon } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,36 @@ import { useLocation } from "wouter";
 
 type CircleItem = { id: number; name: string; track: string };
 type Student = { id: number; fullName: string; circleId?: number | null };
+type EnrichedCircle = {
+  id: number; name: string; track: string;
+  meetingTime: string | null; whatsappLink: string | null;
+  teacherName: string | null; supervisorName: string | null;
+  students: { id: number; fullName: string }[];
+};
+
+function ClockFace({ time }: { time: string }) {
+  const [h, m] = time ? time.split(":").map(Number) : [0, 0];
+  const hourAngle = ((h % 12) / 12) * 360 + (m / 60) * 30;
+  const minuteAngle = (m / 60) * 360;
+  const toXY = (angle: number, r: number) => ({
+    x: 20 + r * Math.sin((angle * Math.PI) / 180),
+    y: 20 - r * Math.cos((angle * Math.PI) / 180),
+  });
+  const hEnd = toXY(hourAngle, 9);
+  const mEnd = toXY(minuteAngle, 13);
+  return (
+    <svg viewBox="0 0 40 40" className="w-14 h-14 flex-shrink-0">
+      <circle cx="20" cy="20" r="19" fill="white" stroke="#e2e8f0" strokeWidth="1.5" />
+      {([12,3,6,9] as number[]).map((n: number, i: number) => {
+        const p = toXY(i * 90, 16);
+        return <text key={n} x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central" fontSize="4" fill="#94a3b8">{n}</text>;
+      })}
+      <line x1="20" y1="20" x2={hEnd.x} y2={hEnd.y} stroke="#1e293b" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="20" y1="20" x2={mEnd.x} y2={mEnd.y} stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="20" cy="20" r="1.5" fill="#1e293b" />
+    </svg>
+  );
+}
 
 function TransferModal({
   student,
@@ -100,9 +130,20 @@ export default function TrackPage() {
   const [addStudentOpen, setAddStudentOpen] = useState(false);
   const [studentForm, setStudentForm] = useState({ name: "", email: "", password: "", circleId: "" });
 
-  // نافذة إضافة دور لطالبة موجودة
+  // نافذة إضافة دور
   const [addRoleOpen, setAddRoleOpen] = useState(false);
-  const [roleForm, setRoleForm] = useState({ name: "", email: "", password: "", track: "", circleId: "" });
+  const [roleLookupEmail, setRoleLookupEmail] = useState("");
+  const [roleLookupLoading, setRoleLookupLoading] = useState(false);
+  const [roleFoundUser, setRoleFoundUser] = useState<{ id: number; name: string; email: string } | null>(null);
+  const [roleNotFound, setRoleNotFound] = useState(false);
+  const [roleLookupStep, setRoleLookupStep] = useState<"email" | "details">("email");
+  const [roleForm, setRoleForm] = useState({ name: "", email: "", password: "", role: "student" as "student" | "teacher" | "supervisor", track: "", circleId: "" });
+
+  // الحلقات المفصّلة
+  const [enrichedCircles, setEnrichedCircles] = useState<EnrichedCircle[]>([]);
+  const [editingCircle, setEditingCircle] = useState<number | null>(null);
+  const [circleEditData, setCircleEditData] = useState({ meetingTime: "", period: "am" as "am" | "pm", whatsappLink: "" });
+  const [circleSaving, setCircleSaving] = useState(false);
 
   const myTrack = user?.track;
   const trackCircles = circles?.filter(c => c.track === myTrack) ?? [];
@@ -148,16 +189,55 @@ export default function TrackPage() {
     );
   };
 
+  const fetchEnrichedCircles = async () => {
+    const token = localStorage.getItem("sana_auth_token");
+    if (!token) return;
+    try {
+      const res = await fetch("/api/circles/enriched", { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setEnrichedCircles(await res.json());
+    } catch {}
+  };
+
+  useEffect(() => { fetchEnrichedCircles(); }, []);
+
+  const handleLookupEmail = async () => {
+    if (!roleLookupEmail.trim()) return;
+    setRoleLookupLoading(true);
+    setRoleFoundUser(null);
+    setRoleNotFound(false);
+    try {
+      const token = localStorage.getItem("sana_auth_token");
+      const res = await fetch(`/api/users/by-email?email=${encodeURIComponent(roleLookupEmail.trim())}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const u = await res.json();
+        setRoleFoundUser(u);
+        setRoleForm(f => ({ ...f, name: u.name, email: u.email, password: "__reuse__", track: myTrack ?? "", circleId: "" }));
+      } else {
+        setRoleNotFound(true);
+        setRoleForm(f => ({ ...f, name: "", email: roleLookupEmail.trim(), password: "", track: myTrack ?? "", circleId: "" }));
+      }
+      setRoleLookupStep("details");
+    } catch {
+      toast({ title: "خطأ في البحث", variant: "destructive" });
+    } finally {
+      setRoleLookupLoading(false);
+    }
+  };
+
   const handleAddRole = () => {
-    if (!roleForm.name || !roleForm.email || !roleForm.password || !roleForm.circleId || !roleForm.track) return;
+    const isExisting = !!roleFoundUser;
+    if (!roleForm.name || !roleForm.email || !roleForm.circleId || !roleForm.track) return;
+    if (!isExisting && !roleForm.password) return;
     const selectedCircle = (circles ?? []).find(c => c.id === parseInt(roleForm.circleId));
     createUser.mutate(
       {
         data: {
           name: roleForm.name,
           email: roleForm.email,
-          password: roleForm.password,
-          role: "student",
+          password: isExisting ? "placeholder_reused" : roleForm.password,
+          role: roleForm.role,
           track: roleForm.track,
           circleId: parseInt(roleForm.circleId),
         } as any,
@@ -167,11 +247,53 @@ export default function TrackPage() {
           toast({ title: "تم إضافة الدور", description: `${roleForm.name} في ${selectedCircle?.name ?? ""}` });
           queryClient.invalidateQueries({ queryKey: ["allStudents"] });
           setAddRoleOpen(false);
-          setRoleForm({ name: "", email: "", password: "", track: "", circleId: "" });
+          setRoleLookupStep("email");
+          setRoleLookupEmail("");
+          setRoleFoundUser(null);
+          setRoleNotFound(false);
+          setRoleForm({ name: "", email: "", password: "", role: "student", track: "", circleId: "" });
         },
         onError: () => toast({ title: "خطأ في إضافة الدور", variant: "destructive" }),
       }
     );
+  };
+
+  const handleSaveCircle = async (circleId: number) => {
+    setCircleSaving(true);
+    try {
+      const token = localStorage.getItem("sana_auth_token");
+      let time = circleEditData.meetingTime;
+      if (time) {
+        const [h] = time.split(":").map(Number);
+        if (circleEditData.period === "pm" && h < 12) time = `${h + 12}:${time.split(":")[1]}`;
+        if (circleEditData.period === "am" && h === 12) time = `00:${time.split(":")[1]}`;
+      }
+      const res = await fetch(`/api/circles/${circleId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ meetingTime: time || null, whatsappLink: circleEditData.whatsappLink || null }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "تم حفظ إعدادات الحلقة" });
+      await fetchEnrichedCircles();
+      queryClient.invalidateQueries({ queryKey: ["circles"] });
+      setEditingCircle(null);
+    } catch {
+      toast({ title: "خطأ في الحفظ", variant: "destructive" });
+    } finally {
+      setCircleSaving(false);
+    }
+  };
+
+  const startEditCircle = (c: EnrichedCircle) => {
+    setEditingCircle(c.id);
+    const mt = c.meetingTime ?? "";
+    const h = mt ? parseInt(mt.split(":")[0]) : 0;
+    setCircleEditData({
+      meetingTime: mt ? `${String(h > 12 ? h - 12 : h === 0 ? 12 : h).padStart(2,"0")}:${mt.split(":")[1]}` : "",
+      period: mt ? (h >= 12 ? "pm" : "am") : "am",
+      whatsappLink: c.whatsappLink ?? "",
+    });
   };
 
   const handleAddStudent = () => {
@@ -393,55 +515,128 @@ export default function TrackPage() {
             <div className="divide-y divide-border/50">
               {trackCircles.map(circle => {
                 const circleStudents = getCircleStudents(circle.id);
+                const enriched = enrichedCircles.find(e => e.id === circle.id);
                 const isExpanded = expandedCircle === circle.id;
+                const isEditingThis = editingCircle === circle.id;
+                const displayStudents = enriched ? enriched.students : circleStudents.map(s => ({ id: s.id, fullName: s.fullName }));
+                const meetingTime = enriched?.meetingTime ?? (circle as any).meetingTime ?? null;
+                const whatsappLink = enriched?.whatsappLink ?? (circle as any).whatsappLink ?? null;
+                const h24 = meetingTime ? parseInt(meetingTime.split(":")[0]) : null;
+                const isPm = h24 !== null && h24 >= 12;
+                const displayTime = meetingTime
+                  ? `${((h24! % 12) || 12).toString().padStart(2,"0")}:${meetingTime.split(":")[1]} ${isPm ? "م" : "ص"}`
+                  : null;
 
                 return (
-                  <div key={circle.id} data-testid={`row-circle-${circle.id}`}>
-                    <button
-                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors text-right"
-                      onClick={() => setExpandedCircle(isExpanded ? null : circle.id)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <div className="flex items-center gap-2">
+                  <div key={circle.id} data-testid={`row-circle-${circle.id}`} className="border-b border-border/30 last:border-0">
+                    <div className="flex items-center gap-2 px-4 py-3">
+                      <button
+                        className="flex-1 text-right"
+                        onClick={() => setExpandedCircle(isExpanded ? null : circle.id)}
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold text-sm">{circle.name}</p>
-                            {(circle as any).meetingTime && (
-                              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Clock className="w-3 h-3" />{(circle as any).meetingTime}
+                            {displayTime && (
+                              <span className={`text-xs flex items-center gap-1 px-1.5 py-0.5 rounded-full ${isPm ? "bg-indigo-50 text-indigo-600" : "bg-amber-50 text-amber-600"}`}>
+                                {isPm ? <Moon className="w-2.5 h-2.5" /> : <Sun className="w-2.5 h-2.5" />}
+                                {displayTime}
                               </span>
                             )}
-                            {(circle as any).whatsappLink && (
+                            {whatsappLink && (
                               <a
-                                href={(circle as any).whatsappLink}
+                                href={whatsappLink}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-green-600 hover:text-green-700"
-                                title="مجموعة الواتس"
+                                className="text-green-600 hover:text-green-700 flex items-center gap-1 text-xs bg-green-50 px-1.5 py-0.5 rounded-full"
                                 onClick={e => e.stopPropagation()}
                               >
-                                <Link2 className="w-3.5 h-3.5" />
+                                <Link2 className="w-2.5 h-2.5" />
+                                واتساب
                               </a>
                             )}
                           </div>
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <Users className="w-3 h-3 text-primary" />
-                            <span className="text-xs text-primary font-semibold">{circleStudents.length} طالبة</span>
+                          <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
+                            {enriched?.teacherName && <span>معلمة: {enriched.teacherName}</span>}
+                            {enriched?.supervisorName && <span>مشرفة: {enriched.supervisorName}</span>}
+                            <span className="text-primary font-medium">{displayStudents.length} طالبة</span>
                           </div>
                         </div>
+                      </button>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={e => { e.stopPropagation(); isEditingThis ? setEditingCircle(null) : startEditCircle(enriched ?? { id: circle.id, name: circle.name, track: circle.track, meetingTime, whatsappLink, teacherName: null, supervisorName: null, students: [] }); }}
+                          className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
+                          title="ضبط وقت الحلقة ورابط الواتس"
+                        >
+                          {isEditingThis ? <X className="w-3.5 h-3.5" /> : <Settings2 className="w-3.5 h-3.5" />}
+                        </button>
+                        <button onClick={() => setExpandedCircle(isExpanded ? null : circle.id)} className="p-1.5">
+                          {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                        </button>
                       </div>
-                      {isExpanded
-                        ? <ChevronUp className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                        : <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                      }
-                    </button>
+                    </div>
+
+                    {isEditingThis && (
+                      <div className="bg-slate-50 border-t border-border/30 px-4 py-3 space-y-3" dir="rtl">
+                        <div className="flex items-center gap-3">
+                          {circleEditData.meetingTime && (
+                            <ClockFace time={circleEditData.period === "pm"
+                              ? (() => { const [hh, mm] = circleEditData.meetingTime.split(":").map(Number); return `${String(hh % 12 === 0 && circleEditData.period === "pm" ? 12 : (hh % 12) + (circleEditData.period === "pm" ? 12 : 0)).padStart(2,"0")}:${String(mm).padStart(2,"0")}`; })()
+                              : circleEditData.meetingTime}
+                            />
+                          )}
+                          <div className="flex-1 space-y-2">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setCircleEditData(d => ({ ...d, period: "am" }))}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${circleEditData.period === "am" ? "border-amber-400 bg-amber-50 text-amber-700" : "border-border text-muted-foreground"}`}
+                              >
+                                <Sun className="w-3.5 h-3.5" /> صباحي
+                              </button>
+                              <button
+                                onClick={() => setCircleEditData(d => ({ ...d, period: "pm" }))}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${circleEditData.period === "pm" ? "border-indigo-400 bg-indigo-50 text-indigo-700" : "border-border text-muted-foreground"}`}
+                              >
+                                <Moon className="w-3.5 h-3.5" /> مسائي
+                              </button>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" /> الوقت</Label>
+                              <input
+                                type="time"
+                                value={circleEditData.meetingTime}
+                                onChange={e => setCircleEditData(d => ({ ...d, meetingTime: e.target.value }))}
+                                className="h-8 text-sm border border-input rounded-md px-2 w-full bg-white"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1"><Link2 className="w-3 h-3" /> رابط مجموعة الواتساب</Label>
+                          <Input
+                            value={circleEditData.whatsappLink}
+                            onChange={e => setCircleEditData(d => ({ ...d, whatsappLink: e.target.value }))}
+                            placeholder="https://chat.whatsapp.com/..."
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => handleSaveCircle(circle.id)} disabled={circleSaving} className="flex-1 h-8 text-xs">
+                            <Check className="w-3 h-3 ml-1" />{circleSaving ? "جاري الحفظ..." : "حفظ"}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingCircle(null)} className="flex-1 h-8 text-xs">إلغاء</Button>
+                        </div>
+                      </div>
+                    )}
 
                     {isExpanded && (
                       <div className="bg-muted/20 px-4 pb-3">
-                        {circleStudents.length === 0 ? (
+                        {displayStudents.length === 0 ? (
                           <p className="text-sm text-muted-foreground py-3 text-center">لا توجد طالبات في هذه الحلقة</p>
                         ) : (
                           <div className="space-y-2 pt-2">
-                            {circleStudents.map(student => (
+                            {displayStudents.map(student => (
                               <div
                                 key={student.id}
                                 className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5 shadow-sm"
@@ -453,39 +648,34 @@ export default function TrackPage() {
                                     onClick={() => navigate(`/students/${student.id}`)}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors text-xs font-semibold"
                                     title="ملف الطالبة"
-                                    data-testid={`btn-profile-${student.id}`}
                                   >
                                     <UserCircle className="w-3 h-3" />
                                   </button>
                                   <button
-                                    onClick={() => setTransferStudent({ student, circleId: circle.id })}
+                                    onClick={() => { const s = circleStudents.find(x => x.id === student.id); if (s) setTransferStudent({ student: s, circleId: circle.id }); }}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors text-xs font-semibold"
                                     title="نقل لحلقة أخرى"
-                                    data-testid={`btn-transfer-${student.id}`}
                                   >
-                                    <ArrowLeftRight className="w-3 h-3" />
-                                    نقل
+                                    <ArrowLeftRight className="w-3 h-3" />نقل
                                   </button>
                                   <button
-                                    onClick={() => handleArchive(student, circle.id)}
+                                    onClick={() => { const s = circleStudents.find(x => x.id === student.id); if (s) handleArchive(s, circle.id); }}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors text-xs font-semibold"
-                                    title="إخراج الطالبة من هذه الحلقة"
-                                    data-testid={`btn-archive-${student.id}`}
                                   >
-                                    <Archive className="w-3 h-3" />
-                                    إخراج
+                                    <Archive className="w-3 h-3" />إخراج
                                   </button>
                                   <button
                                     onClick={() => {
-                                      setRoleForm({ name: student.fullName, email: "", password: "", track: myTrack ?? "", circleId: circle.id.toString() });
+                                      setRoleLookupStep("email");
+                                      setRoleLookupEmail("");
+                                      setRoleFoundUser(null);
+                                      setRoleNotFound(false);
+                                      setRoleForm({ name: student.fullName, email: "", password: "", role: "student", track: myTrack ?? "", circleId: circle.id.toString() });
                                       setAddRoleOpen(true);
                                     }}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors text-xs font-semibold"
-                                    title="إضافة دور لهذه الطالبة"
-                                    data-testid={`btn-add-role-${student.id}`}
                                   >
-                                    <UserPlus className="w-3 h-3" />
-                                    دور
+                                    <UserPlus className="w-3 h-3" />دور
                                   </button>
                                 </div>
                               </div>
@@ -513,88 +703,133 @@ export default function TrackPage() {
         />
       )}
 
-      {/* نافذة إضافة دور لطالبة موجودة */}
-      <Dialog open={addRoleOpen} onOpenChange={setAddRoleOpen}>
+      {/* نافذة إضافة دور */}
+      <Dialog open={addRoleOpen} onOpenChange={open => {
+        setAddRoleOpen(open);
+        if (!open) {
+          setRoleLookupStep("email");
+          setRoleLookupEmail("");
+          setRoleFoundUser(null);
+          setRoleNotFound(false);
+          setRoleForm({ name: "", email: "", password: "", role: "student", track: "", circleId: "" });
+        }
+      }}>
         <DialogContent className="max-w-md" dir="rtl">
           <DialogHeader>
-            <DialogTitle>إضافة دور · طالبة</DialogTitle>
+            <DialogTitle>إضافة دور</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>اسم الطالبة</Label>
-              <Input
-                value={roleForm.name}
-                onChange={e => setRoleForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="الاسم الكامل"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>البريد الإلكتروني</Label>
-              <Input
-                value={roleForm.email}
-                onChange={e => setRoleForm(f => ({ ...f, email: e.target.value }))}
-                placeholder="email@sana.sa"
-                type="email"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>كلمة المرور</Label>
-              <Input
-                type="password"
-                value={roleForm.password}
-                onChange={e => setRoleForm(f => ({ ...f, password: e.target.value }))}
-                placeholder="••••••••"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>المسار</Label>
-              <Select
-                value={roleForm.track}
-                onValueChange={v => setRoleForm(f => ({ ...f, track: v, circleId: "" }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="اختيار المسار" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(allTracks ?? []).map(t => (
-                    <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {roleForm.track && (
+
+          {roleLookupStep === "email" ? (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-muted-foreground">أدخلي البريد الإلكتروني للشخص المراد إضافة دور له</p>
               <div className="space-y-2">
-                <Label>الحلقة</Label>
-                <Select
-                  value={roleForm.circleId}
-                  onValueChange={v => setRoleForm(f => ({ ...f, circleId: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختيار الحلقة" />
-                  </SelectTrigger>
+                <Label>البريد الإلكتروني</Label>
+                <Input
+                  value={roleLookupEmail}
+                  onChange={e => setRoleLookupEmail(e.target.value)}
+                  placeholder="email@sana.sa"
+                  type="email"
+                  onKeyDown={e => e.key === "Enter" && handleLookupEmail()}
+                />
+              </div>
+              <DialogFooter className="gap-2 pt-2">
+                <Button variant="outline" onClick={() => setAddRoleOpen(false)}>إلغاء</Button>
+                <Button onClick={handleLookupEmail} disabled={!roleLookupEmail.trim() || roleLookupLoading}>
+                  {roleLookupLoading ? "جاري البحث..." : "بحث"}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              {roleFoundUser ? (
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-emerald-700 font-semibold">تم إيجاد الحساب</p>
+                    <p className="text-xs text-emerald-600">ستُحفظ كلمة المرور الحالية تلقائياً</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
+                  <p className="text-xs text-amber-700 font-semibold">حساب جديد</p>
+                  <p className="text-xs text-amber-600">لم يُعثر على حساب بهذا البريد — سيتم إنشاء حساب جديد</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>الاسم الكامل</Label>
+                <Input
+                  value={roleForm.name}
+                  onChange={e => setRoleForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="الاسم الكامل"
+                />
+              </div>
+
+              {!roleFoundUser && (
+                <div className="space-y-2">
+                  <Label>كلمة المرور</Label>
+                  <Input
+                    type="password"
+                    value={roleForm.password}
+                    onChange={e => setRoleForm(f => ({ ...f, password: e.target.value }))}
+                    placeholder="••••••••"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>الدور</Label>
+                <Select value={roleForm.role} onValueChange={v => setRoleForm(f => ({ ...f, role: v as any }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {(circles ?? [])
-                      .filter(c => c.track === roleForm.track)
-                      .map(c => (
-                        <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
-                      ))}
+                    <SelectItem value="student">طالبة</SelectItem>
+                    <SelectItem value="teacher">معلمة</SelectItem>
+                    <SelectItem value="supervisor">مشرفة</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            )}
-            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3">
-              <p className="text-xs text-emerald-700">الدور: <span className="font-semibold">طالبة</span></p>
+
+              <div className="space-y-2">
+                <Label>المسار</Label>
+                <Select value={roleForm.track} onValueChange={v => setRoleForm(f => ({ ...f, track: v, circleId: "" }))}>
+                  <SelectTrigger><SelectValue placeholder="اختيار المسار" /></SelectTrigger>
+                  <SelectContent>
+                    {(allTracks ?? []).map(t => (
+                      <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {roleForm.track && (
+                <div className="space-y-2">
+                  <Label>الحلقة</Label>
+                  <Select value={roleForm.circleId} onValueChange={v => setRoleForm(f => ({ ...f, circleId: v }))}>
+                    <SelectTrigger><SelectValue placeholder="اختيار الحلقة" /></SelectTrigger>
+                    <SelectContent>
+                      {(circles ?? []).filter(c => c.track === roleForm.track).map(c => (
+                        <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <DialogFooter className="gap-2 pt-2">
+                <Button variant="outline" onClick={() => { setRoleLookupStep("email"); setRoleFoundUser(null); setRoleNotFound(false); }}>رجوع</Button>
+                <Button
+                  onClick={handleAddRole}
+                  disabled={
+                    !roleForm.name || !roleForm.track || !roleForm.circleId ||
+                    (!roleFoundUser && !roleForm.password) ||
+                    createUser.isPending
+                  }
+                >
+                  {createUser.isPending ? "جاري الإضافة..." : "إضافة الدور"}
+                </Button>
+              </DialogFooter>
             </div>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setAddRoleOpen(false)}>إلغاء</Button>
-            <Button
-              onClick={handleAddRole}
-              disabled={!roleForm.name || !roleForm.email || !roleForm.password || !roleForm.track || !roleForm.circleId || createUser.isPending}
-            >
-              {createUser.isPending ? "جاري الإضافة..." : "إضافة الدور"}
-            </Button>
-          </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 
