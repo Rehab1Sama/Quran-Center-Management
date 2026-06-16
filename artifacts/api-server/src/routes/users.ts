@@ -188,6 +188,42 @@ router.delete("/users/:id/permanent", authenticate, requireRole("leader"), async
   res.sendStatus(204);
 });
 
+router.patch("/users/:id/set-role", authenticate, async (req, res): Promise<void> => {
+  const allowed = ["leader", "deputy", "track_supervisor"];
+  if (!allowed.includes(req.userRole ?? "")) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  const { role, circleId, track } = req.body as { role: string; circleId?: number; track?: string };
+
+  const validRoles = ["student", "teacher", "supervisor", "track_supervisor", "data_entry"];
+  if (!role || !validRoles.includes(role)) {
+    res.status(400).json({ error: "دور غير صالح" }); return;
+  }
+  if (req.userRole === "track_supervisor" && !["teacher", "supervisor"].includes(role)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  const updateData: Record<string, unknown> = { role };
+  if (circleId !== undefined) updateData.circleId = circleId;
+  if (track !== undefined) updateData.track = track;
+
+  const [user] = await db.update(usersTable).set(updateData).where(eq(usersTable.id, id)).returning();
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  if (circleId) {
+    if (role === "teacher") {
+      await db.update(circlesTable).set({ teacherId: id }).where(eq(circlesTable.id, circleId));
+    } else if (role === "supervisor") {
+      await db.update(circlesTable).set({ supervisorId: id }).where(eq(circlesTable.id, circleId));
+    }
+  }
+
+  const { passwordHash: _ph, ...safeUser } = user;
+  res.json(safeUser);
+});
+
 router.patch("/users/:id/reset-password", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);

@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { useListCircles, useUpdateCircle, useListStudents, useArchiveStudent, useRestoreStudent, useGetCurrentUser } from "@workspace/api-client-react";
+import { useListCircles, useUpdateCircle, useListStudents, useArchiveStudent, useRestoreStudent, useGetCurrentUser, useUpdateStudent } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronDown, ChevronUp, Archive, RotateCcw, UserCircle, Link2, PlaneTakeoff, XCircle, RefreshCw, Sun, Moon, UserX, MoveRight } from "lucide-react";
+import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronDown, ChevronUp, Archive, RotateCcw, UserCircle, Link2, PlaneTakeoff, XCircle, RefreshCw, Sun, Moon, UserX, MoveRight, Crown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -25,59 +25,73 @@ type RemoveStaffModal = {
   staffName: string;
 };
 
-function CircleStudentsPanel({ circleId, canGrantLeave }: { circleId: number; canGrantLeave: boolean }) {
+function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRole: string }) {
   const [showArchived, setShowArchived] = useState(false);
   const [leaveModal, setLeaveModal] = useState<LeaveModal | null>(null);
   const [leaveStart, setLeaveStart] = useState("");
   const [leaveEnd, setLeaveEnd] = useState("");
   const [leaveReason, setLeaveReason] = useState("");
   const [leaveSaving, setLeaveSaving] = useState(false);
+
+  const [transferModal, setTransferModal] = useState<{ studentId: number; studentName: string } | null>(null);
+  const [transferTargetId, setTransferTargetId] = useState<number | null>(null);
+  const [transferSearch, setTransferSearch] = useState("");
+  const [transferring, setTransferring] = useState(false);
+
+  const [assignRoleModal, setAssignRoleModal] = useState<{ studentId: number; studentName: string } | null>(null);
+  const [lookupEmail, setLookupEmail] = useState("");
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [foundUser, setFoundUser] = useState<{ id: number; name: string; email: string } | null>(null);
+  const [lookupError, setLookupError] = useState(false);
+  const [newRole, setNewRole] = useState("teacher");
+  const [newRoleCircleId, setNewRoleCircleId] = useState<number | null>(null);
+  const [assignSaving, setAssignSaving] = useState(false);
+
+  const [inlineLeaveId, setInlineLeaveId] = useState<number | null>(null);
+  const [ilStart, setIlStart] = useState("");
+  const [ilEnd, setIlEnd] = useState("");
+  const [ilReason, setIlReason] = useState("");
+  const [ilSaving, setIlSaving] = useState(false);
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
 
-  const { data: students, isLoading } = useListStudents(
-    { circleId },
-    { query: { queryKey: ["circle-students", circleId] } }
-  );
-  const { data: archivedStudents } = useListStudents(
-    { circleId, isArchived: true },
-    { query: { queryKey: ["circle-students-archived", circleId] } }
-  );
+  const isLeaderOrDeputy = ["leader", "deputy"].includes(userRole);
+  const isTrackSupervisor = userRole === "track_supervisor";
+
+  const { data: students, isLoading } = useListStudents({ circleId }, { query: { queryKey: ["circle-students", circleId] } });
+  const { data: archivedStudents } = useListStudents({ circleId, isArchived: true }, { query: { queryKey: ["circle-students-archived", circleId] } });
+  const { data: allCircles } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
 
   const archiveStudent = useArchiveStudent();
   const restoreStudent = useRestoreStudent();
+  const updateStudent = useUpdateStudent();
 
   const handleArchive = (s: any) => {
     if (!confirm(`هل تريدين إخراج "${s.fullName}" من هذه الحلقة؟`)) return;
-    archiveStudent.mutate(
-      { id: s.id, data: { circleId } },
-      {
-        onSuccess: () => {
-          toast({ title: `تم إخراج ${s.fullName} من الحلقة` });
-          queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
-          queryClient.invalidateQueries({ queryKey: ["circle-students-archived", circleId] });
-          queryClient.invalidateQueries({ queryKey: ["circles"] });
-        },
-        onError: () => toast({ title: "خطأ في الإخراج", variant: "destructive" }),
-      }
-    );
+    archiveStudent.mutate({ id: s.id, data: { circleId } }, {
+      onSuccess: () => {
+        toast({ title: `تم إخراج ${s.fullName} من الحلقة` });
+        queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
+        queryClient.invalidateQueries({ queryKey: ["circle-students-archived", circleId] });
+        queryClient.invalidateQueries({ queryKey: ["circles"] });
+      },
+      onError: () => toast({ title: "خطأ في الإخراج", variant: "destructive" }),
+    });
   };
 
   const handleRestore = (s: any) => {
     if (!confirm(`هل تريدين استرجاع "${s.fullName}" إلى هذه الحلقة؟`)) return;
-    restoreStudent.mutate(
-      { id: s.id, data: { circleId } },
-      {
-        onSuccess: () => {
-          toast({ title: `تم استرجاع ${s.fullName} إلى الحلقة` });
-          queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
-          queryClient.invalidateQueries({ queryKey: ["circle-students-archived", circleId] });
-          queryClient.invalidateQueries({ queryKey: ["circles"] });
-        },
-        onError: () => toast({ title: "خطأ في الاسترجاع", variant: "destructive" }),
-      }
-    );
+    restoreStudent.mutate({ id: s.id, data: { circleId } }, {
+      onSuccess: () => {
+        toast({ title: `تم استرجاع ${s.fullName} إلى الحلقة` });
+        queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
+        queryClient.invalidateQueries({ queryKey: ["circle-students-archived", circleId] });
+        queryClient.invalidateQueries({ queryKey: ["circles"] });
+      },
+      onError: () => toast({ title: "خطأ في الاسترجاع", variant: "destructive" }),
+    });
   };
 
   const openLeaveModal = (s: any) => {
@@ -103,11 +117,8 @@ function CircleStudentsPanel({ circleId, canGrantLeave }: { circleId: number; ca
       toast({ title: `تم تسجيل إجازة ${leaveModal.studentName}` });
       queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
       setLeaveModal(null);
-    } catch {
-      toast({ title: "خطأ في تسجيل الإجازة", variant: "destructive" });
-    } finally {
-      setLeaveSaving(false);
-    }
+    } catch { toast({ title: "خطأ في تسجيل الإجازة", variant: "destructive" }); }
+    finally { setLeaveSaving(false); }
   };
 
   const handleCancelLeave = async (s: any) => {
@@ -122,98 +133,165 @@ function CircleStudentsPanel({ circleId, canGrantLeave }: { circleId: number; ca
       if (!res.ok) throw new Error();
       toast({ title: `تم إلغاء إجازة ${s.fullName}` });
       queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
-    } catch {
-      toast({ title: "خطأ في إلغاء الإجازة", variant: "destructive" });
-    }
+    } catch { toast({ title: "خطأ في إلغاء الإجازة", variant: "destructive" }); }
+  };
+
+  const handleTransfer = () => {
+    if (!transferModal || !transferTargetId) return;
+    setTransferring(true);
+    updateStudent.mutate({ id: transferModal.studentId, data: { circleId: transferTargetId } }, {
+      onSuccess: () => {
+        toast({ title: `تم نقل ${transferModal.studentName} بنجاح` });
+        queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
+        queryClient.invalidateQueries({ queryKey: ["circles"] });
+        setTransferModal(null);
+      },
+      onError: () => toast({ title: "خطأ في النقل", variant: "destructive" }),
+      onSettled: () => setTransferring(false),
+    });
+  };
+
+  const handleLookupUser = async () => {
+    if (!lookupEmail.trim()) return;
+    setLookupLoading(true); setFoundUser(null); setLookupError(false);
+    try {
+      const token = localStorage.getItem("sana_auth_token");
+      const res = await fetch(`/api/users/by-email?email=${encodeURIComponent(lookupEmail.trim())}`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      if (!res.ok) { setLookupError(true); return; }
+      setFoundUser(await res.json());
+    } catch { setLookupError(true); }
+    finally { setLookupLoading(false); }
+  };
+
+  const handleAssignRole = async () => {
+    if (!foundUser) return;
+    setAssignSaving(true);
+    try {
+      const token = localStorage.getItem("sana_auth_token");
+      const body: any = { role: newRole };
+      if (newRoleCircleId) body.circleId = newRoleCircleId;
+      const res = await fetch(`/api/users/${foundUser.id}/set-role`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: `تم تحديث دور ${foundUser.name} بنجاح` });
+      queryClient.invalidateQueries({ queryKey: ["circles"] });
+      setAssignRoleModal(null);
+    } catch { toast({ title: "حدث خطأ", variant: "destructive" }); }
+    finally { setAssignSaving(false); }
+  };
+
+  const handleInlineLeave = async (s: any) => {
+    if (!ilStart || !ilEnd) { toast({ title: "أدخلي تاريخ البداية والنهاية", variant: "destructive" }); return; }
+    setIlSaving(true);
+    try {
+      const token = localStorage.getItem("sana_auth_token");
+      const res = await fetch(`/api/students/${s.id}/leave`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ circleId, leaveStart: ilStart, leaveEnd: ilEnd, reason: ilReason || null }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: `تم تسجيل إجازة ${s.fullName}` });
+      queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
+      setInlineLeaveId(null); setIlStart(""); setIlEnd(""); setIlReason("");
+    } catch { toast({ title: "خطأ في تسجيل الإجازة", variant: "destructive" }); }
+    finally { setIlSaving(false); }
   };
 
   if (isLoading) return <p className="text-xs text-muted-foreground py-3 text-center">جاري التحميل...</p>;
 
   const today = new Date().toISOString().slice(0, 10);
+  const roleOptions = [
+    { value: "teacher", label: "معلمة" },
+    { value: "supervisor", label: "مشرفة" },
+    { value: "track_supervisor", label: "مسؤولة مسار" },
+    { value: "data_entry", label: "مدخلة بيانات" },
+  ];
 
   return (
     <div className="mt-3 pt-3 border-t border-border/50 space-y-2" dir="rtl">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-muted-foreground">الطالبات ({students?.length ?? 0})</p>
         {(archivedStudents?.length ?? 0) > 0 && (
-          <button
-            onClick={() => setShowArchived(v => !v)}
-            className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-          >
-            <Archive className="w-3 h-3" />
-            المؤرشفات ({archivedStudents?.length})
+          <button onClick={() => setShowArchived(v => !v)} className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
+            <Archive className="w-3 h-3" />المؤرشفات ({archivedStudents?.length})
           </button>
         )}
       </div>
 
-      {/* Active students */}
-      {(!students || students.length === 0) && (
-        <p className="text-xs text-muted-foreground text-center py-2">لا توجد طالبات</p>
-      )}
+      {(!students || students.length === 0) && <p className="text-xs text-muted-foreground text-center py-2">لا توجد طالبات</p>}
+
       {students?.map(s => {
         const sAny = s as any;
         const onLeave = !!(sAny.leaveStart && sAny.leaveEnd && sAny.leaveStart <= today && today <= sAny.leaveEnd);
+        const isInlineOpen = inlineLeaveId === s.id;
         return (
-          <div key={s.id} className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 ${onLeave ? "bg-blue-50 border border-blue-200" : "bg-muted/30"}`}>
-            <div className="flex items-center gap-1.5 flex-1 min-w-0">
-              <span className="text-xs font-medium truncate">{s.fullName}</span>
-              {onLeave && (
-                <span className="text-[10px] bg-blue-100 text-blue-700 border border-blue-200 rounded-full px-1.5 py-0.5 shrink-0">إجازة</span>
-              )}
+          <div key={s.id}>
+            <div className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 ${onLeave ? "bg-blue-50 border border-blue-200" : "bg-muted/30"}`}>
+              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                <span className="text-xs font-medium truncate">{s.fullName}</span>
+                {onLeave && <span className="text-[10px] bg-blue-100 text-blue-700 border border-blue-200 rounded-full px-1.5 py-0.5 shrink-0">إجازة</span>}
+              </div>
+              <div className="flex gap-1 flex-shrink-0">
+                <button onClick={() => navigate(`/students/${s.id}`)} className="p-1 rounded bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors" title="ملف الطالبة">
+                  <UserCircle className="w-3 h-3" />
+                </button>
+                {isLeaderOrDeputy && (
+                  <>
+                    {onLeave
+                      ? <button onClick={() => handleCancelLeave(sAny)} className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors" title="إلغاء الإجازة"><XCircle className="w-3 h-3" /></button>
+                      : <button onClick={() => openLeaveModal(sAny)} className="p-1 rounded bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors" title="إجازة"><PlaneTakeoff className="w-3 h-3" /></button>
+                    }
+                    <button onClick={() => { setTransferModal({ studentId: s.id, studentName: s.fullName }); setTransferTargetId(null); setTransferSearch(""); }} className="p-1 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors" title="نقل"><MoveRight className="w-3 h-3" /></button>
+                    <button onClick={() => handleArchive(sAny)} className="p-1 rounded bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors" title="أرشفة"><Archive className="w-3 h-3" /></button>
+                    <button onClick={() => { setAssignRoleModal({ studentId: s.id, studentName: s.fullName }); setLookupEmail(""); setFoundUser(null); setLookupError(false); setNewRole("teacher"); setNewRoleCircleId(circleId); }} className="p-1 rounded bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors" title="إعطاء دور"><Crown className="w-3 h-3" /></button>
+                  </>
+                )}
+                {isTrackSupervisor && (
+                  <>
+                    <button
+                      onClick={() => { if (isInlineOpen) { setInlineLeaveId(null); return; } setInlineLeaveId(s.id); setIlStart(sAny.leaveStart ?? ""); setIlEnd(sAny.leaveEnd ?? ""); setIlReason(""); }}
+                      className={`p-1 rounded transition-colors ${isInlineOpen ? "bg-amber-100 text-amber-700" : "bg-amber-50 text-amber-600 hover:bg-amber-100"}`}
+                      title="إجازة"
+                    ><PlaneTakeoff className="w-3 h-3" /></button>
+                    <button onClick={() => handleArchive(sAny)} className="p-1 rounded bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors" title="أرشفة"><Archive className="w-3 h-3" /></button>
+                  </>
+                )}
+                {!isLeaderOrDeputy && !isTrackSupervisor && (
+                  <button onClick={() => handleArchive(sAny)} className="p-1 rounded bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors" title="أرشفة"><Archive className="w-3 h-3" /></button>
+                )}
+              </div>
             </div>
-            <div className="flex gap-1 flex-shrink-0">
-              <button
-                onClick={() => navigate(`/students/${s.id}`)}
-                className="p-1 rounded bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors"
-                title="ملف الطالبة"
-              >
-                <UserCircle className="w-3 h-3" />
-              </button>
-              {canGrantLeave && (
-                onLeave ? (
-                  <button
-                    onClick={() => handleCancelLeave(s)}
-                    className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                    title="إلغاء الإجازة"
-                  >
-                    <XCircle className="w-3 h-3" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => openLeaveModal(s)}
-                    className="p-1 rounded bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
-                    title="منح إجازة"
-                  >
-                    <PlaneTakeoff className="w-3 h-3" />
-                  </button>
-                )
-              )}
-              <button
-                onClick={() => handleArchive(s)}
-                className="p-1 rounded bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors"
-                title="أرشفة"
-              >
-                <Archive className="w-3 h-3" />
-              </button>
-            </div>
+            {isTrackSupervisor && isInlineOpen && (
+              <div className="mx-1 mt-1 mb-1 p-2.5 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                <p className="text-[10px] font-semibold text-amber-700">إجازة: {s.fullName}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><p className="text-[10px] text-muted-foreground mb-0.5">من</p><input type="date" value={ilStart} onChange={e => setIlStart(e.target.value)} className="h-7 text-xs border border-input rounded px-2 w-full bg-white" /></div>
+                  <div><p className="text-[10px] text-muted-foreground mb-0.5">إلى</p><input type="date" value={ilEnd} onChange={e => setIlEnd(e.target.value)} className="h-7 text-xs border border-input rounded px-2 w-full bg-white" /></div>
+                </div>
+                <input type="text" value={ilReason} onChange={e => setIlReason(e.target.value)} placeholder="السبب (اختياري)" className="h-7 text-xs border border-input rounded px-2 w-full bg-white" />
+                <div className="flex gap-1.5">
+                  <button onClick={() => handleInlineLeave(sAny)} disabled={ilSaving || !ilStart || !ilEnd} className="flex-1 h-6 text-[10px] font-semibold bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-50 transition-colors">{ilSaving ? "..." : "حفظ"}</button>
+                  <button onClick={() => setInlineLeaveId(null)} className="flex-1 h-6 text-[10px] border border-border rounded hover:bg-muted transition-colors">إلغاء</button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
 
-      {/* Archived students */}
       {showArchived && archivedStudents && archivedStudents.length > 0 && (
         <div className="border-t border-dashed border-border/50 pt-2 space-y-1.5">
           <p className="text-[10px] text-muted-foreground font-medium">المؤرشفات</p>
           {archivedStudents.map(s => (
             <div key={s.id} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5 opacity-70">
               <span className="text-xs text-muted-foreground truncate flex-1">{s.fullName}</span>
-              <button
-                onClick={() => handleRestore(s)}
-                className="p-1 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
-                title="استرجاع للحلقة"
-              >
-                <RotateCcw className="w-3 h-3" />
-              </button>
+              <button onClick={() => handleRestore(s)} className="p-1 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors" title="استرجاع للحلقة"><RotateCcw className="w-3 h-3" /></button>
             </div>
           ))}
         </div>
@@ -224,56 +302,100 @@ function CircleStudentsPanel({ circleId, canGrantLeave }: { circleId: number; ca
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" dir="rtl">
           <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm mx-4 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-base flex items-center gap-2">
-                <PlaneTakeoff className="w-4 h-4 text-amber-500" />
-                منح إجازة
-              </h3>
-              <button onClick={() => setLeaveModal(null)} className="p-1 rounded hover:bg-muted">
-                <X className="w-4 h-4 text-muted-foreground" />
-              </button>
+              <h3 className="font-bold text-base flex items-center gap-2"><PlaneTakeoff className="w-4 h-4 text-amber-500" />منح إجازة</h3>
+              <button onClick={() => setLeaveModal(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4 text-muted-foreground" /></button>
             </div>
             <p className="text-sm text-muted-foreground">الطالبة: <span className="font-semibold text-foreground">{leaveModal.studentName}</span></p>
             <div className="space-y-3">
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold">تاريخ البداية</Label>
-                <input
-                  type="date"
-                  value={leaveStart}
-                  onChange={e => setLeaveStart(e.target.value)}
-                  className="h-9 text-sm border border-input rounded-md px-3 w-full bg-background"
-                />
+              <div className="space-y-1"><Label className="text-xs font-semibold">تاريخ البداية</Label><input type="date" value={leaveStart} onChange={e => setLeaveStart(e.target.value)} className="h-9 text-sm border border-input rounded-md px-3 w-full bg-background" /></div>
+              <div className="space-y-1"><Label className="text-xs font-semibold">تاريخ النهاية</Label><input type="date" value={leaveEnd} onChange={e => setLeaveEnd(e.target.value)} className="h-9 text-sm border border-input rounded-md px-3 w-full bg-background" /></div>
+              <div className="space-y-1"><Label className="text-xs font-semibold">السبب (اختياري)</Label><input type="text" value={leaveReason} onChange={e => setLeaveReason(e.target.value)} placeholder="مثال: سفر، مرض..." className="h-9 text-sm border border-input rounded-md px-3 w-full bg-background" /></div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button onClick={handleGrantLeave} disabled={leaveSaving || !leaveStart || !leaveEnd} className="flex-1 text-sm">{leaveSaving ? "جاري الحفظ..." : "تسجيل الإجازة"}</Button>
+              <Button variant="outline" onClick={() => setLeaveModal(null)} className="flex-1 text-sm">إلغاء</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Modal */}
+      {transferModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm mx-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-base flex items-center gap-2"><MoveRight className="w-4 h-4 text-indigo-500" />نقل الطالبة</h3>
+              <button onClick={() => setTransferModal(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4 text-muted-foreground" /></button>
+            </div>
+            <p className="text-sm text-muted-foreground">الطالبة: <span className="font-semibold text-foreground">{transferModal.studentName}</span></p>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground">اختاري الحلقة المستهدفة:</p>
+              <div className="relative">
+                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input type="text" value={transferSearch} onChange={e => setTransferSearch(e.target.value)} placeholder="بحث بالاسم..." className="h-8 text-xs border border-input rounded-md px-3 pe-9 w-full bg-background text-right" />
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold">تاريخ النهاية</Label>
-                <input
-                  type="date"
-                  value={leaveEnd}
-                  onChange={e => setLeaveEnd(e.target.value)}
-                  className="h-9 text-sm border border-input rounded-md px-3 w-full bg-background"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold">السبب (اختياري)</Label>
-                <input
-                  type="text"
-                  value={leaveReason}
-                  onChange={e => setLeaveReason(e.target.value)}
-                  placeholder="مثال: سفر، مرض..."
-                  className="h-9 text-sm border border-input rounded-md px-3 w-full bg-background"
-                />
+              <div className="max-h-44 overflow-y-auto space-y-1 border border-border rounded-lg p-1.5">
+                {(allCircles ?? []).filter(c => c.id !== circleId && (!transferSearch || c.name.includes(transferSearch))).map(c => (
+                  <button key={c.id} onClick={() => setTransferTargetId(c.id)} className={`w-full text-right text-xs px-2.5 py-1.5 rounded-lg transition-colors ${transferTargetId === c.id ? "bg-indigo-100 text-indigo-700 font-semibold" : "hover:bg-muted text-foreground"}`}>
+                    {c.name}{(c as any).track && <span className="text-muted-foreground mr-1">— {(c as any).track}</span>}
+                  </button>
+                ))}
               </div>
             </div>
             <div className="flex gap-2 pt-1">
-              <Button
-                onClick={handleGrantLeave}
-                disabled={leaveSaving || !leaveStart || !leaveEnd}
-                className="flex-1 text-sm"
-              >
-                {leaveSaving ? "جاري الحفظ..." : "تسجيل الإجازة"}
-              </Button>
-              <Button variant="outline" onClick={() => setLeaveModal(null)} className="flex-1 text-sm">
-                إلغاء
-              </Button>
+              <Button onClick={handleTransfer} disabled={transferring || !transferTargetId} className="flex-1 text-sm bg-indigo-600 hover:bg-indigo-700">{transferring ? "جاري النقل..." : "نقل"}</Button>
+              <Button variant="outline" onClick={() => setTransferModal(null)} className="flex-1 text-sm">إلغاء</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Role Modal */}
+      {assignRoleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm mx-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-base flex items-center gap-2"><Crown className="w-4 h-4 text-purple-500" />إعطاء دور</h3>
+              <button onClick={() => setAssignRoleModal(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4 text-muted-foreground" /></button>
+            </div>
+            <p className="text-sm text-muted-foreground">الطالبة: <span className="font-semibold text-foreground">{assignRoleModal.studentName}</span></p>
+            {!foundUser ? (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">أدخلي البريد الإلكتروني لحسابها:</p>
+                <div className="flex gap-2">
+                  <input type="email" value={lookupEmail} onChange={e => setLookupEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLookupUser()} placeholder="example@email.com" className="flex-1 h-9 text-sm border border-input rounded-md px-3 bg-background text-left" dir="ltr" autoComplete="off" />
+                  <Button size="sm" onClick={handleLookupUser} disabled={lookupLoading || !lookupEmail.trim()}>{lookupLoading ? "..." : "بحث"}</Button>
+                </div>
+                {lookupError && <p className="text-xs text-rose-500">لم يُعثر على حساب بهذا البريد</p>}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center justify-between">
+                  <div><p className="text-xs font-semibold text-emerald-700">{foundUser.name}</p><p className="text-[10px] text-emerald-600" dir="ltr">{foundUser.email}</p></div>
+                  <button onClick={() => { setFoundUser(null); setLookupEmail(""); setLookupError(false); }} className="text-[10px] text-muted-foreground hover:text-foreground">تغيير</button>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">الدور الجديد:</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {roleOptions.map(opt => (
+                      <button key={opt.value} onClick={() => setNewRole(opt.value)} className={`py-1.5 px-3 rounded-lg border text-xs font-semibold transition-all ${newRole === opt.value ? "border-purple-400 bg-purple-50 text-purple-700" : "border-border text-muted-foreground hover:bg-muted/50"}`}>{opt.label}</button>
+                    ))}
+                  </div>
+                </div>
+                {["teacher", "supervisor"].includes(newRole) && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground">الحلقة (اختياري):</p>
+                    <select value={newRoleCircleId ?? ""} onChange={e => setNewRoleCircleId(e.target.value ? parseInt(e.target.value) : null)} className="h-8 text-xs border border-input rounded-md px-2 w-full bg-background">
+                      <option value="">-- بدون حلقة --</option>
+                      {(allCircles ?? []).map(c => <option key={c.id} value={c.id}>{c.name}{(c as any).track ? ` — ${(c as any).track}` : ""}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="flex gap-2 pt-1">
+              {foundUser && <Button onClick={handleAssignRole} disabled={assignSaving} className="flex-1 text-sm bg-purple-600 hover:bg-purple-700">{assignSaving ? "جاري الحفظ..." : "حفظ الدور"}</Button>}
+              <Button variant="outline" onClick={() => setAssignRoleModal(null)} className="flex-1 text-sm">إلغاء</Button>
             </div>
           </div>
         </div>
@@ -701,7 +823,7 @@ export default function CirclesPage() {
                         </div>
 
                         {expandedCircle === circle.id && (
-                          <CircleStudentsPanel circleId={circle.id} canGrantLeave={canGrantLeave} />
+                          <CircleStudentsPanel circleId={circle.id} userRole={currentUser?.role ?? ""} />
                         )}
                       </CardContent>
                     </Card>
