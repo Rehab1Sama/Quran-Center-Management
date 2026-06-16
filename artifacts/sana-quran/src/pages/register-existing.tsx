@@ -264,6 +264,8 @@ export default function RegisterExistingPage() {
                       value={form.email}
                       onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                       placeholder="email@example.com"
+                      dir="ltr"
+                      className="text-left"
                       data-testid="input-email"
                     />
                   </div>

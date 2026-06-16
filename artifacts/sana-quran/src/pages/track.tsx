@@ -769,6 +769,8 @@ export default function TrackPage() {
                   onChange={e => setRoleLookupEmail(e.target.value)}
                   placeholder="email@sana.sa"
                   type="email"
+                  dir="ltr"
+                  className="text-left"
                   onKeyDown={e => e.key === "Enter" && handleLookupEmail()}
                 />
               </div>
@@ -943,6 +945,8 @@ export default function TrackPage() {
                 onChange={e => setStudentForm(f => ({ ...f, email: e.target.value }))}
                 placeholder="email@sana.sa"
                 type="email"
+                dir="ltr"
+                className="text-left"
               />
             </div>
             <div className="space-y-2">

@@ -155,7 +155,9 @@ export default function LoginPage() {
                       onChange={e => setEmail(e.target.value)}
                       placeholder="example@sana.sa"
                       required
-                      className="text-right h-11"
+                      className="text-left h-11"
+                      dir="ltr"
+                      autoComplete="email"
                       data-testid="input-email"
                     />
                   </div>
