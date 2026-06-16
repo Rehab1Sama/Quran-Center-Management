@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, studentsTable, recordsTable, reviewPlansTable, studentGoalsTable, studentNotesTable, studentTransfersTable, planNotificationsTable, examRecordsTable } from "@workspace/db";
+import { db, usersTable, studentsTable, circlesTable, recordsTable, reviewPlansTable, studentGoalsTable, studentNotesTable, studentTransfersTable, planNotificationsTable, examRecordsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { hashPassword } from "../lib/auth";
 import { authenticate, requireRole } from "../middlewares/authenticate";
@@ -82,6 +82,15 @@ router.post("/users", authenticate, async (req, res): Promise<void> => {
     });
   }
 
+  // ربط المعلمة/المشرفة بالحلقة تلقائياً
+  if (rest.circleId) {
+    if (rest.role === "teacher") {
+      await db.update(circlesTable).set({ teacherId: user.id }).where(eq(circlesTable.id, rest.circleId));
+    } else if (rest.role === "supervisor") {
+      await db.update(circlesTable).set({ supervisorId: user.id }).where(eq(circlesTable.id, rest.circleId));
+    }
+  }
+
   const { passwordHash: _ph, ...safeUser } = user;
   res.status(201).json(safeUser);
 });
@@ -132,6 +141,15 @@ router.patch("/users/:id", authenticate, requireRole("leader"), async (req, res)
       await db.update(studentsTable)
         .set({ circleId })
         .where(eq(studentsTable.fullName, user.name));
+    }
+  }
+
+  // تحديث teacher_id / supervisor_id في جدول الحلقة عند تعديل المعلمة أو المشرفة
+  if (user.circleId) {
+    if (user.role === "teacher") {
+      await db.update(circlesTable).set({ teacherId: user.id }).where(eq(circlesTable.id, user.circleId));
+    } else if (user.role === "supervisor") {
+      await db.update(circlesTable).set({ supervisorId: user.id }).where(eq(circlesTable.id, user.circleId));
     }
   }
 
