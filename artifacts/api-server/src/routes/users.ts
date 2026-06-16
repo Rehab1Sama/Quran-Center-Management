@@ -8,16 +8,18 @@ import { CreateUserBody, UpdateUserBody, ResetUserPasswordBody } from "@workspac
 const router: IRouter = Router();
 
 router.get("/users", authenticate, async (req, res): Promise<void> => {
-  // مسؤولة المسار ترى الطالبات في مسارها فقط
+  // مسؤولة المسار ترى الطالبات والمعلمات والمشرفات في مسارها فقط
   if (req.userRole === "track_supervisor") {
     const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
     const myTrack = me?.track ?? null;
     const all = await db.select().from(usersTable);
-    const filtered = all.filter(u => u.role === "student" && u.track === myTrack);
+    const filtered = all.filter(u =>
+      u.track === myTrack && ["student", "teacher", "supervisor"].includes(u.role)
+    );
     res.json(filtered.map(({ passwordHash: _ph, ...u }) => u));
     return;
   }
-  if (req.userRole !== "leader") {
+  if (req.userRole !== "leader" && req.userRole !== "deputy") {
     res.status(403).json({ error: "Forbidden" }); return;
   }
   const roleFilter = req.query.role as string | undefined;

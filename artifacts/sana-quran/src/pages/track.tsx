@@ -783,15 +783,17 @@ export default function TrackPage() {
             <div className="space-y-4 py-2">
               {/* معلومات الطالبة */}
               {roleFoundUser ? (
-                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 space-y-1">
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 space-y-2">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
                     <p className="text-xs text-emerald-700 font-semibold">الحساب موجود</p>
                   </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">الاسم الكامل</Label>
+                    <Input value={roleForm.name} onChange={e => setRoleForm(f => ({ ...f, name: e.target.value }))} placeholder="الاسم الكامل" />
+                  </div>
                   <div className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
-                    <p className="text-xs text-muted-foreground">الاسم</p>
-                    <p className="text-sm font-medium">{roleFoundUser.name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">البريد الإلكتروني</p>
+                    <p className="text-xs text-muted-foreground">البريد الإلكتروني (غير قابل للتعديل)</p>
                     <p className="text-xs font-medium text-foreground">{roleFoundUser.email}</p>
                   </div>
                 </div>

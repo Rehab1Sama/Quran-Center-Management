@@ -231,8 +231,14 @@ function VoiceInputButton({
     setTextDraft("");
     const parsed = parseVoiceTranscript(text);
     const startResult = findSurahFuzzy(parsed.startSurahRaw);
-    if (!startResult.match && startResult.suggestions.length > 0) {
-      setSuggest({ field: "start", raw: parsed.startSurahRaw, suggestions: startResult.suggestions, parsed });
+    if (!startResult.match) {
+      if (startResult.suggestions.length > 0) {
+        setSuggest({ field: "start", raw: parsed.startSurahRaw, suggestions: startResult.suggestions, parsed });
+        return;
+      }
+      setTextDraft(text);
+      setMicError("لم أتعرف على السورة — يمكنك تعديل النص يدوياً");
+      setShowText(true);
       return;
     }
     const endResult = findSurahFuzzy(parsed.endSurahRaw);
