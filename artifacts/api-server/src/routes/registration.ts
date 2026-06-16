@@ -261,13 +261,19 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
   const extraData = (req.body as any).extraData ?? null;
   const isNewcomer = (req.body as any).isNewcomer === true;
 
-  // منع تكرار التسجيل بنفس البريد الإلكتروني عبر نموذج التسجيل الذاتي
+  // منع تكرار التسجيل بنفس الاسم + البريد الإلكتروني (لمنع الخطأ غير المقصود)
   const existingUser = await db
-    .select({ id: usersTable.id })
+    .select({ id: usersTable.id, name: usersTable.name })
     .from(usersTable)
     .where(eq(usersTable.email, email.toLowerCase()));
-  if (existingUser.length > 0) {
-    res.status(409).json({ error: "هذا البريد الإلكتروني مسجّل مسبقًا، إذا نسيتِ كلمة المرور تواصلي مع القائدة" });
+  const duplicateByName = existingUser.find(
+    u => u.name.trim().toLowerCase() === fullName.trim().toLowerCase()
+  );
+  if (duplicateByName) {
+    res.status(409).json({
+      error: `يا ${fullName.trim().split(" ")[0]}، تم تسجيل حسابك من قبل. الرجاء عدم تكرار التسجيل بنفس الاسم`,
+      duplicateName: fullName.trim().split(" ")[0],
+    });
     return;
   }
 

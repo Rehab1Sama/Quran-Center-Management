@@ -785,19 +785,9 @@ export default function TrackPage() {
             <div className="space-y-4 py-2">
               {/* معلومات الطالبة */}
               {roleFoundUser ? (
-                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
-                    <p className="text-xs text-emerald-700 font-semibold">الحساب موجود</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">الاسم الكامل</Label>
-                    <Input value={roleForm.name} onChange={e => setRoleForm(f => ({ ...f, name: e.target.value }))} placeholder="الاسم الكامل" />
-                  </div>
-                  <div className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
-                    <p className="text-xs text-muted-foreground">البريد الإلكتروني (غير قابل للتعديل)</p>
-                    <p className="text-xs font-medium text-foreground">{roleFoundUser.email}</p>
-                  </div>
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                  <p className="text-xs text-emerald-700 font-semibold">الحساب موجود</p>
                 </div>
               ) : (
                 <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
@@ -805,6 +795,20 @@ export default function TrackPage() {
                   <p className="text-xs text-amber-600">سيتم إنشاء حساب جديد بهذا البريد</p>
                 </div>
               )}
+
+              {/* الاسم دائمًا قابل للتعديل */}
+              <div className="space-y-1">
+                <Label className="text-xs">الاسم الكامل</Label>
+                <Input value={roleForm.name} onChange={e => setRoleForm(f => ({ ...f, name: e.target.value }))} placeholder="الاسم الكامل" />
+              </div>
+
+              {/* الإيميل مقفل دائمًا */}
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">البريد الإلكتروني (غير قابل للتعديل)</Label>
+                <div className="bg-muted/40 rounded-md px-3 py-2 border border-input text-sm text-foreground dir-ltr text-left">
+                  {roleFoundUser ? roleFoundUser.email : roleLookupEmail}
+                </div>
+              </div>
 
               {/* تبويبات: إضافة دور / نقل الحلقة */}
               {transferStudentId && (
@@ -827,16 +831,10 @@ export default function TrackPage() {
               {roleDialogTab === "role" ? (
                 <>
                   {!roleFoundUser && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>الاسم الكامل</Label>
-                        <Input value={roleForm.name} onChange={e => setRoleForm(f => ({ ...f, name: e.target.value }))} placeholder="الاسم الكامل" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>كلمة المرور</Label>
-                        <Input type="password" value={roleForm.password} onChange={e => setRoleForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••••" />
-                      </div>
-                    </>
+                    <div className="space-y-2">
+                      <Label>كلمة المرور</Label>
+                      <Input type="password" value={roleForm.password} onChange={e => setRoleForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••••" />
+                    </div>
                   )}
 
                   <div className="space-y-2">
@@ -869,7 +867,7 @@ export default function TrackPage() {
                       <Select value={roleForm.circleId} onValueChange={v => setRoleForm(f => ({ ...f, circleId: v }))}>
                         <SelectTrigger><SelectValue placeholder="اختيار الحلقة" /></SelectTrigger>
                         <SelectContent>
-                          {(circles ?? []).filter(c => c.track === roleForm.track).map(c => (
+                          {(circleNames ?? []).filter(c => c.track === roleForm.track).map(c => (
                             <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
                           ))}
                         </SelectContent>
