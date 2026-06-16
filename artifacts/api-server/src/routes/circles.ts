@@ -266,6 +266,77 @@ router.post("/circles/seed-tracks", authenticate, async (req, res): Promise<void
   res.json({ created: toInsert.length, message: `تم إنشاء ${toInsert.length} حلقة بنجاح` });
 });
 
+// إزالة معلمة أو مشرفة من حلقة — مع خيار أرشفتها أو نقلها لحلقة أخرى
+router.post("/circles/:id/remove-staff", authenticate, async (req, res): Promise<void> => {
+  const allowed = ["leader", "deputy", "track_supervisor"];
+  if (!allowed.includes(req.userRole ?? "")) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const circleId = parseInt(raw, 10);
+
+  const { staffRole, action, targetCircleId } = req.body as {
+    staffRole: "teacher" | "supervisor";
+    action: "archive" | "transfer";
+    targetCircleId?: number;
+  };
+
+  if (!staffRole || !["teacher", "supervisor"].includes(staffRole)) {
+    res.status(400).json({ error: "staffRole يجب أن يكون teacher أو supervisor" });
+    return;
+  }
+  if (!action || !["archive", "transfer"].includes(action)) {
+    res.status(400).json({ error: "action يجب أن يكون archive أو transfer" });
+    return;
+  }
+  if (action === "transfer" && !targetCircleId) {
+    res.status(400).json({ error: "targetCircleId مطلوب عند النقل" });
+    return;
+  }
+
+  const [circle] = await db.select().from(circlesTable).where(eq(circlesTable.id, circleId));
+  if (!circle) {
+    res.status(404).json({ error: "Circle not found" });
+    return;
+  }
+
+  // مسؤولة المسار: فقط حلقات مسارها
+  if (req.userRole === "track_supervisor" && circle.track !== req.userTrack) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const userId = staffRole === "teacher" ? circle.teacherId : circle.supervisorId;
+  if (!userId) {
+    res.status(400).json({ error: "لا يوجد مستخدم مسند لهذا الدور في الحلقة" });
+    return;
+  }
+
+  // إزالة من الحلقة الحالية
+  if (staffRole === "teacher") {
+    await db.update(circlesTable).set({ teacherId: null }).where(eq(circlesTable.id, circleId));
+  } else {
+    await db.update(circlesTable).set({ supervisorId: null }).where(eq(circlesTable.id, circleId));
+  }
+
+  if (action === "archive") {
+    await db.update(usersTable).set({ isArchived: true, circleId: null }).where(eq(usersTable.id, userId));
+  } else if (action === "transfer" && targetCircleId) {
+    // تحديث بيانات المستخدم
+    await db.update(usersTable).set({ circleId: targetCircleId }).where(eq(usersTable.id, userId));
+    // ربطها بالحلقة الجديدة
+    if (staffRole === "teacher") {
+      await db.update(circlesTable).set({ teacherId: userId }).where(eq(circlesTable.id, targetCircleId));
+    } else {
+      await db.update(circlesTable).set({ supervisorId: userId }).where(eq(circlesTable.id, targetCircleId));
+    }
+  }
+
+  res.json({ success: true });
+});
+
 router.patch("/circles/:id", authenticate, async (req, res): Promise<void> => {
   if (req.userRole !== "leader" && req.userRole !== "track_supervisor") {
     res.status(403).json({ error: "Forbidden" });

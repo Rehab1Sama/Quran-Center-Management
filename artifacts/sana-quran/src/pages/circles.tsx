@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronDown, ChevronUp, Archive, RotateCcw, UserCircle, Link2, PlaneTakeoff, XCircle, RefreshCw, Sun, Moon } from "lucide-react";
+import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronDown, ChevronUp, Archive, RotateCcw, UserCircle, Link2, PlaneTakeoff, XCircle, RefreshCw, Sun, Moon, UserX, MoveRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -16,6 +16,13 @@ type LeaveModal = {
   circleId: number;
   currentLeaveStart?: string | null;
   currentLeaveEnd?: string | null;
+};
+
+type RemoveStaffModal = {
+  circleId: number;
+  circleName: string;
+  staffRole: "teacher" | "supervisor";
+  staffName: string;
 };
 
 function CircleStudentsPanel({ circleId, canGrantLeave }: { circleId: number; canGrantLeave: boolean }) {
@@ -301,9 +308,59 @@ export default function CirclesPage() {
   const [expandedCircle, setExpandedCircle] = useState<number | null>(null);
   const [seeding, setSeeding] = useState(false);
 
+  const [removeStaffModal, setRemoveStaffModal] = useState<RemoveStaffModal | null>(null);
+  const [removeAction, setRemoveAction] = useState<"archive" | "transfer">("archive");
+  const [targetCircleId, setTargetCircleId] = useState<number | null>(null);
+  const [transferSearch, setTransferSearch] = useState("");
+  const [removing, setRemoving] = useState(false);
+
   const isLeader = currentUser?.role === "leader";
   const canEdit = currentUser?.role === "leader" || currentUser?.role === "track_supervisor";
   const canGrantLeave = ["leader", "deputy", "track_supervisor"].includes(currentUser?.role ?? "");
+  const canManageStaff = ["leader", "deputy", "track_supervisor"].includes(currentUser?.role ?? "");
+
+  const openRemoveStaffModal = (circle: (typeof filtered)[0], staffRole: "teacher" | "supervisor", staffName: string) => {
+    setRemoveStaffModal({ circleId: circle.id, circleName: circle.name, staffRole, staffName });
+    setRemoveAction("archive");
+    setTargetCircleId(null);
+    setTransferSearch("");
+  };
+
+  const handleRemoveStaff = async () => {
+    if (!removeStaffModal) return;
+    if (removeAction === "transfer" && !targetCircleId) {
+      toast({ title: "اختاري الحلقة المستهدفة أولاً", variant: "destructive" });
+      return;
+    }
+    setRemoving(true);
+    try {
+      const token = localStorage.getItem("sana_auth_token");
+      const res = await fetch(`/api/circles/${removeStaffModal.circleId}/remove-staff`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          staffRole: removeStaffModal.staffRole,
+          action: removeAction,
+          targetCircleId: removeAction === "transfer" ? targetCircleId : undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error ?? "خطأ");
+      }
+      toast({
+        title: removeAction === "archive"
+          ? `تم أرشفة ${removeStaffModal.staffName} وإزالتها من الحلقة`
+          : `تم نقل ${removeStaffModal.staffName} للحلقة الجديدة`,
+      });
+      refetch();
+      setRemoveStaffModal(null);
+    } catch (e: any) {
+      toast({ title: e.message ?? "حدث خطأ", variant: "destructive" });
+    } finally {
+      setRemoving(false);
+    }
+  };
 
   const handleSeedTracks = async () => {
     if (!confirm("سيتم إنشاء ١٠ حلقات لكل مسار (١١ مسار = ١١٠ حلقة) إذا لم تكن موجودة. هل تريدين المتابعة؟")) return;
@@ -460,10 +517,32 @@ export default function CirclesPage() {
                           <div className="flex-1 min-w-0">
                             <h3 className="font-bold text-base text-foreground">{circle.name}</h3>
                             {c.teacherName && (
-                              <p className="text-xs text-muted-foreground mt-0.5">معلمة: {c.teacherName}</p>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <p className="text-xs text-muted-foreground flex-1">معلمة: {c.teacherName}</p>
+                                {canManageStaff && (
+                                  <button
+                                    onClick={() => openRemoveStaffModal(circle, "teacher", c.teacherName!)}
+                                    className="p-0.5 rounded text-muted-foreground/40 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                                    title="إزالة المعلمة من الحلقة"
+                                  >
+                                    <UserX className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
                             )}
                             {(c as any).supervisorName && (
-                              <p className="text-xs text-muted-foreground">مشرفة: {(c as any).supervisorName}</p>
+                              <div className="flex items-center gap-1">
+                                <p className="text-xs text-muted-foreground flex-1">مشرفة: {(c as any).supervisorName}</p>
+                                {canManageStaff && (
+                                  <button
+                                    onClick={() => openRemoveStaffModal(circle, "supervisor", (c as any).supervisorName)}
+                                    className="p-0.5 rounded text-muted-foreground/40 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                                    title="إزالة المشرفة من الحلقة"
+                                  >
+                                    <UserX className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                           <div className="flex items-center gap-1">
@@ -631,6 +710,95 @@ export default function CirclesPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Remove Staff Modal */}
+      {removeStaffModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm mx-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <UserX className="w-4 h-4 text-rose-500" />
+                إزالة {removeStaffModal.staffRole === "teacher" ? "المعلمة" : "المشرفة"}
+              </h3>
+              <button onClick={() => setRemoveStaffModal(null)} className="p-1 rounded hover:bg-muted">
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              {removeStaffModal.staffRole === "teacher" ? "المعلمة" : "المشرفة"}:{" "}
+              <span className="font-semibold text-foreground">{removeStaffModal.staffName}</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              الحلقة: <span className="font-medium text-foreground">{removeStaffModal.circleName}</span>
+            </p>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground">اختاري الإجراء:</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setRemoveAction("archive")}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 text-xs font-semibold transition-all ${removeAction === "archive" ? "border-rose-400 bg-rose-50 text-rose-700" : "border-border text-muted-foreground hover:bg-muted/50"}`}
+                >
+                  <Archive className="w-4 h-4" />
+                  أرشفة
+                </button>
+                <button
+                  onClick={() => { setRemoveAction("transfer"); setTargetCircleId(null); }}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 text-xs font-semibold transition-all ${removeAction === "transfer" ? "border-blue-400 bg-blue-50 text-blue-700" : "border-border text-muted-foreground hover:bg-muted/50"}`}
+                >
+                  <MoveRight className="w-4 h-4" />
+                  نقل لحلقة أخرى
+                </button>
+              </div>
+            </div>
+
+            {removeAction === "transfer" && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground">اختاري الحلقة المستهدفة:</p>
+                <div className="relative">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={transferSearch}
+                    onChange={e => setTransferSearch(e.target.value)}
+                    placeholder="بحث بالاسم..."
+                    className="h-8 text-xs border border-input rounded-md px-3 pe-9 w-full bg-background text-right"
+                  />
+                </div>
+                <div className="max-h-40 overflow-y-auto space-y-1 border border-border rounded-lg p-1.5">
+                  {(circles ?? [])
+                    .filter(c => c.id !== removeStaffModal.circleId && (!transferSearch || c.name.includes(transferSearch)))
+                    .map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => setTargetCircleId(c.id)}
+                        className={`w-full text-right text-xs px-2.5 py-1.5 rounded-lg transition-colors ${targetCircleId === c.id ? "bg-blue-100 text-blue-700 font-semibold" : "hover:bg-muted text-foreground"}`}
+                      >
+                        {c.name}
+                        {c.track && <span className="text-muted-foreground mr-1">— {c.track}</span>}
+                      </button>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <Button
+                onClick={handleRemoveStaff}
+                disabled={removing || (removeAction === "transfer" && !targetCircleId)}
+                className={`flex-1 text-sm ${removeAction === "archive" ? "bg-rose-600 hover:bg-rose-700" : ""}`}
+              >
+                {removing ? "جاري التنفيذ..." : removeAction === "archive" ? "أرشفة" : "نقل"}
+              </Button>
+              <Button variant="outline" onClick={() => setRemoveStaffModal(null)} className="flex-1 text-sm">
+                إلغاء
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
