@@ -7,6 +7,33 @@ import { CreateUserBody, UpdateUserBody, ResetUserPasswordBody } from "@workspac
 
 const router: IRouter = Router();
 
+router.get("/users/unlinked-staff", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy"].includes(req.userRole ?? "")) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const staff = await db
+    .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, role: usersTable.role, circleId: usersTable.circleId, track: usersTable.track, createdAt: usersTable.createdAt })
+    .from(usersTable)
+    .where(eq(usersTable.role, "teacher"));
+  const staffSup = await db
+    .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, role: usersTable.role, circleId: usersTable.circleId, track: usersTable.track, createdAt: usersTable.createdAt })
+    .from(usersTable)
+    .where(eq(usersTable.role, "supervisor"));
+  const allStaff = [...staff, ...staffSup];
+
+  const circles = await db.select({ id: circlesTable.id, name: circlesTable.name, track: circlesTable.track, teacherId: circlesTable.teacherId, supervisorId: circlesTable.supervisorId }).from(circlesTable);
+
+  const linkedTeacherIds = new Set(circles.map(c => c.teacherId).filter(Boolean));
+  const linkedSupervisorIds = new Set(circles.map(c => c.supervisorId).filter(Boolean));
+
+  const unlinked = allStaff.filter(u =>
+    (u.role === "teacher" && !linkedTeacherIds.has(u.id)) ||
+    (u.role === "supervisor" && !linkedSupervisorIds.has(u.id))
+  );
+
+  res.json({ unlinked, circles: circles.filter(c => !c.isArchived) });
+});
+
 router.get("/users", authenticate, async (req, res): Promise<void> => {
   // مسؤولة المسار ترى الطالبات والمعلمات والمشرفات في مسارها فقط
   if (req.userRole === "track_supervisor") {

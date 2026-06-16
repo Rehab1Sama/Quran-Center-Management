@@ -53,6 +53,7 @@ import ResetPasswordPage from "@/pages/reset-password";
 import ReportsPage from "@/pages/reports";
 import WhiteLabelPage from "@/pages/white-label";
 import FirstSetupPage from "@/pages/first-setup";
+import UnlinkedStaffPage from "@/pages/unlinked-staff";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 import { canEnterData, isFeatureEnabled, shouldHideReviewPlans } from "@/lib/schoolConfig";
@@ -259,6 +260,9 @@ function AppRoutes() {
         </Route>
         <Route path="/first-setup">
           {isLeader ? <FirstSetupPage /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/unlinked-staff">
+          {isLeaderOrDeputy ? <UnlinkedStaffPage /> : <Redirect to="/" />}
         </Route>
 
         <Route path="/students/:id">

@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { isFeatureEnabled, shouldHideReviewPlans, shouldHideShortcomings } from "@/lib/schoolConfig";
 import {
   Users, ClipboardList, BarChart3,
-  UserCheck, Home, LogOut, Menu, X,
+  UserCheck, UserX, Home, LogOut, Menu, X,
   CalendarCheck, PenSquare, Headphones, BookUser, FileDown,
   BarChart2, MessageSquare, Search, Clock, Archive, Layers,
   Calendar, ShoppingBag, Award, Shuffle, GraduationCap, AlertTriangle,
@@ -737,6 +737,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff, feature: "leaves" },
       { href: "/reports", label: "التقارير الأسبوعية", icon: TrendingUp, feature: "stats_weekly" },
       { href: "/white-label", label: "نسخ للبيع", icon: Globe },
+      { href: "/unlinked-staff", label: "موظفات غير مرتبطات", icon: UserX },
       { href: "/export", label: "تصدير البيانات", icon: FileDown },
     ]);
   }
@@ -767,6 +768,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff, feature: "leaves" },
       { href: "/deputy-tasks", label: "مهامي", icon: ClipboardList, feature: "deputy_tasks" },
       { href: "/reports", label: "التقارير الأسبوعية", icon: TrendingUp, feature: "stats_weekly" },
+      { href: "/unlinked-staff", label: "موظفات غير مرتبطات", icon: UserX },
     ]);
   }
   if (role === "data_entry") {
