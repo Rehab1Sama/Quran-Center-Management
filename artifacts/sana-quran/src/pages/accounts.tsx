@@ -36,6 +36,20 @@ import { useQueryClient } from "@tanstack/react-query";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+function useAllCirclesForForm() {
+  const [allCircles, setAllCircles] = useState<{ id: number; name: string; track: string }[]>([]);
+  useEffect(() => {
+    const token = localStorage.getItem("sana_auth_token");
+    fetch(`${BASE}/api/circles/names`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.ok ? r.json() : [])
+      .then(setAllCircles)
+      .catch(() => {});
+  }, []);
+  return allCircles;
+}
+
 const ROLES = [
   { value: "leader", label: "القائدة" },
   { value: "deputy", label: "النائبة" },
@@ -133,6 +147,7 @@ export default function AccountsPage() {
   const canManageAssignments = currentUser?.role === "leader" || (currentUser?.role as string) === "deputy";
   const { data: users, isLoading } = useListUsers(undefined, { query: { queryKey: ["users"] } });
   const { data: circles } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
+  const allCirclesForForm = useAllCirclesForForm();
   const { data: tracks, isLoading: tracksLoading } = useListTracks({ query: { queryKey: ["tracks"] } });
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
@@ -345,9 +360,11 @@ export default function AccountsPage() {
   });
   const needsTrack = ["track_supervisor", "teacher", "supervisor", "student"].includes(form.role);
   const needsCircle = ["teacher", "supervisor", "student"].includes(form.role);
+  // Use allCirclesForForm (fetched from /api/circles/names — all circles, all tracks)
+  // so track_supervisors can assign roles in any track, not just their own.
   const filteredCircles = form.track
-    ? (circles ?? []).filter(c => c.track === form.track)
-    : (circles ?? []);
+    ? allCirclesForForm.filter(c => c.track === form.track)
+    : allCirclesForForm;
   // الحلقات المُسندة لمدخلات أخريات (لاستثنائها عند الإسناد)
   const otherDataEntryAssignedIds = new Set(
     dataEntryAssignments

@@ -127,7 +127,7 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
   const [student] = await db.update(studentsTable).set(parsed.data).where(eq(studentsTable.id, id)).returning();
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
 
-  // If circleId changed, log transfer + create/update enrollment
+  // If circleId changed, log transfer + archive old enrollment + create/update new enrollment
   if (parsed.data.circleId !== undefined && parsed.data.circleId !== before.circleId) {
     await db.insert(studentTransfersTable).values({
       studentId: id,
@@ -135,6 +135,17 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
       toCircleId: parsed.data.circleId!,
       transferredById: req.userId!,
     });
+    // Archive old enrollment so student disappears from old circle immediately
+    if (before.circleId) {
+      await db.update(studentEnrollmentsTable)
+        .set({ isArchived: true, archivedAt: new Date() })
+        .where(
+          and(
+            eq(studentEnrollmentsTable.studentId, id),
+            eq(studentEnrollmentsTable.circleId, before.circleId),
+          )
+        );
+    }
     // Ensure enrollment exists in new circle
     if (parsed.data.circleId) {
       await db.insert(studentEnrollmentsTable)
