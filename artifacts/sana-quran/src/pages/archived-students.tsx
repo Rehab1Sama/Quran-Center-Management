@@ -1,12 +1,27 @@
-import { useState, useMemo } from "react";
-import { useListStudents, useRestoreStudent, useListCircles } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useMemo, useEffect } from "react";
+import { useListCircles } from "@workspace/api-client-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Archive, RotateCcw, Search, UserCircle, Users, X, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+
+interface ArchivedEntry {
+  studentId: number;
+  fullName: string;
+  phone: string | null;
+  country: string | null;
+  isArchived: boolean;
+  enrollmentId: number;
+  circleId: number;
+  archivedAt: string | null;
+  circleName: string;
+  circleTrack: string;
+}
+
+const getToken = () => localStorage.getItem("sana_auth_token");
 
 export default function ArchivedStudentsPage() {
   const { toast } = useToast();
@@ -15,68 +30,45 @@ export default function ArchivedStudentsPage() {
   const [search, setSearch] = useState("");
   const [selectedTrack, setSelectedTrack] = useState("");
   const [restoringId, setRestoringId] = useState<number | null>(null);
+  const [restoringEnrollmentCircleId, setRestoringEnrollmentCircleId] = useState<number | null>(null);
   const [selectedCircleId, setSelectedCircleId] = useState<string>("");
+  const [isPending, setIsPending] = useState(false);
 
-  const { data: archivedStudents, isLoading } = useListStudents(
-    { isArchived: true },
-    { query: { queryKey: ["all-archived-students"] } }
-  );
+  const [archivedEntries, setArchivedEntries] = useState<ArchivedEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
   const { data: circles } = useListCircles(undefined, { query: { queryKey: ["circles-all"] } });
 
-  const restoreStudent = useRestoreStudent();
+  async function fetchArchived() {
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/students/enrollment-archived", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error();
+      setArchivedEntries(await res.json());
+    } catch {
+      toast({ title: "خطأ في تحميل البيانات", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
-  const circleMap = useMemo(() => {
-    const map: Record<number, { name: string; track: string | null }> = {};
-    circles?.forEach(c => { map[c.id] = { name: c.name, track: (c as any).track ?? null }; });
-    return map;
-  }, [circles]);
+  useEffect(() => { fetchArchived(); }, []);
 
   const tracks = useMemo(() => {
     const set = new Set<string>();
-    archivedStudents?.forEach(s => {
-      const track = s.circleId != null ? circleMap[s.circleId]?.track : null;
-      if (track) set.add(track);
-    });
+    archivedEntries.forEach(e => { if (e.circleTrack) set.add(e.circleTrack); });
     return Array.from(set).sort();
-  }, [archivedStudents, circleMap]);
+  }, [archivedEntries]);
 
   const filtered = useMemo(() => {
-    return (archivedStudents ?? []).filter(s => {
-      const info = s.circleId != null ? circleMap[s.circleId] : null;
-      const matchSearch = !search || s.fullName.includes(search) || (info?.name.includes(search) ?? false);
-      const matchTrack = !selectedTrack || info?.track === selectedTrack;
+    return archivedEntries.filter(e => {
+      const matchSearch = !search || e.fullName.includes(search) || e.circleName.includes(search);
+      const matchTrack = !selectedTrack || e.circleTrack === selectedTrack;
       return matchSearch && matchTrack;
     });
-  }, [archivedStudents, circleMap, search, selectedTrack]);
-
-  const handleRestoreClick = (s: (typeof filtered)[0]) => {
-    setRestoringId(s.id);
-    setSelectedCircleId("");
-  };
-
-  const handleRestoreConfirm = (s: (typeof filtered)[0]) => {
-    const circleId = selectedCircleId ? parseInt(selectedCircleId, 10) : undefined;
-    restoreStudent.mutate(
-      { id: s.id, data: circleId ? { circleId } : {} } as any,
-      {
-        onSuccess: () => {
-          toast({ title: `تم استرجاع ${s.fullName} بنجاح` });
-          queryClient.invalidateQueries({ queryKey: ["all-archived-students"] });
-          queryClient.invalidateQueries({ queryKey: ["circles"] });
-          setRestoringId(null);
-          setSelectedCircleId("");
-        },
-        onError: () => {
-          toast({ title: "حدث خطأ أثناء الاسترجاع", variant: "destructive" });
-        },
-      }
-    );
-  };
-
-  const handleRestoreCancel = () => {
-    setRestoringId(null);
-    setSelectedCircleId("");
-  };
+  }, [archivedEntries, search, selectedTrack]);
 
   // Group circles by track for the select
   const circlesByTrack = useMemo(() => {
@@ -89,20 +81,51 @@ export default function ArchivedStudentsPage() {
     return map;
   }, [circles]);
 
+  const handleRestoreClick = (e: ArchivedEntry) => {
+    setRestoringId(e.studentId);
+    setRestoringEnrollmentCircleId(e.circleId);
+    setSelectedCircleId(String(e.circleId));
+  };
+
+  const handleRestoreConfirm = async (e: ArchivedEntry) => {
+    const circleId = selectedCircleId ? parseInt(selectedCircleId, 10) : e.circleId;
+    setIsPending(true);
+    try {
+      const res = await fetch(`/api/students/${e.studentId}/restore`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ circleId }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: `تم استرجاع ${e.fullName} بنجاح` });
+      queryClient.invalidateQueries({ queryKey: ["circles"] });
+      await fetchArchived();
+      setRestoringId(null);
+    } catch {
+      toast({ title: "حدث خطأ أثناء الاسترجاع", variant: "destructive" });
+    } finally {
+      setIsPending(false);
+    }
+  };
+
+  const handleRestoreCancel = () => {
+    setRestoringId(null);
+    setRestoringEnrollmentCircleId(null);
+    setSelectedCircleId("");
+  };
+
   return (
     <div className="space-y-5" dir="rtl">
-      {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
           <Archive className="w-5 h-5 text-gray-500" />
           الطالبات المؤرشفات
         </h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          جميع الطالبات المؤرشفات في المقرأة
+          جميع الطالبات اللواتي أُرشفن من حلقاتهن
         </p>
       </div>
 
-      {/* Filters */}
       <Card className="border border-border/50 shadow-sm">
         <CardContent className="pt-4 space-y-3">
           <div className="relative">
@@ -110,7 +133,7 @@ export default function ArchivedStudentsPage() {
             <Input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="ابحثي باسم الطالبة..."
+              placeholder="ابحثي باسم الطالبة أو الحلقة..."
               className="pr-9 text-right"
             />
           </div>
@@ -136,15 +159,13 @@ export default function ArchivedStudentsPage() {
         </CardContent>
       </Card>
 
-      {/* Stats summary */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Users className="w-4 h-4" />
         <span>
-          {isLoading ? "جاري التحميل..." : `${filtered.length} طالبة مؤرشفة${filtered.length !== (archivedStudents?.length ?? 0) ? ` (من أصل ${archivedStudents?.length ?? 0})` : ""}`}
+          {isLoading ? "جاري التحميل..." : `${filtered.length} طالبة مؤرشفة${filtered.length !== archivedEntries.length ? ` (من أصل ${archivedEntries.length})` : ""}`}
         </span>
       </div>
 
-      {/* Students list */}
       {isLoading ? (
         <div className="text-center py-16 text-muted-foreground">جاري التحميل...</div>
       ) : filtered.length === 0 ? (
@@ -156,40 +177,30 @@ export default function ArchivedStudentsPage() {
         <Card className="border border-border/50 shadow-sm">
           <CardContent className="p-0">
             <div className="divide-y divide-border/50">
-              {filtered.map(s => {
-                const info = s.circleId != null ? circleMap[s.circleId] : null;
-                const isRestoring = restoringId === s.id;
+              {filtered.map(e => {
+                const isRestoring = restoringId === e.studentId && restoringEnrollmentCircleId === e.circleId;
                 return (
-                  <div
-                    key={s.id}
-                    className="px-4 py-3 hover:bg-muted/30 transition-colors"
-                  >
+                  <div key={`${e.studentId}-${e.enrollmentId}`} className="px-4 py-3 hover:bg-muted/30 transition-colors">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-foreground truncate">{s.fullName}</p>
+                        <p className="text-sm font-semibold text-foreground truncate">{e.fullName}</p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                          {info ? (
-                            <>
-                              <span className="text-xs text-muted-foreground">{info.name}</span>
-                              {info.track && (
-                                <Badge className="text-[10px] bg-teal-100 text-teal-700 border-0 px-1.5 py-0">
-                                  {info.track}
-                                </Badge>
-                              )}
-                            </>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">بلا حلقة</span>
+                          <span className="text-xs text-muted-foreground">{e.circleName}</span>
+                          {e.circleTrack && (
+                            <Badge className="text-[10px] bg-teal-100 text-teal-700 border-0 px-1.5 py-0">
+                              {e.circleTrack}
+                            </Badge>
                           )}
-                          {(s as any).archivedAt && (
+                          {e.archivedAt && (
                             <span className="text-[10px] text-muted-foreground">
-                              • أُرشفت {new Date((s as any).archivedAt).toLocaleDateString("ar-SA", { year: "numeric", month: "short", day: "numeric" })}
+                              • أُرشفت {new Date(e.archivedAt).toLocaleDateString("ar-SA", { year: "numeric", month: "short", day: "numeric" })}
                             </span>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <button
-                          onClick={() => navigate(`/students/${s.id}`)}
+                          onClick={() => navigate(`/students/${e.studentId}`)}
                           className="p-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors"
                           title="ملف الطالبة"
                         >
@@ -197,9 +208,8 @@ export default function ArchivedStudentsPage() {
                         </button>
                         {!isRestoring && (
                           <button
-                            onClick={() => handleRestoreClick(s)}
+                            onClick={() => handleRestoreClick(e)}
                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors text-xs font-semibold"
-                            title="استرجاع للحلقة"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
                             استرجاع
@@ -208,19 +218,18 @@ export default function ArchivedStudentsPage() {
                       </div>
                     </div>
 
-                    {/* Inline restore panel */}
                     {isRestoring && (
                       <div className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200 space-y-3">
                         <p className="text-xs font-semibold text-emerald-800">اختاري الحلقة للاسترجاع إليها:</p>
                         <select
                           value={selectedCircleId}
-                          onChange={e => setSelectedCircleId(e.target.value)}
+                          onChange={ev => setSelectedCircleId(ev.target.value)}
                           className="w-full text-sm rounded-lg border border-border bg-white px-3 py-2 text-right focus:outline-none focus:ring-2 focus:ring-emerald-400"
                         >
-                          <option value="">— بدون حلقة (سيتم تحديدها لاحقًا) —</option>
+                          <option value={e.circleId}>— نفس الحلقة السابقة ({e.circleName}) —</option>
                           {Object.entries(circlesByTrack).map(([track, cs]) => (
                             <optgroup key={track} label={track}>
-                              {cs.map(c => (
+                              {cs.filter(c => c.id !== e.circleId).map(c => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
                               ))}
                             </optgroup>
@@ -228,12 +237,12 @@ export default function ArchivedStudentsPage() {
                         </select>
                         <div className="flex gap-2">
                           <button
-                            onClick={() => handleRestoreConfirm(s)}
-                            disabled={restoreStudent.isPending}
+                            onClick={() => handleRestoreConfirm(e)}
+                            disabled={isPending}
                             className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors text-xs font-semibold disabled:opacity-60"
                           >
                             <Check className="w-3.5 h-3.5" />
-                            {restoreStudent.isPending ? "جاري..." : "تأكيد الاسترجاع"}
+                            {isPending ? "جاري..." : "تأكيد الاسترجاع"}
                           </button>
                           <button
                             onClick={handleRestoreCancel}

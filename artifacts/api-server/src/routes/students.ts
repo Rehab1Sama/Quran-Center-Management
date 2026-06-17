@@ -80,6 +80,41 @@ router.get("/students", authenticate, async (req, res): Promise<void> => {
   res.json(students);
 });
 
+// ── All enrollment-archived students (across all circles) ──────────────────────
+router.get("/students/enrollment-archived", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy", "track_supervisor", "data_entry"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const rows = await db
+    .select({
+      studentId: studentsTable.id,
+      fullName: studentsTable.fullName,
+      phone: studentsTable.phone,
+      country: studentsTable.country,
+      isArchived: studentsTable.isArchived,
+      enrollmentId: studentEnrollmentsTable.id,
+      circleId: studentEnrollmentsTable.circleId,
+      archivedAt: studentEnrollmentsTable.archivedAt,
+      circleName: circlesTable.name,
+      circleTrack: circlesTable.track,
+    })
+    .from(studentEnrollmentsTable)
+    .innerJoin(studentsTable, eq(studentsTable.id, studentEnrollmentsTable.studentId))
+    .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))
+    .where(eq(studentEnrollmentsTable.isArchived, true))
+    .orderBy(desc(studentEnrollmentsTable.archivedAt));
+
+  // track_supervisor: filter to own track only
+  if (req.userRole === "track_supervisor") {
+    const [me] = await db.select({ track: usersTable.track }).from(usersTable).where(eq(usersTable.id, req.userId!));
+    const myTrack = me?.track;
+    res.json(myTrack ? rows.filter(r => r.circleTrack === myTrack) : []);
+    return;
+  }
+
+  res.json(rows);
+});
+
 // ── Create student ─────────────────────────────────────────────────────────────
 router.post("/students", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "track_supervisor", "data_entry"].includes(req.userRole!)) {
