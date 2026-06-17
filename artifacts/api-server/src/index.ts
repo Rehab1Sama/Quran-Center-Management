@@ -83,6 +83,23 @@ async function syncCircleStaff() {
   }
 }
 
+async function ensureRegistrationCircle() {
+  try {
+    const existing = await db.select({ id: circlesTable.id }).from(circlesTable).where(eq(circlesTable.trackType, "registration"));
+    if (existing.length === 0) {
+      await db.insert(circlesTable).values({
+        name: "تسجيل",
+        track: "تسجيل",
+        trackType: "registration",
+        isArchived: false,
+      });
+      logger.info("Registration holding circle created automatically");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to ensure registration circle");
+  }
+}
+
 async function seedLeader() {
   try {
     const hash = hashPassword("mnbvcxzrr");
@@ -137,6 +154,7 @@ app.listen(port, (err) => {
   void normalizeEmails();
   void repairMissingEnrollments();
   void syncCircleStaff();
+  void ensureRegistrationCircle();
 
   cron.schedule("0 2 * * 0", () => {
     logger.info("Starting weekly backup...");

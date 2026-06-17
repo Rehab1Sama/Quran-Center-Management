@@ -133,6 +133,7 @@ router.get("/registration/status", async (_req, res): Promise<void> => {
     customQuestions: settings.customQuestions,
     staffCustomQuestions: (settings as any).staffCustomQuestions ?? null,
     allowedStaffRoles,
+    wizardConfig: (settings as any).wizardConfig ?? null,
   });
 });
 
@@ -261,6 +262,75 @@ router.post("/registration/save-questions", authenticate, requireRole("leader"),
 
 router.get("/registration/activate", async (_req, res): Promise<void> => {
   res.json({ success: true, message: "التفعيل التلقائي مُفعَّل — لا حاجة لرمز تفعيل" });
+});
+
+// ── Wizard Config — Public (processed: circles filtered by capacity) ─────────
+router.get("/registration/wizard-config", async (_req, res): Promise<void> => {
+  const settings = await getSettings();
+  let rawConfig: any = { tracks: [], questions: [], registrationCircles: [] };
+  try {
+    if ((settings as any).wizardConfig) rawConfig = JSON.parse((settings as any).wizardConfig);
+  } catch {}
+
+  // Count preferred circles from students' extraData (JavaScript-side parsing)
+  const allStudents = await db.select({ extraData: studentsTable.extraData })
+    .from(studentsTable)
+    .where(eq(studentsTable.isArchived, false));
+
+  const prefCountMap = new Map<number, number>();
+  for (const { extraData } of allStudents) {
+    if (!extraData) continue;
+    try {
+      const parsed = JSON.parse(extraData);
+      const prefId = parsed.__preferredCircleId;
+      if (prefId) prefCountMap.set(Number(prefId), (prefCountMap.get(Number(prefId)) ?? 0) + 1);
+    } catch {}
+  }
+
+  const circleIds: number[] = (rawConfig.registrationCircles ?? []).map((rc: any) => rc.circleId).filter(Boolean);
+  const circleMap = new Map<number, { id: number; name: string; meetingTime: string | null }>();
+  if (circleIds.length > 0) {
+    const circles = await db.select({ id: circlesTable.id, name: circlesTable.name, meetingTime: circlesTable.meetingTime })
+      .from(circlesTable).where(eq(circlesTable.isArchived, false));
+    for (const c of circles) circleMap.set(c.id, c);
+  }
+
+  const registrationCircles = (rawConfig.registrationCircles ?? [])
+    .map((rc: any) => {
+      const circle = circleMap.get(rc.circleId);
+      if (!circle) return null;
+      const capacity: number | null = rc.capacity ?? null;
+      const prefCount = prefCountMap.get(rc.circleId) ?? 0;
+      const spotsLeft = capacity != null ? capacity - prefCount : null;
+      if (spotsLeft !== null && spotsLeft <= 0) return null;
+      return { circleId: circle.id, name: circle.name, meetingTime: circle.meetingTime, capacity, spotsLeft };
+    })
+    .filter(Boolean);
+
+  res.json({ tracks: rawConfig.tracks ?? [], questions: rawConfig.questions ?? [], registrationCircles });
+});
+
+// ── Admin: Get raw wizard config + all circles (for admin UI) ───────────────
+router.get("/registration/admin/wizard-config", authenticate, requireRole("leader"), async (_req, res): Promise<void> => {
+  const settings = await getSettings();
+  let rawConfig: any = { tracks: [], questions: [], registrationCircles: [] };
+  try {
+    if ((settings as any).wizardConfig) rawConfig = JSON.parse((settings as any).wizardConfig);
+  } catch {}
+
+  const allCircles = await db.select({ id: circlesTable.id, name: circlesTable.name, track: circlesTable.track, meetingTime: circlesTable.meetingTime })
+    .from(circlesTable).where(eq(circlesTable.isArchived, false));
+
+  res.json({ ...rawConfig, allCircles });
+});
+
+// ── Admin: Save wizard config (leader only) ──────────────────────────────────
+router.put("/registration/admin/wizard-config", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
+  const { tracks, questions, registrationCircles } = req.body as any;
+  await upsertSettings({
+    wizardConfig: JSON.stringify({ tracks: tracks ?? [], questions: questions ?? [], registrationCircles: registrationCircles ?? [] }),
+  });
+  res.json({ success: true });
 });
 
 router.post("/registration/submit", async (req, res): Promise<void> => {

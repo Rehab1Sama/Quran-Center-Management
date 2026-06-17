@@ -12,6 +12,7 @@ export const registrationSettingsTable = pgTable("registration_settings", {
   deadline: text("deadline"),
   customQuestions: text("custom_questions"),
   staffCustomQuestions: text("staff_custom_questions"),
+  wizardConfig: text("wizard_config"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 

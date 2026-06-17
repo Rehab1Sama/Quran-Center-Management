@@ -18,9 +18,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle, XCircle, ClipboardList, Users, Plus, Trash2, GripVertical,
-  Settings, BookUser, GraduationCap, Eye,
+  Settings, BookUser, GraduationCap, Eye, Wand2, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { Textarea } from "@/components/ui/textarea";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
@@ -42,6 +43,216 @@ interface CustomQuestion {
   type: "text" | "select" | "yesno";
   options?: string[];
   required: boolean;
+}
+
+interface WizardTrack { id: string; name: string; description: string; order: number; }
+type WizardQuestionType = "text" | "essay" | "select" | "true_false" | "yesno" | "number" | "country" | "quran_surah" | "quran_juz";
+interface WizardQuestion { id: string; label: string; type: WizardQuestionType; options?: string[]; required: boolean; }
+interface WizardRegCircle { circleId: number; capacity: number | null; }
+interface AllCircle { id: number; name: string; track: string; meetingTime: string | null; }
+
+const WIZARD_Q_TYPES = [
+  { v: "text", l: "نص قصير" }, { v: "essay", l: "نص طويل" }, { v: "select", l: "قائمة اختيارية" },
+  { v: "true_false", l: "صح / خطأ" }, { v: "yesno", l: "نعم / لا" }, { v: "number", l: "رقم" },
+  { v: "country", l: "اختيار الدولة" }, { v: "quran_surah", l: "اختيار سورة" }, { v: "quran_juz", l: "اختيار جزء" },
+] as const;
+
+// ── Wizard Builder Section ──────────────────────────────────────────────────
+function WizardBuilderSection() {
+  const { toast } = useToast();
+  const [tracks, setTracks] = useState<WizardTrack[]>([]);
+  const [questions, setQuestions] = useState<WizardQuestion[]>([]);
+  const [regCircles, setRegCircles] = useState<WizardRegCircle[]>([]);
+  const [allCircles, setAllCircles] = useState<AllCircle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [openSection, setOpenSection] = useState<"tracks" | "circles" | "questions" | null>("tracks");
+
+  useEffect(() => {
+    fetch(`${BASE_URL}/api/registration/admin/wizard-config`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+      .then(r => r.json())
+      .then((data: any) => {
+        setTracks(data.tracks ?? []);
+        setQuestions(data.questions ?? []);
+        setRegCircles(data.registrationCircles ?? []);
+        setAllCircles(data.allCircles ?? []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/registration/admin/wizard-config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ tracks, questions, registrationCircles: regCircles }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "تم حفظ إعدادات المعالج بنجاح ✓" });
+    } catch {
+      toast({ title: "خطأ في الحفظ", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addTrack = () => setTracks(ts => [...ts, { id: `t_${Date.now()}`, name: "", description: "", order: ts.length }]);
+  const updateTrack = (idx: number, val: Partial<WizardTrack>) => setTracks(ts => ts.map((t, i) => i === idx ? { ...t, ...val } : t));
+  const deleteTrack = (idx: number) => setTracks(ts => ts.filter((_, i) => i !== idx));
+
+  const addQuestion = () => setQuestions(qs => [...qs, { id: `q_${Date.now()}`, label: "", type: "text", required: false }]);
+  const updateQuestion = (idx: number, val: Partial<WizardQuestion>) => setQuestions(qs => qs.map((q, i) => i === idx ? { ...q, ...val } : q));
+  const deleteQuestion = (idx: number) => setQuestions(qs => qs.filter((_, i) => i !== idx));
+
+  const availableCircles = allCircles.filter(c => !regCircles.some(rc => rc.circleId === c.id));
+  const addCircle = (id: number) => setRegCircles(cs => [...cs, { circleId: id, capacity: null }]);
+  const updateCircle = (idx: number, capacity: number | null) => setRegCircles(cs => cs.map((c, i) => i === idx ? { ...c, capacity } : c));
+  const removeCircle = (idx: number) => setRegCircles(cs => cs.filter((_, i) => i !== idx));
+
+  const SecHeader = ({ title, icon, id, count }: { title: string; icon: React.ReactNode; id: typeof openSection; count: number }) => (
+    <button type="button" onClick={() => setOpenSection(openSection === id ? null : id)}
+      className="w-full flex items-center justify-between p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors">
+      <div className="flex items-center gap-2">
+        {icon}
+        <span className="font-semibold text-sm">{title}</span>
+        <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{count}</span>
+      </div>
+      {openSection === id ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+    </button>
+  );
+
+  if (loading) return <p className="text-center text-sm text-muted-foreground py-6">جاري التحميل...</p>;
+
+  return (
+    <div className="space-y-3">
+      {/* ── المسارات ── */}
+      <SecHeader title="المسارات" icon={<GraduationCap className="w-4 h-4 text-primary" />} id="tracks" count={tracks.length} />
+      {openSection === "tracks" && (
+        <div className="space-y-3 px-1">
+          {tracks.length === 0
+            ? <p className="text-xs text-muted-foreground text-center py-4 border border-dashed rounded-xl">لا توجد مسارات — اضغطي "إضافة مسار"</p>
+            : tracks.map((t, idx) => (
+              <div key={t.id} className="border border-border rounded-xl p-3 space-y-2 bg-white/60">
+                <div className="flex items-center gap-2">
+                  <Input value={t.name} onChange={e => updateTrack(idx, { name: e.target.value })}
+                    placeholder="اسم المسار (مثل: حفظ 4 أيام، تصحيح تلاوة)" className="flex-1 text-sm font-semibold" />
+                  <Button variant="ghost" size="icon" onClick={() => deleteTrack(idx)} className="text-rose-500 hover:bg-rose-50 h-8 w-8 shrink-0">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+                <Textarea value={t.description} onChange={e => updateTrack(idx, { description: e.target.value })}
+                  placeholder="اكتبي هنا شرح نظام هذا المسار — سيظهر للطالبة في الخطوة الثانية من معالج التسجيل..."
+                  className="text-sm min-h-[100px] text-right" />
+              </div>
+            ))
+          }
+          <Button size="sm" variant="outline" onClick={addTrack} className="text-xs w-full gap-1">
+            <Plus className="w-3 h-3" />إضافة مسار
+          </Button>
+        </div>
+      )}
+
+      {/* ── الحلقات المتاحة ── */}
+      <SecHeader title="الحلقات المتاحة للاختيار" icon={<Users className="w-4 h-4 text-primary" />} id="circles" count={regCircles.length} />
+      {openSection === "circles" && (
+        <div className="space-y-3 px-1">
+          <p className="text-xs text-muted-foreground bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+            جميع الطالبات الجدد يُضافن تلقائيًا لحلقة "تسجيل" للمراجعة. اختيار الحلقة هنا هو تفضيل فقط.
+          </p>
+          {regCircles.length === 0
+            ? <p className="text-xs text-muted-foreground text-center py-4 border border-dashed rounded-xl">لا توجد حلقات — اختاري من القائمة أدناه</p>
+            : regCircles.map((rc, idx) => {
+              const circle = allCircles.find(c => c.id === rc.circleId);
+              return (
+                <div key={rc.circleId} className="border border-border rounded-xl p-3 bg-white/60 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate">{circle?.name ?? `حلقة ${rc.circleId}`}</p>
+                    {circle?.meetingTime && <p className="text-xs text-muted-foreground">{circle.meetingTime}</p>}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Label className="text-xs text-muted-foreground whitespace-nowrap">الحد الأقصى</Label>
+                    <Input type="number" min={1} value={rc.capacity ?? ""}
+                      onChange={e => updateCircle(idx, e.target.value ? Number(e.target.value) : null)}
+                      placeholder="∞" className="w-16 text-center text-sm h-8" />
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => removeCircle(idx)} className="text-rose-500 hover:bg-rose-50 h-8 w-8 shrink-0">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              );
+            })
+          }
+          {availableCircles.length > 0 && (
+            <Select onValueChange={v => addCircle(Number(v))}>
+              <SelectTrigger className="text-xs">
+                <SelectValue placeholder="+ اختاري حلقة لإضافتها..." />
+              </SelectTrigger>
+              <SelectContent>
+                {availableCircles.map(c => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.name}{c.meetingTime ? ` — ${c.meetingTime}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      )}
+
+      {/* ── الأسئلة ── */}
+      <SecHeader title="أسئلة الاستمارة" icon={<ClipboardList className="w-4 h-4 text-primary" />} id="questions" count={questions.length} />
+      {openSection === "questions" && (
+        <div className="space-y-3 px-1">
+          {questions.length === 0
+            ? <p className="text-xs text-muted-foreground text-center py-4 border border-dashed rounded-xl">لا توجد أسئلة — اضغطي "إضافة سؤال"</p>
+            : questions.map((q, idx) => (
+              <div key={q.id} className="border border-border rounded-xl p-3 space-y-2 bg-white/60">
+                <div className="flex items-center gap-2">
+                  <GripVertical className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <Input value={q.label} onChange={e => updateQuestion(idx, { label: e.target.value })}
+                    placeholder="نص السؤال" className="flex-1 text-sm" />
+                  <Button variant="ghost" size="icon" onClick={() => deleteQuestion(idx)} className="text-rose-500 hover:bg-rose-50 h-8 w-8 shrink-0">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="flex items-center gap-3 pr-6">
+                  <Select value={q.type} onValueChange={v => updateQuestion(idx, { type: v as WizardQuestionType, options: [] })}>
+                    <SelectTrigger className="flex-1 text-xs h-8"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {WIZARD_Q_TYPES.map(t => <SelectItem key={t.v} value={t.v}>{t.l}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Switch checked={q.required} onCheckedChange={v => updateQuestion(idx, { required: v })} id={`wq-${q.id}`} />
+                    <Label htmlFor={`wq-${q.id}`} className="text-xs text-muted-foreground whitespace-nowrap">إلزامي</Label>
+                  </div>
+                </div>
+                {q.type === "select" && (
+                  <div className="pr-6">
+                    <Input value={(q.options ?? []).join("، ")}
+                      onChange={e => updateQuestion(idx, { options: e.target.value.split("،").map(s => s.trim()).filter(Boolean) })}
+                      placeholder="الخيارات مفصولة بفاصلة عربية: نعم، لا، أحيانًا" className="text-xs" />
+                    <p className="text-[10px] text-muted-foreground mt-1">افصلي بين الخيارات بفاصلة عربية (،)</p>
+                  </div>
+                )}
+              </div>
+            ))
+          }
+          <Button size="sm" variant="outline" onClick={addQuestion} className="text-xs w-full gap-1">
+            <Plus className="w-3 h-3" />إضافة سؤال
+          </Button>
+        </div>
+      )}
+
+      <Button onClick={save} disabled={saving} className="w-full mt-1">
+        {saving ? "جاري الحفظ..." : "💾 حفظ إعدادات المعالج"}
+      </Button>
+    </div>
+  );
 }
 
 // ── Question Editor Row ────────────────────────────────────────────────────
@@ -395,6 +606,20 @@ export default function RegistrationManagePage() {
         <h1 className="text-2xl font-bold text-foreground">إدارة التسجيل</h1>
         <p className="text-muted-foreground text-sm mt-1">التحكم الكامل في استمارات التسجيل وأسئلتها</p>
       </div>
+
+      {/* ── معالج الاستمارة ── */}
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-bold flex items-center gap-2">
+            <Wand2 className="w-4 h-4 text-primary" />
+            معالج استمارة التسجيل
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">أنشئي مسارات التسجيل وأسئلة الاستمارة والحلقات المتاحة</p>
+        </CardHeader>
+        <CardContent>
+          <WizardBuilderSection />
+        </CardContent>
+      </Card>
 
       {/* ── استمارة الطالبات ── */}
       <Card className="border-0 shadow-sm" data-testid="card-student-registration">
