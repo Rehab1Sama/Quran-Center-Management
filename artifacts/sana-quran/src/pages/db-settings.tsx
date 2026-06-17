@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Database, RefreshCw, CheckCircle2, AlertTriangle, Terminal } from "lucide-react";
+import { Database, RefreshCw, CheckCircle2, AlertTriangle, Terminal, Users, Link2 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const tok = () => localStorage.getItem("sana_auth_token");
@@ -10,6 +10,10 @@ export default function DbSettingsPage() {
   const [status, setStatus] = useState<"idle" | "running" | "success" | "error">("idle");
   const [output, setOutput] = useState("");
   const outputRef = useRef<HTMLDivElement>(null);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "running" | "success" | "error">("idle");
+  const [syncMsg, setSyncMsg] = useState("");
+  const [approveStatus, setApproveStatus] = useState<"idle" | "running" | "success" | "error">("idle");
+  const [approveMsg, setApproveMsg] = useState("");
 
   const handleSchemaPush = async () => {
     setStatus("running");
@@ -50,6 +54,50 @@ export default function DbSettingsPage() {
     } catch (err: any) {
       setOutput(`خطأ في الاتصال: ${err.message}`);
       setStatus("error");
+    }
+  };
+
+  const handleSyncData = async () => {
+    setSyncStatus("running");
+    setSyncMsg("");
+    try {
+      const res = await fetch(`${BASE}/api/admin/sync-data`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok()}` },
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setSyncMsg(json.message ?? "تمت المزامنة");
+        setSyncStatus("success");
+      } else {
+        setSyncMsg(json.error ?? "حدث خطأ");
+        setSyncStatus("error");
+      }
+    } catch (err: any) {
+      setSyncMsg(`خطأ: ${err.message}`);
+      setSyncStatus("error");
+    }
+  };
+
+  const handleApproveAll = async () => {
+    setApproveStatus("running");
+    setApproveMsg("");
+    try {
+      const res = await fetch(`${BASE}/api/admin/approve-pending`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok()}` },
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setApproveMsg(json.message ?? "تم القبول");
+        setApproveStatus("success");
+      } else {
+        setApproveMsg(json.error ?? "حدث خطأ");
+        setApproveStatus("error");
+      }
+    } catch (err: any) {
+      setApproveMsg(`خطأ: ${err.message}`);
+      setApproveStatus("error");
     }
   };
 
@@ -130,6 +178,75 @@ export default function DbSettingsPage() {
                 >
                   {output}
                 </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* مزامنة بيانات النظام */}
+        <Card className="border border-border shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-indigo-600" />
+              مزامنة بيانات النظام
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              تربط المعلمات والمشرفات بحلقاتهن، وتُنشئ سجلات التسجيل المفقودة للطالبات اللواتي لديهن حلقة مباشرة.
+              استخدميها مرة واحدة لتصحيح البيانات القديمة.
+            </p>
+            <Button
+              onClick={handleSyncData}
+              disabled={syncStatus === "running"}
+              className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white w-full sm:w-auto"
+            >
+              {syncStatus === "running" ? (
+                <><RefreshCw className="w-4 h-4 animate-spin" />جاري المزامنة...</>
+              ) : (
+                <><Link2 className="w-4 h-4" />مزامنة بيانات النظام</>
+              )}
+            </Button>
+            {syncMsg && (
+              <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${syncStatus === "success" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                {syncStatus === "success"
+                  ? <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  : <AlertTriangle className="w-4 h-4 shrink-0" />}
+                {syncMsg}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* قبول جميع الطلبات المعلّقة */}
+        <Card className="border border-border shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="w-4 h-4 text-emerald-600" />
+              قبول جميع طلبات التسجيل المعلّقة
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              تقبل جميع الحسابات ذات الحالة "قيد المراجعة" دفعةً واحدة حتى يتمكنّ أصحابها من تسجيل الدخول.
+            </p>
+            <Button
+              onClick={handleApproveAll}
+              disabled={approveStatus === "running"}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white w-full sm:w-auto"
+            >
+              {approveStatus === "running" ? (
+                <><RefreshCw className="w-4 h-4 animate-spin" />جاري القبول...</>
+              ) : (
+                <><Users className="w-4 h-4" />قبول جميع الطلبات المعلّقة</>
+              )}
+            </Button>
+            {approveMsg && (
+              <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${approveStatus === "success" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                {approveStatus === "success"
+                  ? <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  : <AlertTriangle className="w-4 h-4 shrink-0" />}
+                {approveMsg}
               </div>
             )}
           </CardContent>

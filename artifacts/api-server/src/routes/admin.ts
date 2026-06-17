@@ -3,7 +3,7 @@ import { spawn } from "child_process";
 import path from "path";
 import { authenticate, requireRole } from "../middlewares/authenticate";
 import { db, usersTable, studentsTable, circlesTable, studentEnrollmentsTable } from "@workspace/db";
-import { eq, and, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -104,6 +104,15 @@ router.post("/admin/sync-data", authenticate, requireRole("leader"), async (_req
   }
 
   res.json({ success: true, ...results, message: `تم إنشاء ${results.enrollmentsCreated} سجل تسجيل مفقود، وتحديث ${results.circlesUpdated} حلقة` });
+});
+
+// ── قبول جميع طلبات التسجيل المعلّقة دفعةً واحدة ──
+router.post("/admin/approve-pending", authenticate, requireRole("leader"), async (_req, res): Promise<void> => {
+  const result = await db.execute(
+    sql`UPDATE users SET registration_status = 'approved' WHERE registration_status = 'pending'`
+  );
+  const count = (result as any).rowCount ?? 0;
+  res.json({ success: true, count, message: `تم قبول ${count} طلب معلّق` });
 });
 
 export default router;

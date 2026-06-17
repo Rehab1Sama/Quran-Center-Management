@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { db, usersTable, studentsTable, studentEnrollmentsTable } from "@workspace/db";
-import { eq, and, isNull, isNotNull } from "drizzle-orm";
+import { db, usersTable, studentsTable, circlesTable, studentEnrollmentsTable } from "@workspace/db";
+import { eq, and, isNull, isNotNull, sql } from "drizzle-orm";
 import { hashPassword } from "./lib/auth";
 import cron from "node-cron";
 import { runWeeklyBackup } from "./lib/backup";
@@ -38,6 +38,48 @@ async function repairMissingEnrollments() {
     if (created > 0) logger.info({ created }, "Repaired missing student enrollments");
   } catch (err) {
     logger.error({ err }, "Failed to repair missing enrollments");
+  }
+}
+
+// تصحيح إيميلات المستخدمين (إزالة المسافات + تحويل لحروف صغيرة)
+async function normalizeEmails() {
+  try {
+    const result = await db.execute(
+      sql`UPDATE users SET email = LOWER(TRIM(email)) WHERE email != LOWER(TRIM(email))`
+    );
+    const count = (result as any).rowCount ?? 0;
+    if (count > 0) logger.info({ count }, "Normalized user emails (trim + lowercase)");
+  } catch (err) {
+    logger.error({ err }, "Failed to normalize emails");
+  }
+}
+
+// ربط المعلمات والمشرفات بحلقاتهن عند بدء التشغيل
+async function syncCircleStaff() {
+  try {
+    let updated = 0;
+    const staff = await db
+      .select({ id: usersTable.id, role: usersTable.role, circleId: usersTable.circleId })
+      .from(usersTable)
+      .where(and(eq(usersTable.isArchived, false), isNotNull(usersTable.circleId)));
+
+    for (const u of staff) {
+      if (!u.circleId) continue;
+      if (u.role === "teacher") {
+        const r = await db.update(circlesTable)
+          .set({ teacherId: u.id })
+          .where(and(eq(circlesTable.id, u.circleId), isNull(circlesTable.teacherId)));
+        if ((r as any).rowCount > 0) updated++;
+      } else if (u.role === "supervisor") {
+        const r = await db.update(circlesTable)
+          .set({ supervisorId: u.id })
+          .where(and(eq(circlesTable.id, u.circleId), isNull(circlesTable.supervisorId)));
+        if ((r as any).rowCount > 0) updated++;
+      }
+    }
+    if (updated > 0) logger.info({ updated }, "Synced circle staff (teacher/supervisor) links");
+  } catch (err) {
+    logger.error({ err }, "Failed to sync circle staff");
   }
 }
 
@@ -92,7 +134,9 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
   void seedLeader();
+  void normalizeEmails();
   void repairMissingEnrollments();
+  void syncCircleStaff();
 
   cron.schedule("0 2 * * 0", () => {
     logger.info("Starting weekly backup...");
