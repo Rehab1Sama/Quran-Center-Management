@@ -155,6 +155,10 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
           set: { isArchived: false, archivedAt: null },
         });
     }
+    // Sync the student's user account circleId to match the new circle
+    await db.update(usersTable)
+      .set({ circleId: parsed.data.circleId ?? null })
+      .where(and(eq(usersTable.name, before.fullName), eq(usersTable.role, "student")));
   }
 
   res.json(student);
@@ -214,9 +218,14 @@ router.patch("/students/:id/archive", authenticate, async (req, res): Promise<vo
           ),
         )
         .limit(1);
+      const newCircleId = otherEnrollment?.circleId ?? null;
       await db.update(studentsTable)
-        .set({ circleId: otherEnrollment?.circleId ?? null })
+        .set({ circleId: newCircleId })
         .where(eq(studentsTable.id, id));
+      // Sync user account circleId
+      await db.update(usersTable)
+        .set({ circleId: newCircleId })
+        .where(and(eq(usersTable.name, before.fullName), eq(usersTable.role, "student")));
     }
 
     await db.insert(studentArchiveEventsTable).values({
@@ -236,6 +245,11 @@ router.patch("/students/:id/archive", authenticate, async (req, res): Promise<vo
     await db.update(studentEnrollmentsTable)
       .set({ isArchived: true, archivedAt: new Date() })
       .where(eq(studentEnrollmentsTable.studentId, id));
+
+    // Sync user account: archive and clear circleId
+    await db.update(usersTable)
+      .set({ isArchived: true, circleId: null })
+      .where(and(eq(usersTable.name, before.fullName), eq(usersTable.role, "student")));
 
     await db.insert(studentArchiveEventsTable).values({
       studentId: id, eventType: "archived", circleIdAtTime: before?.circleId ?? null, performedById: req.userId ?? null,
@@ -261,6 +275,9 @@ router.patch("/students/:id/restore", authenticate, async (req, res): Promise<vo
   };
   if (circleId !== undefined) updateData.circleId = circleId;
 
+  const [before] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
+  if (!before) { res.status(404).json({ error: "Student not found" }); return; }
+
   const [student] = await db.update(studentsTable).set(updateData).where(eq(studentsTable.id, id)).returning();
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
 
@@ -272,6 +289,11 @@ router.patch("/students/:id/restore", authenticate, async (req, res): Promise<vo
         set: { isArchived: false, archivedAt: null },
       });
   }
+
+  // Sync user account: restore and update circleId
+  await db.update(usersTable)
+    .set({ isArchived: false, circleId: circleId ?? null })
+    .where(and(eq(usersTable.name, before.fullName), eq(usersTable.role, "student")));
 
   await db.insert(studentArchiveEventsTable).values({
     studentId: id, eventType: "restored", circleIdAtTime: circleId ?? null, performedById: req.userId ?? null,
