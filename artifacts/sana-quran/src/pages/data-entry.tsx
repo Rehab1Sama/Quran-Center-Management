@@ -983,6 +983,18 @@ export default function DataEntryPage() {
   const recPages = calcPages(form.recitation);
   const hasPages = memPages > 0 || revNearPages > 0 || revFarPages > 0 || revPages > 0 || recPages > 0;
 
+  // ── مسار التثبيت: مقارنة الإدخال بالخطة ─────────────────────────────────
+  const isFixationEntry = resolveTrackType(selectedCircle?.dataEntryType) === "fixation";
+  const fixationPlannedPages: number = reviewPlanToday?.pages ?? 0;
+  const fixationStatus: "excellent" | "regular" | "late" | null =
+    isFixationEntry && memPages > 0 && fixationPlannedPages > 0
+      ? memPages > fixationPlannedPages
+        ? "excellent"
+        : memPages >= fixationPlannedPages
+        ? "regular"
+        : "late"
+      : null;
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
@@ -1353,16 +1365,89 @@ export default function DataEntryPage() {
             {!form.isAbsent && (
               <>
                 {inputFields.includes("memorize") && (
-                  <SurahSection
-                    title="الحفظ"
-                    color="border-teal-200 bg-teal-50/40"
-                    section={form.memorize}
-                    onChange={(f, v) => updateSection("memorize", f, v)}
-                    autoSuggested={autoFilled && !!form.memorize.surahStart}
-                    onVoiceFill={(ss, as, se, ae) =>
-                      setForm((f) => ({ ...f, memorize: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae } }))
-                    }
-                  />
+                  <div className="space-y-1.5">
+                    {/* بانر خطة اليوم — يظهر فقط لمسار التثبيت */}
+                    {isFixationEntry && reviewPlanToday && (
+                      <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+                        <span className="text-xs text-emerald-700 flex-1">
+                          📋 نصاب اليوم:{" "}
+                          <span className="font-semibold">
+                            {reviewPlanToday.surahStart}
+                            {reviewPlanToday.ayahStart ? ` ${reviewPlanToday.ayahStart}` : ""}
+                            {" ← "}
+                            {reviewPlanToday.surahEnd}
+                            {reviewPlanToday.ayahEnd ? ` ${reviewPlanToday.ayahEnd}` : ""}
+                          </span>
+                          {reviewPlanToday.pages != null && (
+                            <span className="font-bold mr-1 text-emerald-800">({formatPages(reviewPlanToday.pages)} وجه)</span>
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setForm((f) => ({
+                              ...f,
+                              memorize: {
+                                surahStart: reviewPlanToday.surahStart!,
+                                ayahStart: reviewPlanToday.ayahStart?.toString() ?? "1",
+                                surahEnd: reviewPlanToday.surahEnd!,
+                                ayahEnd: reviewPlanToday.ayahEnd?.toString() ?? "1",
+                              },
+                            }))
+                          }
+                          className="text-xs bg-emerald-600 text-white px-2.5 py-1 rounded-lg font-semibold hover:bg-emerald-700 transition-colors shrink-0"
+                        >
+                          تطبيق
+                        </button>
+                      </div>
+                    )}
+
+                    <SurahSection
+                      title={isFixationEntry ? "التثبيت الجديد" : "الحفظ"}
+                      color="border-teal-200 bg-teal-50/40"
+                      section={form.memorize}
+                      onChange={(f, v) => updateSection("memorize", f, v)}
+                      autoSuggested={autoFilled && !!form.memorize.surahStart}
+                      onVoiceFill={(ss, as, se, ae) =>
+                        setForm((f) => ({ ...f, memorize: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae } }))
+                      }
+                    />
+
+                    {/* شارة المقارنة الفورية — تظهر فقط لمسار التثبيت عند إدخال أوجه */}
+                    {isFixationEntry && fixationStatus && (
+                      <div className={`flex items-center gap-2 rounded-xl px-3 py-2 border ${
+                        fixationStatus === "excellent"
+                          ? "bg-blue-50 border-blue-200 text-blue-800"
+                          : fixationStatus === "regular"
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                          : "bg-amber-50 border-amber-200 text-amber-800"
+                      }`}>
+                        <span className="text-base">
+                          {fixationStatus === "excellent" ? "✨" : fixationStatus === "regular" ? "✅" : "⏳"}
+                        </span>
+                        <div className="flex-1">
+                          <p className="text-xs font-bold">
+                            {fixationStatus === "excellent"
+                              ? "ممتازة ومتقدمة"
+                              : fixationStatus === "regular"
+                              ? "منتظمة"
+                              : "متأخرة"}
+                          </p>
+                          <p className="text-[11px] opacity-75">
+                            أدّت {formatPages(memPages)} وجه{" "}
+                            {fixationStatus === "excellent"
+                              ? `(النصاب ${formatPages(fixationPlannedPages)} وجه)`
+                              : fixationStatus === "late"
+                              ? `من أصل ${formatPages(fixationPlannedPages)} وجه`
+                              : ""}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {isFixationEntry && !reviewPlanToday && !form.isAbsent && (
+                      <p className="text-[11px] text-muted-foreground pr-1">لا توجد خطة تثبيت نشطة لهذه الطالبة</p>
+                    )}
+                  </div>
                 )}
 
                 {inputFields.includes("review_near") && (
