@@ -2,6 +2,8 @@ import { Router, type IRouter } from "express";
 import { spawn } from "child_process";
 import path from "path";
 import { authenticate, requireRole } from "../middlewares/authenticate";
+import { db, usersTable, studentsTable, circlesTable, studentEnrollmentsTable } from "@workspace/db";
+import { eq, and, isNull, isNotNull } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -47,6 +49,61 @@ router.post("/admin/schema-push", authenticate, requireRole("leader"), async (re
     res.write(`\n❌ خطأ: ${err.message}`);
     res.end();
   });
+});
+
+// ── مزامنة البيانات: ربط الطالبات بسجلات التسجيل + ربط المعلمات/المشرفات بالحلقات ──
+router.post("/admin/sync-data", authenticate, requireRole("leader"), async (_req, res): Promise<void> => {
+  const results = { enrollmentsCreated: 0, circlesUpdated: 0 };
+
+  // 1. إنشاء سجلات تسجيل مفقودة للطالبات اللواتي لديهن circleId مباشرة
+  const studentsWithCircle = await db
+    .select({ id: studentsTable.id, circleId: studentsTable.circleId })
+    .from(studentsTable)
+    .where(and(eq(studentsTable.isArchived, false), isNotNull(studentsTable.circleId)));
+
+  for (const student of studentsWithCircle) {
+    if (!student.circleId) continue;
+    const existing = await db
+      .select({ id: studentEnrollmentsTable.id })
+      .from(studentEnrollmentsTable)
+      .where(and(
+        eq(studentEnrollmentsTable.studentId, student.id),
+        eq(studentEnrollmentsTable.circleId, student.circleId),
+      ))
+      .limit(1);
+    if (existing.length === 0) {
+      await db.insert(studentEnrollmentsTable)
+        .values({ studentId: student.id, circleId: student.circleId, isArchived: false })
+        .onConflictDoNothing();
+      results.enrollmentsCreated++;
+    }
+  }
+
+  // 2. ربط المعلمات والمشرفات بحلقاتهن
+  const staffWithCircle = await db
+    .select({ id: usersTable.id, role: usersTable.role, circleId: usersTable.circleId })
+    .from(usersTable)
+    .where(and(
+      eq(usersTable.isArchived, false),
+      isNotNull(usersTable.circleId),
+    ));
+
+  for (const staff of staffWithCircle) {
+    if (!staff.circleId) continue;
+    if (staff.role === "teacher") {
+      await db.update(circlesTable)
+        .set({ teacherId: staff.id })
+        .where(and(eq(circlesTable.id, staff.circleId), isNull(circlesTable.teacherId)));
+      results.circlesUpdated++;
+    } else if (staff.role === "supervisor") {
+      await db.update(circlesTable)
+        .set({ supervisorId: staff.id })
+        .where(and(eq(circlesTable.id, staff.circleId), isNull(circlesTable.supervisorId)));
+      results.circlesUpdated++;
+    }
+  }
+
+  res.json({ success: true, ...results, message: `تم إنشاء ${results.enrollmentsCreated} سجل تسجيل مفقود، وتحديث ${results.circlesUpdated} حلقة` });
 });
 
 export default router;

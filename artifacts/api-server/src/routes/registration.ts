@@ -189,7 +189,13 @@ router.post("/registration/auto-approve-off", authenticate, requireRole("leader"
 // Public endpoint — all active circles (for existing-student form, no capacity filter)
 router.get("/registration/circles-public", async (_req, res): Promise<void> => {
   const rows = await db
-    .select({ id: circlesTable.id, name: circlesTable.name, track: circlesTable.track })
+    .select({
+      id: circlesTable.id,
+      name: circlesTable.name,
+      track: circlesTable.track,
+      teacherId: circlesTable.teacherId,
+      supervisorId: circlesTable.supervisorId,
+    })
     .from(circlesTable)
     .where(eq(circlesTable.isArchived, false));
   res.json(rows);
@@ -270,7 +276,8 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
     return;
   }
 
-  const { email, password, fullName, phone, country, ageRange, educationLevel, memorizeFrom, track, circleId, role } = parsed.data;
+  const { email: rawEmail, password, fullName, phone, country, ageRange, educationLevel, memorizeFrom, track, circleId, role } = parsed.data;
+  const email = rawEmail.toLowerCase().trim();
   const extraData = (req.body as any).extraData ?? null;
   const isNewcomer = (req.body as any).isNewcomer === true;
 

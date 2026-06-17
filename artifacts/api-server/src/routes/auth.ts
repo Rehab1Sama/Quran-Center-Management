@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, studentsTable, circlesTable, tracksTable, registrationSettingsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { hashPassword, verifyPassword, generateToken } from "../lib/auth";
 import { authenticate } from "../middlewares/authenticate";
 import { LoginBody, LoginSelectAccountBody } from "@workspace/api-zod";
@@ -17,7 +17,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
   const { email, password } = parsed.data;
-  const users = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase()));
+  const users = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim()));
   const activeUsers = users.filter(u => !u.isArchived);
 
   if (activeUsers.length === 0) {
@@ -195,23 +195,32 @@ router.post("/auth/staff-register", async (req, res): Promise<void> => {
 
   const passwordHash = hashPassword(password);
   const { country, track, circleId, extraData } = req.body ?? {};
+  const parsedCircleId = circleId ? parseInt(circleId) : null;
   const [user] = await db.insert(usersTable).values({
     name,
     phone,
     country: country ?? null,
-    email: email.toLowerCase(),
+    email: email.toLowerCase().trim(),
     passwordHash,
     role: targetRole,
     track: track ?? null,
-    circleId: circleId ? parseInt(circleId) : null,
+    circleId: parsedCircleId,
     isArchived: false,
     registrationStatus: "approved",
     extraData: extraData ? JSON.stringify(extraData) : null,
   }).returning();
   const { passwordHash: _ph, ...safeUser } = user;
 
+  // ربط المعلمة/المشرفة بالحلقة تلقائياً عند التسجيل
+  if (parsedCircleId) {
+    if (targetRole === "teacher") {
+      await db.update(circlesTable).set({ teacherId: user.id }).where(eq(circlesTable.id, parsedCircleId));
+    } else if (targetRole === "supervisor") {
+      await db.update(circlesTable).set({ supervisorId: user.id }).where(eq(circlesTable.id, parsedCircleId));
+    }
+  }
+
   // Get circle name for Google Sheets
-  const parsedCircleId = circleId ? parseInt(circleId) : null;
   const circleName = parsedCircleId
     ? (await db.select({ name: circlesTable.name }).from(circlesTable).where(eq(circlesTable.id, parsedCircleId)))[0]?.name
     : undefined;

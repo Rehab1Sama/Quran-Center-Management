@@ -25,6 +25,8 @@ interface CircleOption {
   id: number;
   name: string;
   track: string;
+  teacherId: number | null;
+  supervisorId: number | null;
 }
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -56,7 +58,13 @@ export default function StaffRegisterPage() {
     fetch(`${BASE}/api/registration/circles-public`)
       .then(r => r.ok ? r.json() : [])
       .then((data: any[]) => {
-        setCircles(data.map((c: any) => ({ id: c.id, name: c.name, track: c.track ?? "" })));
+        setCircles(data.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          track: c.track ?? "",
+          teacherId: c.teacherId ?? null,
+          supervisorId: c.supervisorId ?? null,
+        })));
       })
       .catch(() => {});
     fetch(`${BASE}/api/registration/status`)
@@ -76,7 +84,12 @@ export default function StaffRegisterPage() {
   }, []);
 
   const uniqueTracks = Array.from(new Set(circles.map(c => c.track).filter(Boolean)));
-  const filteredCircles = form.track ? circles.filter(c => c.track === form.track) : circles;
+  const filteredCircles = circles.filter(c => {
+    if (form.track && c.track !== form.track) return false;
+    if (form.role === "teacher" && c.teacherId) return false;
+    if (form.role === "supervisor" && c.supervisorId) return false;
+    return true;
+  });
   const needsCircle = form.role === "teacher" || form.role === "supervisor";
 
   const handleChange = (field: string, value: string) => {

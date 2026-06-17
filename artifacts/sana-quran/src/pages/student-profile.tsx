@@ -179,7 +179,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
 
   useEffect(() => {
     if (!showPlanSection || planLoaded) return;
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem("sana_auth_token");
     const h: Record<string, string> = {};
     if (token) h["Authorization"] = `Bearer ${token}`;
     fetch(`${BASE}/api/students/${id}/review-plan`, { headers: h })
@@ -285,7 +285,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
 
   const handlePerCircleLeave = (circleId: number) => {
     if (!perCircleLeaveStart || !perCircleLeaveEnd) { toast({ title: "أدخلي تاريخ البداية والنهاية", variant: "destructive" }); return; }
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem("sana_auth_token");
     fetch(`/api/students/${id}/leave`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -296,7 +296,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
   };
 
   const handleClearPerCircleLeave = (circleId: number) => {
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem("sana_auth_token");
     fetch(`/api/students/${id}/leave`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },

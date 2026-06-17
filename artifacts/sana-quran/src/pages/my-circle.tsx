@@ -49,7 +49,7 @@ function isOnLeave(student: any): boolean {
 }
 
 function authHeader(): Record<string, string> {
-  const token = localStorage.getItem("auth_token");
+  const token = localStorage.getItem("sana_auth_token");
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (token) h["Authorization"] = `Bearer ${token}`;
   return h;
