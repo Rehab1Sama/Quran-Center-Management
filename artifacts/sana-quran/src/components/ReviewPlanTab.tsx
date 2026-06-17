@@ -1643,33 +1643,73 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
                       const section = entry.surahStart === entry.surahEnd
                         ? `${entry.surahStart} (${entry.ayahStart}–${entry.ayahEnd})`
                         : `${entry.surahStart} ${entry.ayahStart} ← ${entry.surahEnd} ${entry.ayahEnd}`;
-                      const statusLabel = isPast && perf
-                        ? (perf.absent ? "—" : perf.exceeded ? "ممتازة ✨" : perf.completed ? "منتظمة ✓" : "متأخرة ⏳")
-                        : isToday ? "← اليوم" : "";
-                      const statusColor = isPast && perf
-                        ? (perf.absent ? "#9ca3af" : perf.exceeded ? "#2563eb" : perf.completed ? "#059669" : "#d97706")
-                        : plan.theme.primaryColor;
+
+                      // ألوان الحالة — أزرق / أخضر / أصفر / رمادي
+                      const isExceeded  = isPast && perf && !perf.absent && perf.exceeded;
+                      const isRegular   = isPast && perf && !perf.absent && !perf.exceeded && perf.completed;
+                      const isLate      = isPast && perf && !perf.absent && !perf.completed;
+                      const isAbsent    = isPast && perf?.absent;
+
+                      const rowBg = isToday
+                        ? plan.theme.secondaryColor
+                        : isExceeded  ? "#dbeafe"   // أزرق فاتح
+                        : isRegular   ? "#dcfce7"   // أخضر فاتح
+                        : isLate      ? "#fef9c3"   // أصفر فاتح
+                        : isAbsent    ? "#f3f4f6"   // رمادي خفيف
+                        : "";
+
+                      const accentColor = isExceeded  ? "#1d4ed8"
+                        : isRegular   ? "#15803d"
+                        : isLate      ? "#a16207"
+                        : isAbsent    ? "#9ca3af"
+                        : "#64748b";
+
+                      const circleStyle = isToday
+                        ? { background: plan.theme.primaryColor, color: "white", fontSize: "9px" }
+                        : isExceeded  ? { background: "#2563eb", color: "white", fontSize: "9px" }
+                        : isRegular   ? { background: "#16a34a", color: "white", fontSize: "9px" }
+                        : isLate      ? { background: "#ca8a04", color: "white", fontSize: "9px" }
+                        : isAbsent    ? { background: "#9ca3af", color: "white", fontSize: "9px" }
+                        : { background: "#e5e7eb", color: "#6b7280", fontSize: "9px" };
+
+                      const statusLabel = isToday
+                        ? "← اليوم"
+                        : isExceeded  ? "ممتازة ✨"
+                        : isRegular   ? "منتظمة ✓"
+                        : isLate      ? "متأخرة ⏳"
+                        : isAbsent    ? "غائبة"
+                        : "";
+
+                      const borderColor = isExceeded ? "border-blue-200"
+                        : isRegular   ? "border-green-200"
+                        : isLate      ? "border-yellow-200"
+                        : "border-border/30";
+
                       return (
-                        <tr key={entry.dayNumber} className="border-b border-border/30"
-                          style={{
-                            background: isToday ? plan.theme.secondaryColor
-                              : isPast && perf?.exceeded ? "#eff6ff"
-                              : isPast && perf?.completed ? "#f0fdf4"
-                              : isPast && (perf?.partial || (!perf?.absent && !perf?.completed)) ? "#fffbeb" : "",
-                            fontWeight: isToday ? "bold" : "normal",
-                          }}>
-                          <td className="px-2 py-2 text-center">
-                            <span className="inline-flex w-5 h-5 rounded-full items-center justify-center font-bold"
-                              style={isToday
-                                ? { background: plan.theme.primaryColor, color: "white", fontSize: "9px" }
-                                : { background: "#e5e7eb", color: "#6b7280", fontSize: "9px" }}>
+                        <tr key={entry.dayNumber}
+                          className={`border-b ${borderColor}`}
+                          style={{ background: rowBg, fontWeight: isToday ? "bold" : "normal" }}>
+                          <td className="px-2 py-2.5 text-center">
+                            <span className="inline-flex w-6 h-6 rounded-full items-center justify-center font-bold"
+                              style={circleStyle}>
                               {entry.dayNumber}
                             </span>
                           </td>
-                          <td className="px-2 py-2 text-right" style={isToday ? { color: plan.theme.accentColor } : { color: "#64748b" }}>{dayName}</td>
-                          <td className="px-2 py-2 text-right text-muted-foreground">{dateLabel}</td>
-                          <td className="px-3 py-2 text-right" style={isToday ? { color: plan.theme.primaryColor } : {}}>{section}</td>
-                          <td className="px-2 py-2 text-center font-bold text-[11px]" style={{ color: statusColor }}>{statusLabel}</td>
+                          <td className="px-2 py-2.5 text-right text-[11px] font-semibold" style={{ color: isToday ? plan.theme.accentColor : accentColor }}>{dayName}</td>
+                          <td className="px-2 py-2.5 text-right text-[11px]" style={{ color: accentColor }}>{dateLabel}</td>
+                          <td className="px-3 py-2.5 text-right text-[11px]" style={{ color: isToday ? plan.theme.primaryColor : accentColor }}>{section}</td>
+                          <td className="px-2 py-2.5 text-center">
+                            <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                              isToday     ? "bg-white/60 text-gray-700"
+                              : isExceeded ? "bg-blue-200 text-blue-800"
+                              : isRegular  ? "bg-green-200 text-green-800"
+                              : isLate     ? "bg-yellow-200 text-yellow-800"
+                              : isAbsent   ? "bg-gray-200 text-gray-500"
+                              : ""
+                            }`}>
+                              {statusLabel}
+                            </span>
+                          </td>
                         </tr>
                       );
                     })}
