@@ -273,13 +273,24 @@ router.patch("/users/:id/set-role", authenticate, async (req, res): Promise<void
   res.json(safeUser);
 });
 
-router.patch("/users/:id/reset-password", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
+router.patch("/users/:id/reset-password", authenticate, async (req, res): Promise<void> => {
+  const allowedRoles = ["leader", "deputy", "track_supervisor"];
+  if (!allowedRoles.includes(req.userRole ?? "")) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
   const parsed = ResetUserPasswordBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
+  }
+  // track_supervisor can only reset passwords for students
+  if (req.userRole === "track_supervisor") {
+    const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
+    if (!target || target.role !== "student") {
+      res.status(403).json({ error: "مسؤولة المسار تقدر فقط تعيد كلمة مرور الطالبات" }); return;
+    }
   }
   await db.update(usersTable).set({ passwordHash: hashPassword(parsed.data.newPassword) }).where(eq(usersTable.id, id));
   res.json({ success: true });

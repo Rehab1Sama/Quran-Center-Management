@@ -289,20 +289,50 @@ router.get("/export/registrations", authenticate, requireRole("leader"), async (
 
   const circleMap = new Map(circles.map(c => [c.id, c]));
 
+  // Build email map: student name → email (from linked student user accounts)
+  const studentUserMap = new Map<string, string>();
+  for (const u of users) {
+    if (u.role === "student" && u.email) studentUserMap.set(u.name, u.email);
+  }
+
+  // Collect all extraData keys from students dynamically
+  const studentExtraKeys = new Set<string>();
+  for (const s of students) {
+    try { if (s.extraData) { Object.keys(JSON.parse(s.extraData)).forEach(k => studentExtraKeys.add(k)); } } catch { /**/ }
+  }
+  const studentExtraKeysArr = [...studentExtraKeys];
+
+  // Collect all extraData keys from staff/volunteers dynamically
+  const volunteers = users.filter(u => u.role !== "student");
+  const volunteerExtraKeys = new Set<string>();
+  for (const u of volunteers) {
+    try { if (u.extraData) { Object.keys(JSON.parse(u.extraData)).forEach(k => volunteerExtraKeys.add(k)); } } catch { /**/ }
+  }
+  const volunteerExtraKeysArr = [...volunteerExtraKeys];
+
   const wb = new ExcelJS.Workbook();
   wb.creator = "مقرأة سنا الآي";
   wb.created = new Date();
 
   // ── Sheet 1: Registered students ──
-  addSheet(wb, "طلبات تسجيل الطالبات", [
-    "الاسم الكامل", "رقم الجوال", "الدولة", "الفئة العمرية",
-    "المستوى التعليمي", "المسار", "اسم الحلقة", "بداية الحفظ",
-    "الحالة", "تاريخ التسجيل",
-  ], [30, 18, 14, 14, 18, 14, 22, 18, 12, 18],
+  const studentHeaders = [
+    "الاسم الكامل", "البريد الإلكتروني", "رقم الجوال", "الدولة",
+    "الفئة العمرية", "المستوى التعليمي", "المسار", "اسم الحلقة",
+    "بداية الحفظ", "الحالة", "تاريخ التسجيل",
+    ...studentExtraKeysArr,
+  ];
+  const studentWidths = [
+    30, 30, 18, 14, 14, 18, 14, 22, 18, 12, 18,
+    ...studentExtraKeysArr.map(() => 22),
+  ];
+  addSheet(wb, "طلبات تسجيل الطالبات", studentHeaders, studentWidths,
   students.map(s => {
     const circle = s.circleId ? circleMap.get(s.circleId) : null;
-    return {
+    let extra: Record<string, string> = {};
+    try { if (s.extraData) extra = JSON.parse(s.extraData); } catch { /**/ }
+    const row: Record<string, unknown> = {
       "الاسم الكامل": s.fullName,
+      "البريد الإلكتروني": studentUserMap.get(s.fullName) ?? "",
       "رقم الجوال": s.phone ?? "",
       "الدولة": s.country ?? "",
       "الفئة العمرية": s.ageRange ?? "",
@@ -313,18 +343,27 @@ router.get("/export/registrations", authenticate, requireRole("leader"), async (
       "الحالة": s.isArchived ? "مؤرشفة" : "نشطة",
       "تاريخ التسجيل": formatDate(s.createdAt),
     };
+    for (const k of studentExtraKeysArr) row[k] = extra[k] ?? "";
+    return row;
   }));
 
   // ── Sheet 2: Registered volunteers/staff ──
-  const volunteers = users.filter(u => u.role !== "student");
-  addSheet(wb, "طلبات تسجيل المتطوعات", [
+  const volunteerHeaders = [
     "الاسم الكامل", "البريد الإلكتروني", "الدور", "المسار",
     "اسم الحلقة", "رقم الجوال", "الدولة", "الفئة العمرية",
-    "المستوى التعليمي", "تاريخ التسجيل",
-  ], [28, 28, 16, 14, 22, 16, 14, 14, 18, 18],
+    "المستوى التعليمي", "الحالة", "آخر دخول", "تاريخ التسجيل",
+    ...volunteerExtraKeysArr,
+  ];
+  const volunteerWidths = [
+    28, 30, 16, 14, 22, 16, 14, 14, 18, 12, 18, 18,
+    ...volunteerExtraKeysArr.map(() => 22),
+  ];
+  addSheet(wb, "طلبات تسجيل المتطوعات", volunteerHeaders, volunteerWidths,
   volunteers.map(u => {
     const circle = u.circleId ? circleMap.get(u.circleId) : null;
-    return {
+    let extra: Record<string, string> = {};
+    try { if (u.extraData) extra = JSON.parse(u.extraData); } catch { /**/ }
+    const row: Record<string, unknown> = {
       "الاسم الكامل": u.name,
       "البريد الإلكتروني": u.email,
       "الدور": ROLE_LABELS[u.role] ?? u.role,
@@ -334,8 +373,12 @@ router.get("/export/registrations", authenticate, requireRole("leader"), async (
       "الدولة": u.country ?? "",
       "الفئة العمرية": u.ageRange ?? "",
       "المستوى التعليمي": u.educationLevel ?? "",
+      "الحالة": u.isArchived ? "موقوفة" : "نشطة",
+      "آخر دخول": u.lastLoginAt ? formatDate(u.lastLoginAt) : "لم تدخل بعد",
       "تاريخ التسجيل": formatDate(u.createdAt),
     };
+    for (const k of volunteerExtraKeysArr) row[k] = extra[k] ?? "";
+    return row;
   }));
 
   await sendWorkbook(res, wb, `بيانات_التسجيل_${new Date().toISOString().slice(0, 10)}`);
