@@ -596,10 +596,11 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
     cycleLength?: number;
     memorizedSections?: Array<{startSurah: string; startAyah: number; endSurah: string; endAyah: number}>;
     startDate?: string;
+    quota?: number;
   };
 
   const { planType = "auto", theme } = body;
-  const cycleLength = Math.max(7, Math.min(60, Number(body.cycleLength) || 21));
+  const quota = typeof body.quota === "number" ? body.quota : null; // وجه (1) أو نصف وجه (0.5) للتثبيت
 
   const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
   if (!student?.circleId) { res.status(400).json({ error: "الطالبة ليست في حلقة" }); return; }
@@ -611,30 +612,76 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
     res.status(400).json({ error: "خطة المراجعة متاحة فقط لمسار الفتيات والتثبيت" }); return;
   }
 
+  // خطة التثبيت: ٦ أسابيع × ٤ أيام = ٢٤ يوم عمل (ثابت)
+  const isFixationQuota = trackType === "fixation" && quota !== null;
+  const cycleLength = isFixationQuota
+    ? 24
+    : Math.max(7, Math.min(60, Number(body.cycleLength) || 21));
+
   const allRecords = await db.select().from(recordsTable)
     .where(eq(recordsTable.studentId, studentId))
     .orderBy(desc(recordsTable.date));
 
   const sections = body.memorizedSections ?? [];
 
-  // حساب عدد الأوجه بدقة باستخدام مصحف المدينة
-  const totalPagesFromSections = sections.length
-    ? Math.max(1, Math.round(sections.reduce((s, sec) =>
-        s + pagesBetween(sec.startSurah, sec.startAyah, sec.endSurah, sec.endAyah)
-      , 0) * 10) / 10)
-    : null;
+  // ── مسار التثبيت مع نصاب: حساب نهاية الخطة من بداية محددة + (نصاب × 24) ──
+  let totalPages: number;
+  let startSurah: string;
+  let startAyah: number;
+  let endSurah: string;
+  let endAyah: number;
 
-  const latestNonAbsent = allRecords.find(r => !r.isAbsent && r.memorizeSurahEnd);
-  const oldestNonAbsent = [...allRecords].reverse().find(r => !r.isAbsent && r.memorizeSurahStart);
+  if (isFixationQuota && body.startSurah) {
+    startSurah = body.startSurah;
+    startAyah = body.startAyah ?? 1;
+    const totalWajh = Math.round(quota! * 24 * 10) / 10;
+    totalPages = totalWajh;
+    // حساب موضع النهاية بناءً على بداية + إجمالي الأوجه في مصحف المدينة
+    const startW = wajhOf(startSurah, startAyah);
+    const targetW = startW + totalWajh;
+    // إيجاد آخر إدخال في مصحف المدينة يقع عند أو قبل الوجه المستهدف
+    let endEntry = MUSHAF_PAGES[MUSHAF_PAGES.length - 1];
+    for (let i = 0; i < MUSHAF_PAGES.length - 1; i++) {
+      const [,, w] = MUSHAF_PAGES[i];
+      const [,, wNext] = MUSHAF_PAGES[i + 1];
+      if (w <= targetW && wNext > targetW) { endEntry = MUSHAF_PAGES[i]; break; }
+      if (w === targetW) { endEntry = MUSHAF_PAGES[i]; break; }
+    }
+    const endSurahObj = SURAHS.find(s => s.n === endEntry[0]);
+    endSurah = endSurahObj?.name ?? "الناس";
+    // نهاية الوجه = أول آية الوجه التالي - 1 (أو آخر آية في السورة)
+    const endEntryIdx = MUSHAF_PAGES.findIndex(e => e === endEntry);
+    const nextEntry = MUSHAF_PAGES[endEntryIdx + 1];
+    if (nextEntry) {
+      if (nextEntry[0] === endEntry[0]) {
+        endAyah = nextEntry[1] - 1;
+      } else {
+        endAyah = endSurahObj?.ayahs ?? 1;
+      }
+    } else {
+      endAyah = endSurahObj?.ayahs ?? 1;
+    }
+    endAyah = Math.max(1, endAyah);
+  } else {
+    // حساب عدد الأوجه بدقة باستخدام مصحف المدينة
+    const totalPagesFromSections = sections.length
+      ? Math.max(1, Math.round(sections.reduce((s, sec) =>
+          s + pagesBetween(sec.startSurah, sec.startAyah, sec.endSurah, sec.endAyah)
+        , 0) * 10) / 10)
+      : null;
 
-  const startSurah = body.startSurah ?? oldestNonAbsent?.memorizeSurahStart ?? "الفاتحة";
-  const startAyah = body.startAyah ?? oldestNonAbsent?.memorizeAyahStart ?? 1;
-  const endSurah = body.memorizedUpToSurah ?? latestNonAbsent?.memorizeSurahEnd ?? startSurah;
-  const endAyah = body.memorizedUpToAyah ?? latestNonAbsent?.memorizeAyahEnd ?? startAyah;
+    const latestNonAbsent = allRecords.find(r => !r.isAbsent && r.memorizeSurahEnd);
+    const oldestNonAbsent = [...allRecords].reverse().find(r => !r.isAbsent && r.memorizeSurahStart);
 
-  // حساب المجموع الكلي بمصحف المدينة إذا لم يُحدَّد يدويًا ولا عبر نطاقات
-  const totalPagesFromRange = Math.max(1, Math.round(pagesBetween(startSurah, startAyah, endSurah, endAyah) * 10) / 10);
-  const totalPages = body.totalPages ?? totalPagesFromSections ?? totalPagesFromRange;
+    startSurah = body.startSurah ?? oldestNonAbsent?.memorizeSurahStart ?? "الفاتحة";
+    startAyah = body.startAyah ?? oldestNonAbsent?.memorizeAyahStart ?? 1;
+    endSurah = body.memorizedUpToSurah ?? latestNonAbsent?.memorizeSurahEnd ?? startSurah;
+    endAyah = body.memorizedUpToAyah ?? latestNonAbsent?.memorizeAyahEnd ?? startAyah;
+
+    // حساب المجموع الكلي بمصحف المدينة إذا لم يُحدَّد يدويًا ولا عبر نطاقات
+    const totalPagesFromRange = Math.max(1, Math.round(pagesBetween(startSurah, startAyah, endSurah, endAyah) * 10) / 10);
+    totalPages = body.totalPages ?? totalPagesFromSections ?? totalPagesFromRange;
+  }
 
   const today = getMeccaTodayServer();
   const planStartDate = body.startDate ?? today;
@@ -722,6 +769,19 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
     await insertPlanNotification("plan_created", 1, plan.totalPages);
     res.status(201).json(fmtPlan(plan));
   }
+});
+
+// ── DELETE /api/students/:id/review-plan — للقائدة والنائبة ومسؤولة المسار فقط ────
+router.delete("/students/:id/review-plan", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const studentId = parseInt(req.params.id as string);
+  const [plan] = await db.select().from(reviewPlansTable).where(eq(reviewPlansTable.studentId, studentId));
+  if (!plan) { res.status(404).json({ error: "لا توجد خطة" }); return; }
+  await db.delete(reviewPlansTable).where(eq(reviewPlansTable.studentId, studentId));
+  await db.delete(planNotificationsTable).where(eq(planNotificationsTable.studentId, studentId));
+  res.json({ ok: true });
 });
 
 // ── PATCH /api/students/:id/review-plan — update entries or theme ──────────

@@ -250,6 +250,7 @@ interface Props {
   onPlanChange: (plan: ReviewPlan | null) => void;
   readOnly?: boolean;
   onAfterSave?: () => void;
+  userRole?: string;
 }
 
 function StepIndicator({ current }: { current: number }) {
@@ -270,9 +271,9 @@ function StepIndicator({ current }: { current: number }) {
   );
 }
 
-export default function ReviewPlanTab({ studentId, studentName, circleName, trackType, plan, onPlanChange, readOnly = false, onAfterSave }: Props) {
+export default function ReviewPlanTab({ studentId, studentName, circleName, trackType, plan, onPlanChange, readOnly = false, onAfterSave, userRole }: Props) {
   const { toast } = useToast();
-  const [step, setStep] = useState<"view" | "pick_content" | "plan_type" | "start_date" | "choose" | "theme" | "manual" | "renew_theme" | "renew_surah" | "renew_confirm">("view");
+  const [step, setStep] = useState<"view" | "pick_content" | "plan_type" | "start_date" | "choose" | "theme" | "manual" | "renew_theme" | "renew_surah" | "renew_confirm" | "fixation_quota" | "fixation_start" | "fixation_theme" | "fixation_date">("view");
   const [saving, setSaving] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState<PlanTheme>(
     plan?.theme ?? THEME_PRESETS[0].theme
@@ -297,6 +298,13 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
   const [cycleLength, setCycleLength] = useState(plan?.cycleLength?.toString() ?? "21");
   const [startDate, setStartDate] = useState("");
   const [autoDetecting, setAutoDetecting] = useState(false);
+
+  // حالة خاصة بمسار التثبيت
+  const [fixationQuota, setFixationQuota] = useState<0.5 | 1>(1);
+  const [fixationStartMode, setFixationStartMode] = useState<"juz" | "surah">("juz");
+  const [fixationStartJuz, setFixationStartJuz] = useState<number>(1);
+  const [fixationStartSurahLocal, setFixationStartSurahLocal] = useState("");
+  const [fixationStartAyahLocal, setFixationStartAyahLocal] = useState("1");
 
   async function autoDetectAndEnterPick() {
     setAutoDetecting(true);
@@ -362,11 +370,229 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
     return base;
   }, []);
 
+  async function createFixationPlan() {
+    setSaving(true);
+    try {
+      const body: Record<string, unknown> = {
+        quota: fixationQuota,
+        cycleLength: 24,
+        theme: selectedTheme,
+      };
+      if (fixationStartMode === "juz") {
+        const juz = JUZ_RANGES.find(j => j.n === fixationStartJuz);
+        if (juz) { body.startSurah = juz.startSurah; body.startAyah = juz.startAyah; }
+      } else if (fixationStartSurahLocal) {
+        body.startSurah = fixationStartSurahLocal;
+        body.startAyah = parseInt(fixationStartAyahLocal) || 1;
+      }
+      if (startDate) body.startDate = startDate;
+      const res = await fetch(`${BASE}/api/students/${studentId}/review-plan`, {
+        method: "POST", headers: authHeader(), body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        onPlanChange(data);
+        setStep("view");
+        toast({ title: "تم إنشاء خطة التثبيت ✓" });
+        onAfterSave?.();
+      } else {
+        const err = await res.json();
+        toast({ title: err.error ?? "حدث خطأ", variant: "destructive" });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deletePlan() {
+    if (!window.confirm("هل أنتِ متأكدة من حذف الخطة نهائيًا؟ سيمكن الطالبة من إعادة إنشائها من جديد.")) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${BASE}/api/students/${studentId}/review-plan`, {
+        method: "DELETE", headers: authHeader(),
+      });
+      if (res.ok) {
+        onPlanChange(null);
+        setStep("view");
+        toast({ title: "تم حذف الخطة ✓" });
+      } else {
+        const err = await res.json();
+        toast({ title: err.error ?? "حدث خطأ", variant: "destructive" });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const canDeletePlan = ["leader", "deputy", "track_supervisor"].includes(userRole ?? "");
+  const FIXATION_WEEKS = 6;
+  const FIXATION_DAYS_PER_WEEK = 4;
+  const FIXATION_CYCLE = FIXATION_WEEKS * FIXATION_DAYS_PER_WEEK; // 24
+
   // فقط مسار الفتيات (الحفظ المكثف)
   if (trackType !== "girls" && trackType !== "fixation") {
     return (
       <div className="text-center py-10 text-muted-foreground text-sm">
         خطة المراجعة غير متاحة لهذا المسار
+      </div>
+    );
+  }
+
+  // ── مسار التثبيت: خطوة ١ — اختيار النصاب ─────────────────────
+  if (step === "fixation_quota") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <button onClick={() => setStep("view")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
+          <h3 className="font-bold text-sm">١ · اختاري نصابك اليومي</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">كمية التثبيت التي ستراجعينها في كل جلسة</p>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setFixationQuota(1)}
+            className={`flex flex-col items-center gap-2 p-5 rounded-2xl border-2 transition-all ${fixationQuota === 1 ? "border-emerald-500 bg-emerald-50 shadow-md" : "border-border bg-muted/20 hover:border-emerald-300"}`}
+          >
+            <span className="text-3xl">📖</span>
+            <p className="font-bold text-sm text-emerald-800">وجه كامل</p>
+            <p className="text-[11px] text-emerald-700 text-center">صفحة واحدة في كل جلسة</p>
+          </button>
+          <button
+            onClick={() => setFixationQuota(0.5)}
+            className={`flex flex-col items-center gap-2 p-5 rounded-2xl border-2 transition-all ${fixationQuota === 0.5 ? "border-sky-500 bg-sky-50 shadow-md" : "border-border bg-muted/20 hover:border-sky-300"}`}
+          >
+            <span className="text-3xl">📄</span>
+            <p className="font-bold text-sm text-sky-800">نصف وجه</p>
+            <p className="text-[11px] text-sky-700 text-center">نصف صفحة في كل جلسة</p>
+          </button>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
+          <p className="font-semibold">الخطة ستكون:</p>
+          <p>• {FIXATION_CYCLE} يوم عمل · {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام (الأحد–الأربعاء)</p>
+          <p>• إجمالي النصاب: <span className="font-bold text-foreground">{fixationQuota * FIXATION_CYCLE} وجه</span></p>
+        </div>
+        <Button className="w-full" onClick={() => setStep("fixation_start")}>
+          التالي ← اختاري نقطة البداية
+        </Button>
+      </div>
+    );
+  }
+
+  // ── مسار التثبيت: خطوة ٢ — نقطة البداية ─────────────────────
+  if (step === "fixation_start") {
+    const canProceed = fixationStartMode === "juz" ? fixationStartJuz > 0 : fixationStartSurahLocal !== "";
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <button onClick={() => setStep("fixation_quota")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
+          <h3 className="font-bold text-sm">٢ · من أين تبدئين؟</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-1 p-1 bg-muted rounded-xl">
+          {(["juz", "surah"] as const).map(m => (
+            <button key={m} onClick={() => setFixationStartMode(m)}
+              className={`py-2 rounded-lg text-sm font-semibold transition-all ${fixationStartMode === m ? "bg-background shadow text-foreground" : "text-muted-foreground"}`}>
+              {m === "juz" ? "جزء البداية" : "سورة البداية"}
+            </button>
+          ))}
+        </div>
+        {fixationStartMode === "juz" ? (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">اختاري الجزء الذي تبدئين منه التثبيت</p>
+            <div className="grid grid-cols-6 gap-1.5">
+              {JUZ_RANGES.map(j => (
+                <button key={j.n} onClick={() => setFixationStartJuz(j.n)}
+                  className={`py-2.5 rounded-lg text-xs font-bold border-2 transition-all ${fixationStartJuz === j.n ? "border-emerald-500 bg-emerald-100 text-emerald-800 shadow-sm" : "border-border bg-background hover:border-emerald-300"}`}>
+                  {j.n}
+                </button>
+              ))}
+            </div>
+            {fixationStartJuz > 0 && (
+              <p className="text-xs text-emerald-700 font-semibold bg-emerald-50 rounded-lg px-3 py-2">
+                ✓ ابتداءً من الجزء {fixationStartJuz} — {JUZ_RANGES.find(j => j.n === fixationStartJuz)?.startSurah}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">اختاري السورة والآية التي تبدئين منها</p>
+            <div className="flex gap-2">
+              <select className="flex-1 border rounded-lg px-2 py-2 text-sm bg-background"
+                value={fixationStartSurahLocal}
+                onChange={e => setFixationStartSurahLocal(e.target.value)}>
+                <option value="">— اختاري السورة —</option>
+                {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+              </select>
+              <input type="number" min="1" placeholder="آية" className="w-20 border rounded-lg px-2 py-2 text-sm bg-background"
+                value={fixationStartAyahLocal}
+                onChange={e => setFixationStartAyahLocal(e.target.value)} />
+            </div>
+          </div>
+        )}
+        <Button className="w-full" disabled={!canProceed}
+          onClick={() => { setSelectedTheme(THEME_PRESETS[0].theme); setStep("fixation_theme"); }}>
+          التالي ← اختاري الثيم
+        </Button>
+      </div>
+    );
+  }
+
+  // ── مسار التثبيت: خطوة ٣ — الثيم ───────────────────────────
+  if (step === "fixation_theme") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <button onClick={() => setStep("fixation_start")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
+          <h3 className="font-bold text-sm">٣ · اختاري لون الخطة</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {THEME_PRESETS.map(preset => (
+            <button key={preset.name} onClick={() => setSelectedTheme(preset.theme)}
+              className={`p-3 rounded-xl border-2 transition-all text-right ${selectedTheme.primaryColor === preset.theme.primaryColor ? "border-primary shadow-md" : "border-border hover:border-primary/40"}`}
+              style={{ background: preset.theme.secondaryColor }}>
+              <div className="w-6 h-6 rounded-full mb-1" style={{ background: preset.theme.primaryColor }} />
+              <p className="text-xs font-bold" style={{ color: preset.theme.accentColor }}>{preset.name}</p>
+            </button>
+          ))}
+        </div>
+        <Button className="w-full" style={{ background: selectedTheme.primaryColor }}
+          onClick={() => setStep("fixation_date")}>
+          التالي ← اختاري تاريخ البداية
+        </Button>
+      </div>
+    );
+  }
+
+  // ── مسار التثبيت: خطوة ٤ — تاريخ البداية ───────────────────
+  if (step === "fixation_date") {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const totalWajh = fixationQuota * FIXATION_CYCLE;
+    const startLabel = fixationStartMode === "juz"
+      ? `الجزء ${fixationStartJuz} (${JUZ_RANGES.find(j => j.n === fixationStartJuz)?.startSurah ?? ""})`
+      : `${fixationStartSurahLocal} آية ${fixationStartAyahLocal}`;
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <button onClick={() => setStep("fixation_theme")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
+          <h3 className="font-bold text-sm">٤ · تاريخ البداية</h3>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-4 space-y-3">
+          <input type="date" className="w-full border rounded-xl px-3 py-2 text-sm bg-background"
+            value={startDate || todayStr} min={todayStr}
+            onChange={e => setStartDate(e.target.value)} />
+          {!startDate && <p className="text-xs text-emerald-700 font-medium">✓ سيبدأ اليوم تلقائيًا إذا لم تختاري تاريخًا</p>}
+        </div>
+        <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-xs space-y-1 text-blue-800">
+          <p className="font-semibold">ملخص الخطة:</p>
+          <p>• النصاب: <span className="font-bold">{fixationQuota === 1 ? "وجه كامل" : "نصف وجه"}</span> يوميًا</p>
+          <p>• البداية: <span className="font-bold">{startLabel}</span></p>
+          <p>• المدة: {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام ({FIXATION_CYCLE} جلسة)</p>
+          <p>• إجمالي النصاب: <span className="font-bold">{totalWajh} وجه</span></p>
+          <p>• أيام العمل: الأحد، الاثنين، الثلاثاء، الأربعاء</p>
+        </div>
+        <Button className="w-full font-bold" style={{ background: selectedTheme.primaryColor }}
+          onClick={createFixationPlan} disabled={saving}>
+          {saving ? <><span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin inline-block ml-2" /></> : null}
+          إنشاء خطة التثبيت ✓
+        </Button>
       </div>
     );
   }
@@ -1159,6 +1385,34 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
         </Card>
       );
     }
+    // مسار التثبيت: معالج منفصل
+    if (trackType === "fixation") {
+      return (
+        <div className="space-y-4">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-bold flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-emerald-600" />
+                خطة التثبيت
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground text-center pb-4">
+                ٦ أسابيع · ٤ أيام في الأسبوع (الأحد–الأربعاء) · تختارين نصابك اليومي
+              </p>
+              <Button
+                className="w-full gap-2 text-sm font-bold"
+                style={{ background: THEME_PRESETS[0].theme.primaryColor }}
+                onClick={() => setStep("fixation_quota")}
+              >
+                <BookOpen className="w-4 h-4" />
+                ابدئي إنشاء خطة التثبيت ←
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
     return (
       <div className="space-y-4">
         <Card className="border-0 shadow-sm">
@@ -1288,53 +1542,55 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
       <PlanCard plan={plan} studentName={studentName} circleName={circleName} />
 
       {/* Actions */}
-      <div className={`grid gap-2 ${canActuallyEdit ? "grid-cols-4" : "grid-cols-1"}`}>
-        {canActuallyEdit && (
-          <button
-            onClick={() => { setSelectedTheme(plan.theme); setStep("theme"); }}
-            className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
-          >
-            <Palette className="w-4 h-4 text-muted-foreground" />
-            <span className="text-[10px] text-muted-foreground">التنسيق</span>
-          </button>
-        )}
-        {canActuallyEdit && (
-          <button
-            onClick={() => { setManualEntries(plan.planEntries.map(e => ({ ...e }))); setStep("manual"); }}
-            className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
-          >
-            <Edit3 className="w-4 h-4 text-muted-foreground" />
-            <span className="text-[10px] text-muted-foreground">تعديل</span>
-          </button>
-        )}
-        {canActuallyEdit && canRenewNow && (
-          <button
-            onClick={() => { setSelectedTheme(THEME_PRESETS[0].theme); setStep("renew_theme"); }}
-            className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
-          >
-            <RefreshCw className="w-4 h-4 text-muted-foreground" />
-            <span className="text-[10px] text-muted-foreground">تجديد</span>
-          </button>
-        )}
-        {canActuallyEdit && !canRenewNow && (
-          <button
-            disabled
-            title={`يمكن التجديد بعد إكمال الدورة أو مرور 21 يوم عمل (باقي ${Math.max(0, 21 - workingDaysSince)} يوم)`}
-            className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/30 opacity-40 cursor-not-allowed"
-          >
-            <RefreshCw className="w-4 h-4 text-muted-foreground" />
-            <span className="text-[10px] text-muted-foreground">تجديد</span>
-          </button>
-        )}
-        <button
-          onClick={downloadPDF}
-          disabled={downloading}
-          className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
-        >
-          {downloading ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /> : <Download className="w-4 h-4 text-muted-foreground" />}
-          <span className="text-[10px] text-muted-foreground">PDF</span>
-        </button>
-      </div>
+      {(() => {
+        const isFixation = plan.trackType === "fixation";
+        const actionCount = (canActuallyEdit && !isFixation ? 2 : 0) + (canActuallyEdit ? 1 : 0) + 1 + (canDeletePlan ? 1 : 0);
+        return (
+          <div className={`grid gap-2 grid-cols-${Math.min(actionCount, 5)}`}
+            style={{ gridTemplateColumns: `repeat(${Math.min(actionCount, 5)}, minmax(0, 1fr))` }}>
+            {canActuallyEdit && !isFixation && (
+              <button onClick={() => { setSelectedTheme(plan.theme); setStep("theme"); }}
+                className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors">
+                <Palette className="w-4 h-4 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">التنسيق</span>
+              </button>
+            )}
+            {canActuallyEdit && !isFixation && (
+              <button onClick={() => { setManualEntries(plan.planEntries.map(e => ({ ...e }))); setStep("manual"); }}
+                className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors">
+                <Edit3 className="w-4 h-4 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">تعديل</span>
+              </button>
+            )}
+            {canActuallyEdit && canRenewNow && !isFixation && (
+              <button onClick={() => { setSelectedTheme(THEME_PRESETS[0].theme); setStep("renew_theme"); }}
+                className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors">
+                <RefreshCw className="w-4 h-4 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">تجديد</span>
+              </button>
+            )}
+            {canActuallyEdit && !canRenewNow && !isFixation && (
+              <button disabled title={`يمكن التجديد بعد إكمال الدورة أو مرور 21 يوم عمل (باقي ${Math.max(0, 21 - workingDaysSince)} يوم)`}
+                className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/30 opacity-40 cursor-not-allowed">
+                <RefreshCw className="w-4 h-4 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">تجديد</span>
+              </button>
+            )}
+            <button onClick={downloadPDF} disabled={downloading}
+              className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors">
+              {downloading ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /> : <Download className="w-4 h-4 text-muted-foreground" />}
+              <span className="text-[10px] text-muted-foreground">PDF</span>
+            </button>
+            {canDeletePlan && (
+              <button onClick={deletePlan} disabled={saving}
+                className="flex flex-col items-center gap-1 p-3 rounded-xl bg-rose-50 hover:bg-rose-100 transition-colors border border-rose-200">
+                <span className="text-base">🗑️</span>
+                <span className="text-[10px] text-rose-600 font-semibold">حذف الخطة</span>
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Schedule Calendar */}
       <button
@@ -1353,7 +1609,79 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
           : <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground" />}
       </button>
 
-      {showSchedule && (
+      {showSchedule && plan.trackType === "fixation" && (
+        // ── جدول مسار التثبيت: عرض أسبوعي ٦ أسابيع × ٤ أيام ──────
+        <div className="space-y-3">
+          {Array.from({ length: 6 }, (_, weekIdx) => {
+            const weekDays = plan.planEntries.slice(weekIdx * 4, weekIdx * 4 + 4);
+            if (!weekDays.length) return null;
+            return (
+              <div key={weekIdx} className="rounded-xl border border-border/50 overflow-hidden shadow-sm">
+                <div className="px-3 py-2 font-bold text-xs" style={{ background: plan.theme.primaryColor, color: "white" }}>
+                  الأسبوع {weekIdx + 1}
+                </div>
+                <table className="w-full" style={{ fontSize: "12px" }}>
+                  <thead>
+                    <tr className="bg-muted/40 border-b border-border/30">
+                      <th className="px-2 py-2 text-right font-semibold text-muted-foreground" style={{ width: "32px" }}>#</th>
+                      <th className="px-2 py-2 text-right font-semibold text-muted-foreground" style={{ width: "72px" }}>اليوم</th>
+                      <th className="px-2 py-2 text-right font-semibold text-muted-foreground" style={{ width: "80px" }}>التاريخ</th>
+                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">المقطع</th>
+                      <th className="px-2 py-2 text-center font-semibold text-muted-foreground" style={{ width: "56px" }}>الحالة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {weekDays.map((entry, i) => {
+                      const idx = weekIdx * 4 + i;
+                      const dayDate = getWorkingDayDate(plan.currentCycleStart, entry.dayNumber, plan.trackType);
+                      const dayJs = new Date(dayDate);
+                      const dayName = AR_DAYS_NAMES[dayJs.getDay()];
+                      const dateLabel = dayJs.toLocaleDateString("ar-SA", { day: "numeric", month: "short" });
+                      const isToday = idx === plan.dayInCycle - 1;
+                      const isPast = idx < plan.dayInCycle - 1;
+                      const perf = plan.dayPerformance?.find(d => d.dayNumber === entry.dayNumber);
+                      const section = entry.surahStart === entry.surahEnd
+                        ? `${entry.surahStart} (${entry.ayahStart}–${entry.ayahEnd})`
+                        : `${entry.surahStart} ${entry.ayahStart} ← ${entry.surahEnd} ${entry.ayahEnd}`;
+                      const statusLabel = isPast && perf
+                        ? (perf.absent ? "—" : perf.exceeded ? "ممتازة ✨" : perf.completed ? "منتظمة ✓" : "متأخرة ⏳")
+                        : isToday ? "← اليوم" : "";
+                      const statusColor = isPast && perf
+                        ? (perf.absent ? "#9ca3af" : perf.exceeded ? "#2563eb" : perf.completed ? "#059669" : "#d97706")
+                        : plan.theme.primaryColor;
+                      return (
+                        <tr key={entry.dayNumber} className="border-b border-border/30"
+                          style={{
+                            background: isToday ? plan.theme.secondaryColor
+                              : isPast && perf?.exceeded ? "#eff6ff"
+                              : isPast && perf?.completed ? "#f0fdf4"
+                              : isPast && (perf?.partial || (!perf?.absent && !perf?.completed)) ? "#fffbeb" : "",
+                            fontWeight: isToday ? "bold" : "normal",
+                          }}>
+                          <td className="px-2 py-2 text-center">
+                            <span className="inline-flex w-5 h-5 rounded-full items-center justify-center font-bold"
+                              style={isToday
+                                ? { background: plan.theme.primaryColor, color: "white", fontSize: "9px" }
+                                : { background: "#e5e7eb", color: "#6b7280", fontSize: "9px" }}>
+                              {entry.dayNumber}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2 text-right" style={isToday ? { color: plan.theme.accentColor } : { color: "#64748b" }}>{dayName}</td>
+                          <td className="px-2 py-2 text-right text-muted-foreground">{dateLabel}</td>
+                          <td className="px-3 py-2 text-right" style={isToday ? { color: plan.theme.primaryColor } : {}}>{section}</td>
+                          <td className="px-2 py-2 text-center font-bold text-[11px]" style={{ color: statusColor }}>{statusLabel}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showSchedule && plan.trackType !== "fixation" && (
         <div className="rounded-xl border border-border/50 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full" style={{ fontSize: "12px" }}>
@@ -1380,43 +1708,24 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
                     ? `${entry.surahStart} (${entry.ayahStart}–${entry.ayahEnd})`
                     : `${entry.surahStart} ${entry.ayahStart} ← ${entry.surahEnd} ${entry.ayahEnd}`;
                   return (
-                    <tr
-                      key={entry.dayNumber}
-                      className="border-b border-border/30"
+                    <tr key={entry.dayNumber} className="border-b border-border/30"
                       style={{
-                        background: isToday
-                          ? plan.theme.secondaryColor
-                          : isPast && perf?.exceeded
-                          ? "#eff6ff"
-                          : isPast && perf?.completed
-                          ? "#f0fdf4"
-                          : isPast && perf?.partial
-                          ? "#fffbeb"
-                          : isPast && perf && !perf.absent && !perf.completed
-                          ? "#fff1f2"
-                          : "",
+                        background: isToday ? plan.theme.secondaryColor
+                          : isPast && perf?.exceeded ? "#eff6ff"
+                          : isPast && perf?.completed ? "#f0fdf4"
+                          : isPast && perf?.partial ? "#fffbeb"
+                          : isPast && perf && !perf.absent && !perf.completed ? "#fff1f2" : "",
                         fontWeight: isToday ? "bold" : "normal",
-                      }}
-                    >
+                      }}>
                       <td className="px-2 py-2 text-center">
-                        <span
-                          className="inline-flex w-5 h-5 rounded-full items-center justify-center font-bold"
-                          style={
-                            isToday
-                              ? { background: plan.theme.primaryColor, color: "white", fontSize: "9px" }
-                              : { background: "#e5e7eb", color: "#6b7280", fontSize: "9px" }
-                          }
-                        >
+                        <span className="inline-flex w-5 h-5 rounded-full items-center justify-center font-bold"
+                          style={isToday ? { background: plan.theme.primaryColor, color: "white", fontSize: "9px" } : { background: "#e5e7eb", color: "#6b7280", fontSize: "9px" }}>
                           {entry.dayNumber}
                         </span>
                       </td>
-                      <td className="px-2 py-2 text-right" style={isToday ? { color: plan.theme.accentColor } : { color: "#64748b" }}>
-                        {dayName}
-                      </td>
+                      <td className="px-2 py-2 text-right" style={isToday ? { color: plan.theme.accentColor } : { color: "#64748b" }}>{dayName}</td>
                       <td className="px-2 py-2 text-right text-muted-foreground">{dateLabel}</td>
-                      <td className="px-3 py-2 text-right" style={isToday ? { color: plan.theme.primaryColor } : {}}>
-                        {section}
-                      </td>
+                      <td className="px-3 py-2 text-right" style={isToday ? { color: plan.theme.primaryColor } : {}}>{section}</td>
                       <td className="px-2 py-2 text-center text-muted-foreground">{entry.pages}</td>
                       <td className="px-2 py-2 text-center">
                         {isPast && perf ? (

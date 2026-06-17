@@ -1088,6 +1088,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
             onPlanChange={setStudentReviewPlan}
             readOnly={user?.role === "track_supervisor"}
             onAfterSave={() => navigate("/review-plans")}
+            userRole={user?.role}
           />
         </div>
       )}
