@@ -35,6 +35,7 @@ export default function DeputyTasksPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [responseText, setResponseText] = useState<Record<number, string>>({});
   const [booleanResponse, setBooleanResponse] = useState<Record<number, boolean | null>>({});
+  const [checklistState, setChecklistState] = useState<Record<number, Record<number, boolean | null>>>({});
   const [saving, setSaving] = useState<number | null>(null);
   const { toast } = useToast();
 
@@ -59,6 +60,14 @@ export default function DeputyTasksPage() {
       const val = booleanResponse[task.id];
       if (val === null || val === undefined) return task.response;
       return val ? "صح ✓" : "خطأ ✗";
+    }
+    if (task.answerType === "checklist") {
+      const opts: string[] = task.selectOptions ? (() => { try { return JSON.parse(task.selectOptions!); } catch { return []; } })() : [];
+      const state = checklistState[task.id] ?? {};
+      if (opts.length === 0) return task.response;
+      const answered = opts.every((_, i) => state[i] !== null && state[i] !== undefined);
+      if (!answered) return task.response;
+      return JSON.stringify(opts.map((item, i) => ({ item, checked: state[i] ?? false })));
     }
     if (task.answerType === "select") {
       return responseText[task.id]?.trim() || task.response || null;
@@ -119,8 +128,54 @@ export default function DeputyTasksPage() {
     );
   }
 
+  function ChecklistResponse({ task }: { task: DeputyTask }) {
+    const opts: string[] = task.selectOptions ? (() => { try { return JSON.parse(task.selectOptions!); } catch { return []; } })() : [];
+    const state = checklistState[task.id] ?? {};
+    const allAnswered = opts.length > 0 && opts.every((_, i) => state[i] !== null && state[i] !== undefined);
+
+    return (
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-muted-foreground">ضعي علامة صح أو خطأ لكل بند:</p>
+        <div className="space-y-2">
+          {opts.map((item, i) => {
+            const val = state[i];
+            return (
+              <div key={i} className="flex items-center gap-2 bg-muted/20 rounded-lg px-3 py-2">
+                <span className="flex-1 text-sm">{item}</span>
+                <button
+                  onClick={() => setChecklistState(prev => ({ ...prev, [task.id]: { ...(prev[task.id] ?? {}), [i]: true } }))}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold border-2 transition-all ${val === true ? "border-emerald-500 bg-emerald-100 text-emerald-700" : "border-border text-muted-foreground hover:border-emerald-300"}`}
+                >✓ صح</button>
+                <button
+                  onClick={() => setChecklistState(prev => ({ ...prev, [task.id]: { ...(prev[task.id] ?? {}), [i]: false } }))}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold border-2 transition-all ${val === false ? "border-rose-500 bg-rose-100 text-rose-700" : "border-border text-muted-foreground hover:border-rose-300"}`}
+                >✗ خطأ</button>
+              </div>
+            );
+          })}
+        </div>
+        {allAnswered && (
+          <div className="flex gap-2">
+            {!task.isCompleted && (
+              <Button size="sm" onClick={() => handleComplete(task)} disabled={saving === task.id} className="bg-green-600 hover:bg-green-700">
+                <CheckCircle className="w-4 h-4 ml-1" />تأكيد الإجابة
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => handleSaveResponse(task)} disabled={saving === task.id}>
+              <MessageSquare className="w-4 h-4 ml-1" />حفظ الرد
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function ResponseInput({ task }: { task: DeputyTask }) {
     const opts: string[] = task.selectOptions ? (() => { try { return JSON.parse(task.selectOptions!); } catch { return []; } })() : [];
+
+    if (task.answerType === "checklist") {
+      return <ChecklistResponse task={task} />;
+    }
 
     if (task.answerType === "boolean") {
       const currentBool = booleanResponse[task.id];
@@ -266,7 +321,22 @@ export default function DeputyTasksPage() {
             {task.response && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                 <p className="text-xs font-medium text-green-700 mb-1">ردك:</p>
-                <p className="text-sm text-green-800 whitespace-pre-wrap">{task.response}</p>
+                {task.answerType === "checklist" && (() => {
+                  try {
+                    const items = JSON.parse(task.response!) as { item: string; checked: boolean }[];
+                    return (
+                      <div className="space-y-1">
+                        {items.map((it, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <span className={`text-xs font-bold ${it.checked ? "text-emerald-700" : "text-rose-600"}`}>{it.checked ? "✓" : "✗"}</span>
+                            <span className="text-sm text-green-800">{it.item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  } catch { return <p className="text-sm text-green-800 whitespace-pre-wrap">{task.response}</p>; }
+                })()}
+                {task.answerType !== "checklist" && <p className="text-sm text-green-800 whitespace-pre-wrap">{task.response}</p>}
               </div>
             )}
             {!task.isCompleted && <ResponseInput task={task} />}

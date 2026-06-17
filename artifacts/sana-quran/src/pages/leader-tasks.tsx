@@ -243,15 +243,17 @@ function CustomQuestionsPanel({ date }: { date: string }) {
                     <span className={`text-xs inline-block px-2 py-0.5 rounded-full font-medium ${
                       (q as any).answerType === "yesno" ? "bg-amber-100 text-amber-700"
                       : (q as any).answerType === "dropdown" ? "bg-teal-100 text-teal-700"
+                      : (q as any).answerType === "checklist" ? "bg-indigo-100 text-indigo-700"
                       : "bg-gray-100 text-gray-600"
                     }`}>
                       {(q as any).answerType === "yesno" ? "نعم / لا"
                         : (q as any).answerType === "dropdown" ? "قائمة خيارات"
+                        : (q as any).answerType === "checklist" ? "قائمة تحقق"
                         : "نص حر"}
                     </span>
-                    {(q as any).answerType === "dropdown" && (q as any).answerOptions && (
+                    {((q as any).answerType === "dropdown" || (q as any).answerType === "checklist") && (q as any).answerOptions && (
                       <span className="text-xs text-muted-foreground">
-                        ({(JSON.parse((q as any).answerOptions) as string[]).join(" · ")})
+                        ({(() => { try { return (JSON.parse((q as any).answerOptions) as string[]).join(" · "); } catch { return (q as any).answerOptions; } })()})
                       </span>
                     )}
                   </div>
@@ -305,6 +307,7 @@ function CustomQuestionsPanel({ date }: { date: string }) {
                   { value: "text", label: "نص حر" },
                   { value: "yesno", label: "نعم / لا" },
                   { value: "dropdown", label: "قائمة خيارات" },
+                  { value: "checklist", label: "قائمة تحقق" },
                 ].map(opt => (
                   <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer">
                     <input
@@ -324,6 +327,19 @@ function CustomQuestionsPanel({ date }: { date: string }) {
                     type="text"
                     className="border border-border rounded-lg px-2 py-1.5 text-xs w-full"
                     placeholder="مثال: ممتاز، جيد، ضعيف"
+                    value={form.answerOptions}
+                    onChange={e => setForm(p => ({ ...p, answerOptions: e.target.value }))}
+                    dir="rtl"
+                  />
+                </div>
+              )}
+              {form.answerType === "checklist" && (
+                <div className="mt-2">
+                  <p className="text-xs text-muted-foreground mb-1">العناصر (افصلي بفاصلة)، مثال: حلقة ١، حلقة ٢، حلقة ٣</p>
+                  <input
+                    type="text"
+                    className="border border-border rounded-lg px-2 py-1.5 text-xs w-full"
+                    placeholder="حلقة ١، حلقة ٢، حلقة ٣"
                     value={form.answerOptions}
                     onChange={e => setForm(p => ({ ...p, answerOptions: e.target.value }))}
                     dir="rtl"

@@ -313,6 +313,7 @@ export default function RegistrationManagePage() {
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
   const [periodLoading, setPeriodLoading] = useState(false);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
 
   const handleOpen = () => {
     openReg.mutate(
@@ -362,7 +363,20 @@ export default function RegistrationManagePage() {
   const handleStaffToggle = async (open: boolean) => {
     setStaffLoading(true);
     try {
-      await apiPost(`/api/registration/${open ? "staff-open" : "staff-close"}`);
+      const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const token = localStorage.getItem("sana_auth_token");
+      if (open) {
+        await fetch(`${BASE_URL}/api/registration/staff-open`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ allowedRoles: selectedRoles.length > 0 ? selectedRoles : undefined }),
+        });
+      } else {
+        await fetch(`${BASE_URL}/api/registration/staff-close`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
       toast({ title: open ? "تم فتح تسجيل الكادر" : "تم إغلاق تسجيل الكادر" });
       queryClient.invalidateQueries({ queryKey: ["regStatus"] });
     } catch {
@@ -546,6 +560,11 @@ export default function RegistrationManagePage() {
                 <p className="text-xs text-muted-foreground">
                   {staffOpen ? "الرابط ظاهر في صفحة الدخول" : "الرابط مخفي من صفحة الدخول"}
                 </p>
+                {staffOpen && (status as any)?.staffAllowedRoles?.length > 0 && (
+                  <p className="text-xs text-blue-600 mt-0.5">
+                    الأدوار المسموحة: {((status as any).staffAllowedRoles as string[]).map((r: string) => ({ teacher: "معلمة", supervisor: "مشرفة", track_supervisor: "مسؤولة مسار", data_entry: "مدخلة بيانات", deputy: "نائبة" }[r] ?? r)).join("، ")}
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex gap-2">
@@ -559,6 +578,33 @@ export default function RegistrationManagePage() {
               </Button>
             </div>
           </div>
+
+          {!staffOpen && (
+            <div className="bg-muted/20 rounded-xl p-4 space-y-2 border border-border/40">
+              <p className="text-xs font-semibold text-muted-foreground">تحديد الأدوار المسموح بتسجيلها (اختياري — إذا لم تختاري شيئًا ستُسمح كل الأدوار)</p>
+              <div className="flex flex-wrap gap-3">
+                {[
+                  { value: "teacher", label: "معلمة" },
+                  { value: "supervisor", label: "مشرفة" },
+                  { value: "track_supervisor", label: "مسؤولة مسار" },
+                  { value: "data_entry", label: "مدخلة بيانات" },
+                  { value: "deputy", label: "نائبة" },
+                ].map(r => (
+                  <label key={r.value} className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="accent-blue-600 w-4 h-4"
+                      checked={selectedRoles.includes(r.value)}
+                      onChange={e => setSelectedRoles(prev =>
+                        e.target.checked ? [...prev, r.value] : prev.filter(v => v !== r.value)
+                      )}
+                    />
+                    <span className="text-sm">{r.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {staffOpen && (
             <div className="bg-blue-50 rounded-lg px-4 py-3">

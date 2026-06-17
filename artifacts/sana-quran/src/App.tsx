@@ -54,6 +54,7 @@ import ReportsPage from "@/pages/reports";
 import WhiteLabelPage from "@/pages/white-label";
 import FirstSetupPage from "@/pages/first-setup";
 import UnlinkedStaffPage from "@/pages/unlinked-staff";
+import ArchivedStaffPage from "@/pages/archived-staff";
 import DbSettingsPage from "@/pages/db-settings";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
@@ -264,6 +265,9 @@ function AppRoutes() {
         </Route>
         <Route path="/unlinked-staff">
           {isLeaderOrDeputy ? <UnlinkedStaffPage /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/archived-staff">
+          {isLeaderOrDeputy ? <ArchivedStaffPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/db-settings">
           {isLeader ? <DbSettingsPage /> : <Redirect to="/" />}

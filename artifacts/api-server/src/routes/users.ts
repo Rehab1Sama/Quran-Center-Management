@@ -7,6 +7,28 @@ import { CreateUserBody, UpdateUserBody, ResetUserPasswordBody } from "@workspac
 
 const router: IRouter = Router();
 
+router.get("/users/archived-staff", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy"].includes(req.userRole ?? "")) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const archived = await db
+    .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, role: usersTable.role, track: usersTable.track, circleId: usersTable.circleId, createdAt: usersTable.createdAt })
+    .from(usersTable)
+    .where(eq(usersTable.isArchived, true));
+  const staffRoles = ["teacher", "supervisor", "track_supervisor", "data_entry", "deputy"];
+  res.json(archived.filter(u => staffRoles.includes(u.role)));
+});
+
+router.post("/users/:id/restore", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy"].includes(req.userRole ?? "")) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const id = parseInt(req.params.id);
+  const [user] = await db.update(usersTable).set({ isArchived: false }).where(eq(usersTable.id, id)).returning();
+  if (!user) { res.status(404).json({ error: "المستخدم غير موجود" }); return; }
+  res.json({ success: true });
+});
+
 router.get("/users/unlinked-staff", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "deputy"].includes(req.userRole ?? "")) {
     res.status(403).json({ error: "Forbidden" }); return;

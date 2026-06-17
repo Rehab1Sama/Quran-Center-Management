@@ -117,6 +117,11 @@ router.get("/registration/status", async (_req, res): Promise<void> => {
     await upsertSettings({ isOpen: false });
   }
 
+  const allowedStaffRolesRaw = (settings as any).allowedStaffRoles ?? null;
+  let allowedStaffRoles: string[] | null = null;
+  if (allowedStaffRolesRaw) {
+    try { allowedStaffRoles = JSON.parse(allowedStaffRolesRaw); } catch { /* ignore */ }
+  }
   res.json({
     isOpen: effectivelyOpen,
     rawIsOpen: settings.isOpen,
@@ -127,6 +132,7 @@ router.get("/registration/status", async (_req, res): Promise<void> => {
     deadline,
     customQuestions: settings.customQuestions,
     staffCustomQuestions: (settings as any).staffCustomQuestions ?? null,
+    allowedStaffRoles,
   });
 });
 
@@ -143,8 +149,15 @@ router.post("/registration/close", authenticate, requireRole("leader"), async (_
   res.json({ success: true });
 });
 
-router.post("/registration/staff-open", authenticate, requireRole("leader"), async (_req, res): Promise<void> => {
-  await upsertSettings({ staffRegistrationOpen: true });
+router.post("/registration/staff-open", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
+  const { allowedRoles } = (req.body ?? {}) as { allowedRoles?: string[] };
+  const update: Record<string, unknown> = { staffRegistrationOpen: true };
+  if (Array.isArray(allowedRoles) && allowedRoles.length > 0) {
+    update.allowedStaffRoles = JSON.stringify(allowedRoles);
+  } else {
+    update.allowedStaffRoles = null;
+  }
+  await upsertSettings(update);
   res.json({ success: true });
 });
 

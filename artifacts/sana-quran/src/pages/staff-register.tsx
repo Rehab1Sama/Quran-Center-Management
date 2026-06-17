@@ -50,6 +50,7 @@ export default function StaffRegisterPage() {
   const [circles, setCircles] = useState<CircleOption[]>([]);
   const [staffCustomQuestions, setStaffCustomQuestions] = useState<any[]>([]);
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+  const [allowedRoles, setAllowedRoles] = useState<string[] | null>(null);
 
   useEffect(() => {
     fetch(`${BASE}/api/registration/circles-public`)
@@ -66,6 +67,9 @@ export default function StaffRegisterPage() {
             const parsed = JSON.parse(data.staffCustomQuestions);
             if (Array.isArray(parsed)) setStaffCustomQuestions(parsed);
           } catch { /* ignore */ }
+        }
+        if (Array.isArray(data?.allowedStaffRoles) && data.allowedStaffRoles.length > 0) {
+          setAllowedRoles(data.allowedStaffRoles);
         }
       })
       .catch(() => {});
@@ -208,7 +212,7 @@ export default function StaffRegisterPage() {
                   data-testid="select-role"
                 >
                   <option value="">اختاري دورك</option>
-                  {ROLES.map(r => (
+                  {(allowedRoles ? ROLES.filter(r => allowedRoles.includes(r.value)) : ROLES).map(r => (
                     <option key={r.value} value={r.value}>{r.label}</option>
                   ))}
                 </select>

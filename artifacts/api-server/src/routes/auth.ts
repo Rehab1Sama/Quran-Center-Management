@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, studentsTable, circlesTable, tracksTable } from "@workspace/db";
+import { db, usersTable, studentsTable, circlesTable, tracksTable, registrationSettingsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { hashPassword, verifyPassword, generateToken } from "../lib/auth";
 import { authenticate } from "../middlewares/authenticate";
@@ -174,7 +174,24 @@ router.post("/auth/staff-register", async (req, res): Promise<void> => {
     return;
   }
   const targetRole = role ?? "data_entry";
-  // يُسمح بتكرار نفس البريد مع نفس الدور (مثلاً: أم لها طفلتان في نفس الحلقة)
+
+  const allowedRolesForStaff = ["teacher", "supervisor", "track_supervisor", "data_entry"];
+  if (!allowedRolesForStaff.includes(targetRole)) {
+    res.status(400).json({ error: "دور غير صالح" });
+    return;
+  }
+
+  const [settings] = await db.select().from(registrationSettingsTable);
+  const allowedRolesJson = (settings as any)?.allowedStaffRoles;
+  if (allowedRolesJson) {
+    try {
+      const allowed = JSON.parse(allowedRolesJson) as string[];
+      if (!allowed.includes(targetRole)) {
+        res.status(403).json({ error: "هذا الدور غير مسموح به في التسجيل الحالي" });
+        return;
+      }
+    } catch { /* ignore */ }
+  }
 
   const passwordHash = hashPassword(password);
   const { country, track, circleId, extraData } = req.body ?? {};

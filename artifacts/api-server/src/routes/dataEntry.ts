@@ -14,7 +14,10 @@ import { authenticate } from "../middlewares/authenticate";
 const router: IRouter = Router();
 
 function getMeccaToday(): string {
-  return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const meccaMs = Date.now() + 3 * 60 * 60 * 1000;
+  const d = new Date(meccaMs);
+  if (d.getUTCHours() < 5) d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 function getWeekSunday(today: string): string {

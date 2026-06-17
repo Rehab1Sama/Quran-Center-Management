@@ -60,6 +60,7 @@ const ANSWER_TYPE_LABELS: Record<string, string> = {
   text: "كتابة حرة",
   select: "قائمة منسدلة",
   boolean: "صح / خطأ",
+  checklist: "قائمة تحقق",
 };
 
 export default function DeputyBoardPage() {
@@ -70,7 +71,7 @@ export default function DeputyBoardPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [taskType, setTaskType] = useState<"general" | "optional" | "qa">("general");
-  const [answerType, setAnswerType] = useState<"text" | "select" | "boolean">("text");
+  const [answerType, setAnswerType] = useState<"text" | "select" | "boolean" | "checklist">("text");
   const [selectOptionInput, setSelectOptionInput] = useState("");
   const [selectOptions, setSelectOptions] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
@@ -125,7 +126,7 @@ export default function DeputyBoardPage() {
           description: description.trim() || null,
           taskType,
           answerType: taskType === "qa" ? answerType : "text",
-          selectOptions: taskType === "qa" && answerType === "select" ? selectOptions : undefined,
+          selectOptions: taskType === "qa" && (answerType === "select" || answerType === "checklist") ? selectOptions : undefined,
         }),
       });
       if (!res.ok) throw new Error();
@@ -320,8 +321,8 @@ export default function DeputyBoardPage() {
             <div>
               <p className="text-xs text-muted-foreground mb-1.5">طريقة الإجابة</p>
               <div className="flex gap-2 flex-wrap">
-                {(["text", "select", "boolean"] as const).map(at => (
-                  <button key={at} onClick={() => setAnswerType(at)}
+                {(["text", "select", "boolean", "checklist"] as const).map(at => (
+                  <button key={at} onClick={() => { setAnswerType(at); setSelectOptions([]); setSelectOptionInput(""); }}
                     className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
                       answerType === at
                         ? "bg-teal-100 text-teal-800 border-teal-300"
@@ -331,14 +332,17 @@ export default function DeputyBoardPage() {
                   </button>
                 ))}
               </div>
-              {/* Select options input */}
-              {answerType === "select" && (
+              {/* Select / checklist items input */}
+              {(answerType === "select" || answerType === "checklist") && (
                 <div className="mt-2 space-y-2">
+                  {answerType === "checklist" && (
+                    <p className="text-xs text-muted-foreground">أضيفي عناصر القائمة (مثل: حلقة ١، حلقة ٢...):</p>
+                  )}
                   <div className="flex gap-2">
                     <Input
                       value={selectOptionInput}
                       onChange={e => setSelectOptionInput(e.target.value)}
-                      placeholder="أضيفي خيارًا..."
+                      placeholder={answerType === "checklist" ? "مثال: حلقة ١" : "أضيفي خيارًا..."}
                       className="text-sm flex-1"
                       onKeyDown={e => {
                         if (e.key === "Enter" && selectOptionInput.trim()) {

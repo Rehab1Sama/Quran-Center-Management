@@ -410,7 +410,26 @@ export default function DailyTasksPage() {
                       <option value="">اختاري...</option>
                       {opts.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
-                  ) : (
+                  ) : (q as any).answerType === "checklist" ? (() => {
+                    let checkItems: { item: string; checked: boolean | null }[] = [];
+                    try { checkItems = val ? JSON.parse(val) : []; } catch { checkItems = []; }
+                    if (checkItems.length === 0) checkItems = opts.map(item => ({ item, checked: null }));
+                    return (
+                      <div className="space-y-1.5">
+                        {checkItems.map((ci, idx) => (
+                          <div key={idx} className="flex items-center gap-2 bg-purple-50/50 rounded-lg px-2 py-1.5">
+                            <span className="flex-1 text-xs">{ci.item}</span>
+                            <button type="button"
+                              onClick={() => { const next = [...checkItems]; next[idx] = { ...next[idx], checked: true }; setVal(JSON.stringify(next)); }}
+                              className={`px-2 py-0.5 rounded text-xs font-bold border transition-all ${ci.checked === true ? "border-emerald-500 bg-emerald-100 text-emerald-700" : "border-border text-muted-foreground"}`}>✓</button>
+                            <button type="button"
+                              onClick={() => { const next = [...checkItems]; next[idx] = { ...next[idx], checked: false }; setVal(JSON.stringify(next)); }}
+                              className={`px-2 py-0.5 rounded text-xs font-bold border transition-all ${ci.checked === false ? "border-rose-500 bg-rose-100 text-rose-700" : "border-border text-muted-foreground"}`}>✗</button>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })() : (
                     <textarea className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none" rows={2} placeholder="الإجابة باسم المسار..." value={val} onChange={e => setVal(e.target.value)} />
                   )}
                 </div>
@@ -545,7 +564,26 @@ export default function DailyTasksPage() {
                                     <option value="">اختاري...</option>
                                     {opts.map(o => <option key={o} value={o}>{o}</option>)}
                                   </select>
-                                ) : (
+                                ) : (q as any).answerType === "checklist" ? (() => {
+                                  let checkItems: { item: string; checked: boolean | null }[] = [];
+                                  try { checkItems = val ? JSON.parse(val) : []; } catch { checkItems = []; }
+                                  if (checkItems.length === 0) checkItems = opts.map(item => ({ item, checked: null }));
+                                  return (
+                                    <div className="space-y-1.5">
+                                      {checkItems.map((ci, idx) => (
+                                        <div key={idx} className="flex items-center gap-2 bg-muted/20 rounded-lg px-2 py-1.5">
+                                          <span className="flex-1 text-xs">{ci.item}</span>
+                                          <button type="button"
+                                            onClick={() => { const next = [...checkItems]; next[idx] = { ...next[idx], checked: true }; setVal(JSON.stringify(next)); }}
+                                            className={`px-2 py-0.5 rounded text-xs font-bold border transition-all ${ci.checked === true ? "border-emerald-500 bg-emerald-100 text-emerald-700" : "border-border text-muted-foreground"}`}>✓</button>
+                                          <button type="button"
+                                            onClick={() => { const next = [...checkItems]; next[idx] = { ...next[idx], checked: false }; setVal(JSON.stringify(next)); }}
+                                            className={`px-2 py-0.5 rounded text-xs font-bold border transition-all ${ci.checked === false ? "border-rose-500 bg-rose-100 text-rose-700" : "border-border text-muted-foreground"}`}>✗</button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                })() : (
                                   <textarea className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none" rows={2} placeholder="اكتبي إجابتك..." value={val} onChange={e => setVal(e.target.value)} />
                                 )}
                               </div>

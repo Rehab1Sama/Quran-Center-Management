@@ -738,6 +738,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/reports", label: "التقارير الأسبوعية", icon: TrendingUp, feature: "stats_weekly" },
       { href: "/white-label", label: "نسخ للبيع", icon: Globe },
       { href: "/unlinked-staff", label: "موظفات غير مرتبطات", icon: UserX },
+      { href: "/archived-staff", label: "الموظفات المؤرشفات", icon: Archive },
       { href: "/db-settings", label: "إعدادات قاعدة البيانات", icon: Database },
       { href: "/export", label: "تصدير البيانات", icon: FileDown },
     ]);
@@ -770,6 +771,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/deputy-tasks", label: "مهامي", icon: ClipboardList, feature: "deputy_tasks" },
       { href: "/reports", label: "التقارير الأسبوعية", icon: TrendingUp, feature: "stats_weekly" },
       { href: "/unlinked-staff", label: "موظفات غير مرتبطات", icon: UserX },
+      { href: "/archived-staff", label: "الموظفات المؤرشفات", icon: Archive },
     ]);
   }
   if (role === "data_entry") {
