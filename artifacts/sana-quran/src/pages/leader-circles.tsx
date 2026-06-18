@@ -22,6 +22,7 @@ type EnrichedCircle = {
   id: number;
   name: string;
   track: string;
+  trackType: string;
   teacherId: number | null;
   supervisorId: number | null;
   meetingTime: string | null;
@@ -179,6 +180,7 @@ export default function LeaderCirclesPage() {
   const [leaveModal, setLeaveModal] = useState<{ studentId: number; studentName: string; circleId: number } | null>(null);
   const [leaveStart, setLeaveStart] = useState("");
   const [leaveEnd, setLeaveEnd] = useState("");
+  const [leaveReason, setLeaveReason] = useState("");
   const [leaveSaving, setLeaveSaving] = useState(false);
 
   const [transferModal, setTransferModal] = useState<{
@@ -218,11 +220,11 @@ export default function LeaderCirclesPage() {
       const res = await fetch(`${BASE}/api/students/${leaveModal.studentId}/leave`, {
         method: "PATCH",
         headers: headers(),
-        body: JSON.stringify({ circleId: leaveModal.circleId, leaveStart, leaveEnd }),
+        body: JSON.stringify({ circleId: leaveModal.circleId, leaveStart, leaveEnd, reason: leaveReason || null }),
       });
       if (!res.ok) throw new Error();
       toast({ title: `تم منح إجازة لـ ${leaveModal.studentName}` });
-      setLeaveModal(null); setLeaveStart(""); setLeaveEnd("");
+      setLeaveModal(null); setLeaveStart(""); setLeaveEnd(""); setLeaveReason("");
       await load();
     } catch {
       toast({ title: "فشل تسجيل الإجازة", variant: "destructive" });
@@ -365,6 +367,26 @@ export default function LeaderCirclesPage() {
     grouped[c.track].push(c);
   });
 
+  // Deputy view: group by time period
+  const isFixationCircle = (c: EnrichedCircle) =>
+    c.trackType === "fixation" || c.track.includes("تثبيت") || c.track.includes("fixation");
+
+  const deputyPeriods = isDeputy ? (() => {
+    const fixation = filtered.filter(isFixationCircle);
+    const regular = filtered.filter(c => !isFixationCircle(c));
+    const morning = regular.filter(c => c.meetingTime && c.meetingTime < "12:00");
+    const afternoon = regular.filter(c => c.meetingTime && c.meetingTime >= "12:00" && c.meetingTime < "16:00");
+    const evening = regular.filter(c => c.meetingTime && c.meetingTime >= "16:00");
+    const noTime = regular.filter(c => !c.meetingTime);
+    return [
+      { key: "morning", label: "الفترة الصباحية", emoji: "🌅", colorClass: "bg-amber-50 border-amber-200 text-amber-800", circles: morning },
+      { key: "afternoon", label: "الفترة الظهيرة", emoji: "☀️", colorClass: "bg-orange-50 border-orange-200 text-orange-800", circles: afternoon },
+      { key: "evening", label: "الفترة المسائية", emoji: "🌙", colorClass: "bg-indigo-50 border-indigo-200 text-indigo-800", circles: evening },
+      { key: "notime", label: "غير محدد الوقت", emoji: "🕐", colorClass: "bg-gray-50 border-gray-200 text-gray-700", circles: noTime },
+      { key: "fixation", label: "حلقات التثبيت", emoji: "📚", colorClass: "bg-emerald-50 border-emerald-200 text-emerald-800", circles: fixation, isFixation: true },
+    ].filter(p => p.circles.length > 0);
+  })() : [];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-teal-50/20 pb-20" dir="rtl">
       <div className="max-w-3xl mx-auto px-4 pt-6 space-y-4">
@@ -390,7 +412,105 @@ export default function LeaderCirclesPage() {
 
         {loading ? (
           <div className="text-center py-10 text-muted-foreground text-sm">جاري التحميل...</div>
+        ) : isDeputy ? (
+          /* ── عرض النائبة: مقسّم بالفترات الزمنية ── */
+          <div className="space-y-3">
+            {deputyPeriods.map(period => {
+              const isOpen = expandedTracks.has(period.key);
+              return (
+                <div key={period.key} className="bg-white rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+                  <button
+                    onClick={() => toggleTrack(period.key)}
+                    className="w-full flex items-center justify-between p-4 hover:bg-muted/20 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">{period.emoji}</span>
+                      <span className={`text-sm font-bold px-3 py-1 rounded-full border ${period.colorClass}`}>{period.label}</span>
+                      <span className="text-xs text-muted-foreground">{period.circles.length} حلقة</span>
+                      <span className="text-xs text-muted-foreground">· {period.circles.reduce((n, c) => n + c.students.length, 0)} طالبة</span>
+                    </div>
+                    {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                  </button>
+                  {isOpen && (
+                    <div className="border-t border-border/30 divide-y divide-border/30">
+                      {period.circles.map(circle => {
+                        const isExpanded = expandedCircles.has(circle.id);
+                        return (
+                          <div key={circle.id} className="p-4">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <h3 className="font-bold text-base">{circle.name}</h3>
+                                <div className="flex flex-wrap gap-3 mt-1 text-xs text-muted-foreground">
+                                  {circle.meetingTime && <span className="flex items-center gap-1 text-blue-700"><Clock className="w-3 h-3" />{circle.meetingTime}</span>}
+                                  <span className="text-muted-foreground">{circle.track}</span>
+                                  {(period as {isFixation?: boolean}).isFixation && (
+                                    <span className="bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[10px] font-semibold">
+                                      الطالبات يكتبن خططهن بأنفسهن
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {/* Teacher */}
+                            {circle.teacherName && (
+                              <div className="mt-2 rounded-xl bg-rose-50/60 border border-rose-100 px-3 py-2 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-semibold text-rose-700">م.</span>
+                                  <span className="text-sm">{circle.teacherName}</span>
+                                </div>
+                                {circle.teacherPhone && (
+                                  <a href={whatsappHref(circle.teacherPhone) ?? `tel:${circle.teacherPhone}`} target="_blank" rel="noopener noreferrer" className="p-1 rounded bg-green-50 text-green-600 hover:bg-green-100"><Phone className="w-3 h-3" /></a>
+                                )}
+                              </div>
+                            )}
+                            {/* Supervisor */}
+                            {circle.supervisorName && (
+                              <div className="mt-1.5 rounded-xl bg-blue-50/60 border border-blue-100 px-3 py-2 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-semibold text-blue-700">مش.</span>
+                                  <span className="text-sm">{circle.supervisorName}</span>
+                                </div>
+                                {circle.supervisorPhone && (
+                                  <a href={whatsappHref(circle.supervisorPhone) ?? `tel:${circle.supervisorPhone}`} target="_blank" rel="noopener noreferrer" className="p-1 rounded bg-green-50 text-green-600 hover:bg-green-100"><Phone className="w-3 h-3" /></a>
+                                )}
+                              </div>
+                            )}
+                            {/* Students */}
+                            <div className="mt-2 rounded-xl bg-amber-50/60 border border-amber-100 p-3">
+                              <button onClick={() => toggleCircle(circle.id)} className="w-full flex items-center justify-between">
+                                <p className="text-xs font-semibold text-amber-800">الطالبات ({circle.students.length})</p>
+                                {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-amber-700" /> : <ChevronDown className="w-3.5 h-3.5 text-amber-700" />}
+                              </button>
+                              {isExpanded && (
+                                <div className="mt-2 space-y-1.5">
+                                  {circle.students.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">لا توجد طالبات</p>
+                                  ) : circle.students.map(s => (
+                                    <div key={s.id} className="flex items-center justify-between gap-2 py-0.5">
+                                      <button onClick={() => navigate(`/students/${s.id}`)} className="text-sm text-primary hover:underline text-right flex-1 min-w-0 truncate">{s.fullName}</button>
+                                      <div className="flex gap-1 shrink-0">
+                                        <button onClick={() => navigate(`/students/${s.id}`)} className="p-1 rounded bg-muted/60 hover:bg-muted text-muted-foreground" title="ملف الطالبة"><ExternalLink className="w-3 h-3" /></button>
+                                        <button onClick={() => setTransferModal({ type: "student", circleId: circle.id, label: "نقل طالبة", studentId: s.id, studentName: s.fullName })} className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100" title="نقل"><ArrowLeftRight className="w-3 h-3" /></button>
+                                        <button onClick={() => { setLeaveModal({ studentId: s.id, studentName: s.fullName, circleId: circle.id }); setLeaveStart(""); setLeaveEnd(""); setLeaveReason(""); }} className="p-1 rounded bg-amber-50 text-amber-600 hover:bg-amber-100" title="إجازة"><PlaneTakeoff className="w-3 h-3" /></button>
+                                        <button onClick={() => handleArchiveStudent(s.id, s.fullName, circle.id)} className="p-1 rounded bg-rose-50 text-rose-600 hover:bg-rose-100" title="إخراج"><Archive className="w-3 h-3" /></button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {deputyPeriods.length === 0 && <div className="text-center py-12 text-muted-foreground">لا توجد حلقات</div>}
+          </div>
         ) : (
+          /* ── عرض القائدة ومشرفة المسار: مقسّم بالمسارات ── */
           <div className="space-y-3">
             {tracks.map(track => {
               const trackCircles = grouped[track] ?? [];
@@ -604,7 +724,7 @@ export default function LeaderCirclesPage() {
                                               <ArrowLeftRight className="w-3 h-3" />
                                             </button>
                                             <button
-                                              onClick={() => { setLeaveModal({ studentId: s.id, studentName: s.fullName, circleId: circle.id }); setLeaveStart(""); setLeaveEnd(""); }}
+                                              onClick={() => { setLeaveModal({ studentId: s.id, studentName: s.fullName, circleId: circle.id }); setLeaveStart(""); setLeaveEnd(""); setLeaveReason(""); }}
                                               className="p-1 rounded bg-amber-50 text-amber-600 hover:bg-amber-100"
                                               title="منح إجازة"
                                             >
@@ -684,6 +804,16 @@ export default function LeaderCirclesPage() {
                   <p className="text-xs text-muted-foreground mb-1">تاريخ النهاية</p>
                   <Input type="date" value={leaveEnd} onChange={e => setLeaveEnd(e.target.value)} className="text-sm" />
                 </div>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">سبب الإجازة (اختياري)</p>
+                <textarea
+                  value={leaveReason}
+                  onChange={e => setLeaveReason(e.target.value)}
+                  placeholder="مثال: مرض، سفر، ظروف عائلية..."
+                  rows={2}
+                  className="w-full border border-input rounded-xl px-3 py-2 text-sm bg-background resize-none focus:outline-none focus:ring-1 focus:ring-primary/30 text-right"
+                />
               </div>
             </div>
             <div className="p-3 flex gap-2 border-t">

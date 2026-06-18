@@ -68,7 +68,7 @@ router.post("/circles", authenticate, async (req, res): Promise<void> => {
 
 // Enriched circles — leader/track_supervisor: includes teacher name, supervisor name, student list
 router.get("/circles/enriched", authenticate, async (req, res): Promise<void> => {
-  if (req.userRole !== "leader" && req.userRole !== "track_supervisor") {
+  if (req.userRole !== "leader" && req.userRole !== "track_supervisor" && req.userRole !== "deputy") {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
