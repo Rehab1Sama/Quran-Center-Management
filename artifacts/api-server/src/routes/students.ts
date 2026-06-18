@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, reviewPlansTable, usersTable, studentArchiveEventsTable, studentLeaveHistoryTable, studentEnrollmentsTable, planNotificationsTable } from "@workspace/db";
-import { eq, and, gte, desc, sql, ne } from "drizzle-orm";
+import { eq, and, gte, desc, sql, ne, isNull } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateStudentBody, UpdateStudentBody } from "@workspace/api-zod";
 
@@ -666,6 +666,83 @@ router.delete("/students/:id/notes/:noteId", authenticate, async (req, res): Pro
   res.sendStatus(204);
 });
 
+// ── Students without a real circle (in registration/holding circle or no circle) ──
+router.get("/students/without-circle", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const [regCircle] = await db.select({ id: circlesTable.id, name: circlesTable.name })
+    .from(circlesTable).where(eq(circlesTable.trackType, "registration"));
+
+  const allCircles = await db.select({ id: circlesTable.id, name: circlesTable.name, track: circlesTable.track })
+    .from(circlesTable)
+    .where(and(eq(circlesTable.isArchived, false), sql`${circlesTable.trackType} != 'registration'`));
+
+  let students: any[] = [];
+
+  if (regCircle) {
+    // Students enrolled in the registration holding circle
+    const inReg = await db
+      .select({
+        id: studentsTable.id,
+        fullName: studentsTable.fullName,
+        phone: studentsTable.phone,
+        country: studentsTable.country,
+        extraData: studentsTable.extraData,
+        isArchived: studentsTable.isArchived,
+        createdAt: studentsTable.createdAt,
+      })
+      .from(studentsTable)
+      .innerJoin(
+        studentEnrollmentsTable,
+        and(
+          eq(studentEnrollmentsTable.studentId, studentsTable.id),
+          eq(studentEnrollmentsTable.circleId, regCircle.id),
+          eq(studentEnrollmentsTable.isArchived, false),
+        ),
+      )
+      .where(eq(studentsTable.isArchived, false))
+      .orderBy(studentsTable.createdAt);
+    students = inReg;
+  }
+
+  // Also include students with no circle at all and no enrollment
+  const noCircleStudents = await db
+    .select({
+      id: studentsTable.id,
+      fullName: studentsTable.fullName,
+      phone: studentsTable.phone,
+      country: studentsTable.country,
+      extraData: studentsTable.extraData,
+      isArchived: studentsTable.isArchived,
+      createdAt: studentsTable.createdAt,
+    })
+    .from(studentsTable)
+    .where(and(isNull(studentsTable.circleId), eq(studentsTable.isArchived, false)));
+
+  const regIds = new Set(students.map(s => s.id));
+  for (const s of noCircleStudents) {
+    if (!regIds.has(s.id)) students.push(s);
+  }
+
+  // Parse extraData to expose email and preferred circle
+  const enriched = students.map(s => {
+    let parsed: Record<string, unknown> = {};
+    try { if (s.extraData) parsed = JSON.parse(s.extraData); } catch { /* ignore */ }
+    return {
+      ...s,
+      extraData: undefined,
+      email: (parsed["__email"] as string | undefined) ?? null,
+      preferredCircleName: (parsed["__preferredCircleName"] as string | undefined) ?? null,
+      preferredCircleId: (parsed["__preferredCircleId"] as number | undefined) ?? null,
+    };
+  });
+
+  res.json({ students: enriched, regCircleId: regCircle?.id ?? null, circles: allCircles });
+});
+
 // ── Student profile ────────────────────────────────────────────────────────────
 router.get("/students/:id/profile", authenticate, async (req, res): Promise<void> => {
   if (!STAFF_ROLES.includes(req.userRole!)) {
@@ -902,6 +979,7 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     leaveStart: student.leaveStart,
     leaveEnd: student.leaveEnd,
     createdAt: student.createdAt.toISOString(),
+    extraData: student.extraData ?? null,
     circle: circle ? { id: circle.id, name: circle.name, track: circle.track, trackType: circle.trackType } : null,
     enrollments,
     recentAbsences,

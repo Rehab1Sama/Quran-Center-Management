@@ -300,7 +300,9 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
   const [autoDetecting, setAutoDetecting] = useState(false);
 
   // حالة خاصة بمسار التثبيت
-  const [fixationQuota, setFixationQuota] = useState<0.5 | 1>(1);
+  const [fixationQuota, setFixationQuota] = useState<number>(1);
+  const [fixationCustomQuota, setFixationCustomQuota] = useState<string>("1");
+  const [fixationQuotaMode, setFixationQuotaMode] = useState<"preset" | "custom">("preset");
   const [fixationStartMode, setFixationStartMode] = useState<"juz" | "surah">("juz");
   const [fixationStartJuz, setFixationStartJuz] = useState<number>(1);
   const [fixationStartSurahLocal, setFixationStartSurahLocal] = useState("");
@@ -440,37 +442,75 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
 
   // ── مسار التثبيت: خطوة ١ — اختيار النصاب ─────────────────────
   if (step === "fixation_quota") {
+    const effectiveQuota = fixationQuotaMode === "custom"
+      ? (parseFloat(fixationCustomQuota) || 0)
+      : fixationQuota;
+    const canProceedQuota = effectiveQuota > 0 && effectiveQuota <= 10;
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-1">
           <button onClick={() => setStep("view")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
           <h3 className="font-bold text-sm">١ · اختاري نصابك اليومي</h3>
         </div>
-        <p className="text-xs text-muted-foreground">كمية التثبيت التي ستراجعينها في كل جلسة</p>
-        <div className="grid grid-cols-2 gap-3">
+        <p className="text-xs text-muted-foreground">كمية التثبيت التي ستراجعينها في كل جلسة (بالوجوه)</p>
+        <div className="grid grid-cols-3 gap-2">
           <button
-            onClick={() => setFixationQuota(1)}
-            className={`flex flex-col items-center gap-2 p-5 rounded-2xl border-2 transition-all ${fixationQuota === 1 ? "border-emerald-500 bg-emerald-50 shadow-md" : "border-border bg-muted/20 hover:border-emerald-300"}`}
+            onClick={() => { setFixationQuotaMode("preset"); setFixationQuota(1); }}
+            className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 transition-all ${fixationQuotaMode === "preset" && fixationQuota === 1 ? "border-emerald-500 bg-emerald-50 shadow-md" : "border-border bg-muted/20 hover:border-emerald-300"}`}
           >
-            <span className="text-3xl">📖</span>
+            <span className="text-2xl">📖</span>
             <p className="font-bold text-sm text-emerald-800">وجه كامل</p>
-            <p className="text-[11px] text-emerald-700 text-center">صفحة واحدة في كل جلسة</p>
+            <p className="text-[10px] text-emerald-700 text-center">1 وجه / جلسة</p>
           </button>
           <button
-            onClick={() => setFixationQuota(0.5)}
-            className={`flex flex-col items-center gap-2 p-5 rounded-2xl border-2 transition-all ${fixationQuota === 0.5 ? "border-sky-500 bg-sky-50 shadow-md" : "border-border bg-muted/20 hover:border-sky-300"}`}
+            onClick={() => { setFixationQuotaMode("preset"); setFixationQuota(0.5); }}
+            className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 transition-all ${fixationQuotaMode === "preset" && fixationQuota === 0.5 ? "border-sky-500 bg-sky-50 shadow-md" : "border-border bg-muted/20 hover:border-sky-300"}`}
           >
-            <span className="text-3xl">📄</span>
+            <span className="text-2xl">📄</span>
             <p className="font-bold text-sm text-sky-800">نصف وجه</p>
-            <p className="text-[11px] text-sky-700 text-center">نصف صفحة في كل جلسة</p>
+            <p className="text-[10px] text-sky-700 text-center">0.5 وجه / جلسة</p>
+          </button>
+          <button
+            onClick={() => setFixationQuotaMode("custom")}
+            className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 transition-all ${fixationQuotaMode === "custom" ? "border-violet-500 bg-violet-50 shadow-md" : "border-border bg-muted/20 hover:border-violet-300"}`}
+          >
+            <span className="text-2xl">✏️</span>
+            <p className="font-bold text-sm text-violet-800">نصابي</p>
+            <p className="text-[10px] text-violet-700 text-center">أدخله بنفسي</p>
           </button>
         </div>
+        {fixationQuotaMode === "custom" && (
+          <div className="rounded-xl bg-violet-50 border border-violet-200 p-3 space-y-2">
+            <p className="text-xs font-semibold text-violet-800">كم وجهًا ستراجعين في كل جلسة؟</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                step="0.25"
+                min="0.25"
+                max="10"
+                value={fixationCustomQuota}
+                onChange={e => setFixationCustomQuota(e.target.value)}
+                className="w-28 h-10 border-2 border-violet-300 rounded-xl text-center text-lg font-bold focus:outline-none focus:border-violet-500 bg-white"
+                placeholder="مثال: 1.5"
+              />
+              <span className="text-sm text-violet-700 font-medium">وجه في كل جلسة</span>
+            </div>
+            {parseFloat(fixationCustomQuota) > 0 && (
+              <p className="text-xs text-violet-700">
+                ✓ الإجمالي: <span className="font-bold">{(parseFloat(fixationCustomQuota) * FIXATION_CYCLE).toFixed(1)} وجه</span> خلال {FIXATION_WEEKS} أسابيع
+              </p>
+            )}
+          </div>
+        )}
         <div className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
           <p className="font-semibold">الخطة ستكون:</p>
           <p>• {FIXATION_CYCLE} يوم عمل · {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام (الأحد–الأربعاء)</p>
-          <p>• إجمالي النصاب: <span className="font-bold text-foreground">{fixationQuota * FIXATION_CYCLE} وجه</span></p>
+          {effectiveQuota > 0 && <p>• إجمالي النصاب: <span className="font-bold text-foreground">{(effectiveQuota * FIXATION_CYCLE).toFixed(1)} وجه</span></p>}
         </div>
-        <Button className="w-full" onClick={() => setStep("fixation_start")}>
+        <Button className="w-full" disabled={!canProceedQuota} onClick={() => {
+          if (fixationQuotaMode === "custom") setFixationQuota(parseFloat(fixationCustomQuota) || 1);
+          setStep("fixation_start");
+        }}>
           التالي ← اختاري نقطة البداية
         </Button>
       </div>

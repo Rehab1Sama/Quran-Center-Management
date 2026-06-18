@@ -401,6 +401,7 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
 
     const mergedExtra = extraData ? { ...extraData } : {};
     if (isNewcomer) mergedExtra.__isNewcomer = true;
+    mergedExtra.__email = email;
 
     const [newStudent] = await db.insert(studentsTable).values({
       fullName,

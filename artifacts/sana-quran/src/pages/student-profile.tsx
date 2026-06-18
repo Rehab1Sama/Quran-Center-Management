@@ -26,6 +26,7 @@ import {
   Phone, Globe, GraduationCap, StickyNote, Archive, RotateCcw,
   Plane, MessageSquare, Trash2, Plus, Printer, TrendingUp, ListChecks, AlertTriangle,
   Target, CheckCircle2, Circle, PlaneTakeoff, XCircle, PlusCircle, Layers,
+  Mail, MessageCircle,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
@@ -527,6 +528,93 @@ export default function StudentProfilePage({ id }: { id: number }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Registration Data */}
+      {(() => {
+        const extraRaw: string | null = (profile as any).extraData ?? null;
+        let extra: Record<string, unknown> = {};
+        try { if (extraRaw) extra = JSON.parse(extraRaw); } catch { /* ignore */ }
+
+        const email = (extra["__email"] as string | undefined) ?? null;
+        const preferredCircle = (extra["__preferredCircleName"] as string | undefined) ?? null;
+        const track = (extra["__trackName"] as string | undefined) ?? null;
+
+        // Filter out internal __ keys for display
+        const publicFields = Object.entries(extra).filter(([k]) => !k.startsWith("__"));
+
+        // Build WhatsApp link from phone
+        const waPhone = profile.phone ? profile.phone.replace(/[\s\-\(\)\+]/g, "") : null;
+        const waLink = waPhone ? `https://wa.me/${waPhone}` : null;
+
+        if (!email && !preferredCircle && !waLink && publicFields.length === 0) return null;
+
+        return (
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-bold text-muted-foreground flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-primary" />
+                بيانات التسجيل
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-2">
+              <div className="grid grid-cols-2 gap-3">
+                {email && (
+                  <div className="col-span-2 flex items-start gap-2">
+                    <Mail className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">البريد الإلكتروني</p>
+                      <p className="text-sm font-semibold break-all" dir="ltr">{email}</p>
+                    </div>
+                  </div>
+                )}
+                {waLink && (
+                  <div className="flex items-start gap-2">
+                    <MessageCircle className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">واتساب</p>
+                      <a href={waLink} target="_blank" rel="noopener noreferrer"
+                        className="text-sm font-semibold text-emerald-600 hover:underline" dir="ltr">
+                        {profile.phone}
+                      </a>
+                    </div>
+                  </div>
+                )}
+                {preferredCircle && (
+                  <div className="flex items-start gap-2">
+                    <BookOpen className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">الحلقة المفضلة</p>
+                      <p className="text-sm font-semibold">{preferredCircle}</p>
+                    </div>
+                  </div>
+                )}
+                {track && (
+                  <div className="flex items-start gap-2">
+                    <GraduationCap className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">المسار المختار</p>
+                      <p className="text-sm font-semibold">{track}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {publicFields.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-border">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">إجابات الاستمارة</p>
+                  <div className="space-y-1.5">
+                    {publicFields.map(([key, val]) => (
+                      <div key={key} className="bg-muted/40 rounded-lg px-3 py-2 flex gap-2">
+                        <span className="text-xs text-muted-foreground font-medium shrink-0">{key}:</span>
+                        <span className="text-xs text-foreground break-all">{String(val)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Enrollments (multi-circle) */}
       {(() => {
