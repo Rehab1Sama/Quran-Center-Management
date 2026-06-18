@@ -148,7 +148,7 @@ router.get("/students/:id", authenticate, async (req, res): Promise<void> => {
 
 // ── Update student ─────────────────────────────────────────────────────────────
 router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "track_supervisor"].includes(req.userRole!)) {
+  if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }

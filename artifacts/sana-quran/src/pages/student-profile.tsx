@@ -539,14 +539,16 @@ export default function StudentProfilePage({ id }: { id: number }) {
         const preferredCircle = (extra["__preferredCircleName"] as string | undefined) ?? null;
         const track = (extra["__trackName"] as string | undefined) ?? null;
 
-        // All extra data excluding internal __ keys
-        const publicFields = Object.entries(extra).filter(([k]) => !k.startsWith("__"));
+        // Quran memorization keys
+        const QURAN_KEYS = ["المحفوظات", "المسموع", "ما حفظتِ", "المحفوظ", "الأجزاء المحفوظة", "السور المحفوظة"];
+        const quranFields = Object.entries(extra).filter(([k]) => QURAN_KEYS.includes(k) || k.includes("حفظ") || k.includes("سورة") || k.includes("جزء") || k.includes("مسموع"));
+        const otherFields = Object.entries(extra).filter(([k]) => !k.startsWith("__") && !quranFields.find(([qk]) => qk === k));
 
         // WhatsApp link from phone
         const waPhone = profile.phone ? profile.phone.replace(/[\s\-\(\)\+]/g, "") : null;
         const waLink = waPhone ? `https://wa.me/${waPhone}` : null;
 
-        const hasAny = email || preferredCircle || track || waLink || (profile as any).ageRange || publicFields.length > 0;
+        const hasAny = email || preferredCircle || track || waLink || (profile as any).ageRange || quranFields.length > 0 || otherFields.length > 0 || (profile as any).memorizeFrom;
         if (!hasAny) return null;
 
         return (
@@ -605,11 +607,32 @@ export default function StudentProfilePage({ id }: { id: number }) {
                 )}
               </div>
 
-              {/* Extra answers from registration form */}
-              {publicFields.length > 0 && (
+              {/* ── Quran Memorization — highlighted section ── */}
+              {((profile as any).memorizeFrom || quranFields.length > 0) && (
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 space-y-2">
+                  <p className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                    <span>📖</span> المحفوظات القرآنية
+                  </p>
+                  {(profile as any).memorizeFrom && (
+                    <div className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
+                      <p className="text-[11px] text-emerald-600 mb-0.5">تحفظ من</p>
+                      <p className="text-sm font-bold text-emerald-900">{(profile as any).memorizeFrom}</p>
+                    </div>
+                  )}
+                  {quranFields.map(([key, val]) => (
+                    <div key={key} className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
+                      <p className="text-[11px] text-emerald-600 mb-0.5">{key}</p>
+                      <p className="text-sm font-bold text-emerald-900 leading-relaxed">{String(val)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Other answers from registration form */}
+              {otherFields.length > 0 && (
                 <div className="pt-2 border-t border-border space-y-1.5">
                   <p className="text-[11px] font-semibold text-muted-foreground">إجابات الاستمارة</p>
-                  {publicFields.map(([key, val]) => (
+                  {otherFields.map(([key, val]) => (
                     <div key={key} className="bg-muted/40 rounded-lg px-3 py-2 flex gap-2 flex-wrap">
                       <span className="text-[11px] text-muted-foreground font-medium">{key}:</span>
                       <span className="text-[11px] text-foreground break-all">{String(val)}</span>
