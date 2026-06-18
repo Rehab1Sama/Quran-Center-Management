@@ -539,14 +539,15 @@ export default function StudentProfilePage({ id }: { id: number }) {
         const preferredCircle = (extra["__preferredCircleName"] as string | undefined) ?? null;
         const track = (extra["__trackName"] as string | undefined) ?? null;
 
-        // Filter out internal __ keys for display
+        // All extra data excluding internal __ keys
         const publicFields = Object.entries(extra).filter(([k]) => !k.startsWith("__"));
 
-        // Build WhatsApp link from phone
+        // WhatsApp link from phone
         const waPhone = profile.phone ? profile.phone.replace(/[\s\-\(\)\+]/g, "") : null;
         const waLink = waPhone ? `https://wa.me/${waPhone}` : null;
 
-        if (!email && !preferredCircle && !waLink && publicFields.length === 0) return null;
+        const hasAny = email || preferredCircle || track || waLink || (profile as any).ageRange || publicFields.length > 0;
+        if (!hasAny) return null;
 
         return (
           <Card className="border-0 shadow-sm">
@@ -556,13 +557,14 @@ export default function StudentProfilePage({ id }: { id: number }) {
                 بيانات التسجيل
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-0 space-y-2">
-              <div className="grid grid-cols-2 gap-3">
+            <CardContent className="pt-0 space-y-3">
+              {/* Contact */}
+              <div className="space-y-2">
                 {email && (
-                  <div className="col-span-2 flex items-start gap-2">
+                  <div className="flex items-start gap-2">
                     <Mail className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                     <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">البريد الإلكتروني</p>
+                      <p className="text-[11px] text-muted-foreground">البريد الإلكتروني</p>
                       <p className="text-sm font-semibold break-all" dir="ltr">{email}</p>
                     </div>
                   </div>
@@ -571,7 +573,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
                   <div className="flex items-start gap-2">
                     <MessageCircle className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-xs text-muted-foreground">واتساب</p>
+                      <p className="text-[11px] text-muted-foreground">واتساب</p>
                       <a href={waLink} target="_blank" rel="noopener noreferrer"
                         className="text-sm font-semibold text-emerald-600 hover:underline" dir="ltr">
                         {profile.phone}
@@ -579,36 +581,40 @@ export default function StudentProfilePage({ id }: { id: number }) {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Registration fields */}
+              <div className="grid grid-cols-2 gap-2">
+                {(profile as any).ageRange && (
+                  <div className="bg-muted/40 rounded-lg px-3 py-2">
+                    <p className="text-[11px] text-muted-foreground">الفئة العمرية</p>
+                    <p className="text-sm font-semibold">{(profile as any).ageRange}</p>
+                  </div>
+                )}
                 {preferredCircle && (
-                  <div className="flex items-start gap-2">
-                    <BookOpen className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">الحلقة المفضلة</p>
-                      <p className="text-sm font-semibold">{preferredCircle}</p>
-                    </div>
+                  <div className="bg-muted/40 rounded-lg px-3 py-2">
+                    <p className="text-[11px] text-muted-foreground">الحلقة المفضلة</p>
+                    <p className="text-sm font-semibold">{preferredCircle}</p>
                   </div>
                 )}
                 {track && (
-                  <div className="flex items-start gap-2">
-                    <GraduationCap className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">المسار المختار</p>
-                      <p className="text-sm font-semibold">{track}</p>
-                    </div>
+                  <div className="col-span-2 bg-muted/40 rounded-lg px-3 py-2">
+                    <p className="text-[11px] text-muted-foreground">المسار المختار</p>
+                    <p className="text-sm font-semibold">{track}</p>
                   </div>
                 )}
               </div>
+
+              {/* Extra answers from registration form */}
               {publicFields.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-border">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2">إجابات الاستمارة</p>
-                  <div className="space-y-1.5">
-                    {publicFields.map(([key, val]) => (
-                      <div key={key} className="bg-muted/40 rounded-lg px-3 py-2 flex gap-2">
-                        <span className="text-xs text-muted-foreground font-medium shrink-0">{key}:</span>
-                        <span className="text-xs text-foreground break-all">{String(val)}</span>
-                      </div>
-                    ))}
-                  </div>
+                <div className="pt-2 border-t border-border space-y-1.5">
+                  <p className="text-[11px] font-semibold text-muted-foreground">إجابات الاستمارة</p>
+                  {publicFields.map(([key, val]) => (
+                    <div key={key} className="bg-muted/40 rounded-lg px-3 py-2 flex gap-2 flex-wrap">
+                      <span className="text-[11px] text-muted-foreground font-medium">{key}:</span>
+                      <span className="text-[11px] text-foreground break-all">{String(val)}</span>
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>

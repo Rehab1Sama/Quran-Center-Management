@@ -273,7 +273,7 @@ function StepIndicator({ current }: { current: number }) {
 
 export default function ReviewPlanTab({ studentId, studentName, circleName, trackType, plan, onPlanChange, readOnly = false, onAfterSave, userRole }: Props) {
   const { toast } = useToast();
-  const [step, setStep] = useState<"view" | "pick_content" | "plan_type" | "start_date" | "choose" | "theme" | "manual" | "renew_theme" | "renew_surah" | "renew_confirm" | "fixation_quota" | "fixation_start" | "fixation_theme" | "fixation_date">("view");
+  const [step, setStep] = useState<"view" | "pick_content" | "plan_type" | "start_date" | "choose" | "theme" | "manual" | "renew_theme" | "renew_surah" | "renew_confirm" | "fixation_quota" | "fixation_start" | "fixation_theme" | "fixation_date" | "fixation_manual">("view");
   const [saving, setSaving] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState<PlanTheme>(
     plan?.theme ?? THEME_PRESETS[0].theme
@@ -300,9 +300,11 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
   const [autoDetecting, setAutoDetecting] = useState(false);
 
   // حالة خاصة بمسار التثبيت
-  const [fixationQuota, setFixationQuota] = useState<number>(1);
-  const [fixationCustomQuota, setFixationCustomQuota] = useState<string>("1");
-  const [fixationQuotaMode, setFixationQuotaMode] = useState<"preset" | "custom">("preset");
+  const [fixationQuota, setFixationQuota] = useState<0.5 | 1>(1);
+  const [fixationPlanMode, setFixationPlanMode] = useState<"auto" | "manual">("auto");
+  const [fixationManualEntries, setFixationManualEntries] = useState<Array<{dayNumber: number; surahStart: string; ayahStart: string; surahEnd: string; ayahEnd: string}>>(() =>
+    Array.from({ length: 24 }, (_, i) => ({ dayNumber: i + 1, surahStart: "البقرة", ayahStart: "1", surahEnd: "البقرة", ayahEnd: "10" }))
+  );
   const [fixationStartMode, setFixationStartMode] = useState<"juz" | "surah">("juz");
   const [fixationStartJuz, setFixationStartJuz] = useState<number>(1);
   const [fixationStartSurahLocal, setFixationStartSurahLocal] = useState("");
@@ -442,76 +444,186 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
 
   // ── مسار التثبيت: خطوة ١ — اختيار النصاب ─────────────────────
   if (step === "fixation_quota") {
-    const effectiveQuota = fixationQuotaMode === "custom"
-      ? (parseFloat(fixationCustomQuota) || 0)
-      : fixationQuota;
-    const canProceedQuota = effectiveQuota > 0 && effectiveQuota <= 10;
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-1">
           <button onClick={() => setStep("view")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
-          <h3 className="font-bold text-sm">١ · اختاري نصابك اليومي</h3>
+          <h3 className="font-bold text-sm">١ · اختاري طريقة الخطة</h3>
         </div>
-        <p className="text-xs text-muted-foreground">كمية التثبيت التي ستراجعينها في كل جلسة (بالوجوه)</p>
+        <p className="text-xs text-muted-foreground">هل تريدين نظام جاهز أم تكتبين خطتك بنفسك؟</p>
         <div className="grid grid-cols-3 gap-2">
           <button
-            onClick={() => { setFixationQuotaMode("preset"); setFixationQuota(1); }}
-            className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 transition-all ${fixationQuotaMode === "preset" && fixationQuota === 1 ? "border-emerald-500 bg-emerald-50 shadow-md" : "border-border bg-muted/20 hover:border-emerald-300"}`}
+            onClick={() => { setFixationPlanMode("auto"); setFixationQuota(1); }}
+            className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 transition-all ${fixationPlanMode === "auto" && fixationQuota === 1 ? "border-emerald-500 bg-emerald-50 shadow-md" : "border-border bg-muted/20 hover:border-emerald-300"}`}
           >
             <span className="text-2xl">📖</span>
             <p className="font-bold text-sm text-emerald-800">وجه كامل</p>
-            <p className="text-[10px] text-emerald-700 text-center">1 وجه / جلسة</p>
+            <p className="text-[10px] text-emerald-700 text-center">الموقع يرتب لكِ الخطة</p>
           </button>
           <button
-            onClick={() => { setFixationQuotaMode("preset"); setFixationQuota(0.5); }}
-            className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 transition-all ${fixationQuotaMode === "preset" && fixationQuota === 0.5 ? "border-sky-500 bg-sky-50 shadow-md" : "border-border bg-muted/20 hover:border-sky-300"}`}
+            onClick={() => { setFixationPlanMode("auto"); setFixationQuota(0.5); }}
+            className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 transition-all ${fixationPlanMode === "auto" && fixationQuota === 0.5 ? "border-sky-500 bg-sky-50 shadow-md" : "border-border bg-muted/20 hover:border-sky-300"}`}
           >
             <span className="text-2xl">📄</span>
             <p className="font-bold text-sm text-sky-800">نصف وجه</p>
-            <p className="text-[10px] text-sky-700 text-center">0.5 وجه / جلسة</p>
+            <p className="text-[10px] text-sky-700 text-center">الموقع يرتب لكِ الخطة</p>
           </button>
           <button
-            onClick={() => setFixationQuotaMode("custom")}
-            className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 transition-all ${fixationQuotaMode === "custom" ? "border-violet-500 bg-violet-50 shadow-md" : "border-border bg-muted/20 hover:border-violet-300"}`}
+            onClick={() => setFixationPlanMode("manual")}
+            className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 transition-all ${fixationPlanMode === "manual" ? "border-violet-500 bg-violet-50 shadow-md" : "border-border bg-muted/20 hover:border-violet-300"}`}
           >
             <span className="text-2xl">✏️</span>
-            <p className="font-bold text-sm text-violet-800">نصابي</p>
-            <p className="text-[10px] text-violet-700 text-center">أدخله بنفسي</p>
+            <p className="font-bold text-sm text-violet-800">يدوية</p>
+            <p className="text-[10px] text-violet-700 text-center">أكتب خطتي بنفسي</p>
           </button>
         </div>
-        {fixationQuotaMode === "custom" && (
-          <div className="rounded-xl bg-violet-50 border border-violet-200 p-3 space-y-2">
-            <p className="text-xs font-semibold text-violet-800">كم وجهًا ستراجعين في كل جلسة؟</p>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                step="0.25"
-                min="0.25"
-                max="10"
-                value={fixationCustomQuota}
-                onChange={e => setFixationCustomQuota(e.target.value)}
-                className="w-28 h-10 border-2 border-violet-300 rounded-xl text-center text-lg font-bold focus:outline-none focus:border-violet-500 bg-white"
-                placeholder="مثال: 1.5"
-              />
-              <span className="text-sm text-violet-700 font-medium">وجه في كل جلسة</span>
-            </div>
-            {parseFloat(fixationCustomQuota) > 0 && (
-              <p className="text-xs text-violet-700">
-                ✓ الإجمالي: <span className="font-bold">{(parseFloat(fixationCustomQuota) * FIXATION_CYCLE).toFixed(1)} وجه</span> خلال {FIXATION_WEEKS} أسابيع
-              </p>
-            )}
-          </div>
-        )}
         <div className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
-          <p className="font-semibold">الخطة ستكون:</p>
-          <p>• {FIXATION_CYCLE} يوم عمل · {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام (الأحد–الأربعاء)</p>
-          {effectiveQuota > 0 && <p>• إجمالي النصاب: <span className="font-bold text-foreground">{(effectiveQuota * FIXATION_CYCLE).toFixed(1)} وجه</span></p>}
+          <p className="font-semibold">
+            {fixationPlanMode === "manual"
+              ? "ستملئين جدول 24 يوم (6 أسابيع × 4 أيام) بالسور والآيات يدوياً"
+              : `خطة جاهزة: ${FIXATION_CYCLE} جلسة · ${FIXATION_WEEKS} أسابيع × ${FIXATION_DAYS_PER_WEEK} أيام · نصاب ${fixationQuota === 1 ? "وجه" : "نصف وجه"} / يوم`
+            }
+          </p>
         </div>
-        <Button className="w-full" disabled={!canProceedQuota} onClick={() => {
-          if (fixationQuotaMode === "custom") setFixationQuota(parseFloat(fixationCustomQuota) || 1);
-          setStep("fixation_start");
+        <Button className="w-full" onClick={() => {
+          if (fixationPlanMode === "manual") {
+            setStep("fixation_manual");
+          } else {
+            setStep("fixation_start");
+          }
         }}>
-          التالي ← اختاري نقطة البداية
+          التالي ←
+        </Button>
+      </div>
+    );
+  }
+
+  // ── مسار التثبيت: خطوة "يدوية" — الطالبة تملأ جدولها بنفسها ──
+  if (step === "fixation_manual") {
+    const DAY_NAMES = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء"];
+    const updateEntry = (idx: number, field: string, value: string) => {
+      setFixationManualEntries(prev => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
+    };
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    async function saveManualFixation() {
+      setSaving(true);
+      try {
+        const entries = fixationManualEntries.map(e => ({
+          dayNumber: e.dayNumber,
+          surahStart: e.surahStart,
+          ayahStart: parseInt(e.ayahStart) || 1,
+          surahEnd: e.surahEnd,
+          ayahEnd: parseInt(e.ayahEnd) || 1,
+          pages: 0,
+        }));
+        const body: Record<string, unknown> = {
+          planType: "manual",
+          cycleLength: 24,
+          planEntries: entries,
+          theme: selectedTheme,
+        };
+        if (startDate) body.startDate = startDate;
+        const res = await fetch(`${BASE}/api/students/${studentId}/review-plan`, {
+          method: "POST", headers: authHeader(), body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          onPlanChange(data);
+          setStep("view");
+          toast({ title: "تم حفظ خطة التثبيت اليدوية ✓" });
+          onAfterSave?.();
+        } else {
+          const err = await res.json();
+          toast({ title: err.error ?? "حدث خطأ", variant: "destructive" });
+        }
+      } finally {
+        setSaving(false);
+      }
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <button onClick={() => setStep("fixation_quota")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
+          <h3 className="font-bold text-sm">خطة التثبيت اليدوية</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">اكتبي ما ستراجعينه في كل جلسة من الجلسات الـ 24 (6 أسابيع × 4 أيام)</p>
+
+        {/* Theme */}
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-2">التنسيق</p>
+          <div className="flex gap-2 flex-wrap">
+            {THEME_PRESETS.map(preset => (
+              <button key={preset.name} onClick={() => setSelectedTheme(preset.theme)}
+                className={`w-7 h-7 rounded-full border-2 transition-all ${selectedTheme.primaryColor === preset.theme.primaryColor ? "border-foreground scale-110" : "border-transparent"}`}
+                style={{ background: preset.theme.primaryColor }} title={preset.name} />
+            ))}
+          </div>
+        </div>
+
+        {/* Date */}
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1">تاريخ البداية</p>
+          <input type="date" className="w-full border rounded-xl px-3 py-2 text-sm bg-background"
+            value={startDate || todayStr} min={todayStr}
+            onChange={e => setStartDate(e.target.value)} />
+        </div>
+
+        {/* 24-row table */}
+        <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+          {Array.from({ length: FIXATION_WEEKS }, (_, wi) => (
+            <div key={wi} className="rounded-xl border border-border overflow-hidden">
+              <div className="bg-muted/50 px-3 py-1.5">
+                <p className="text-xs font-bold text-foreground">الأسبوع {wi + 1}</p>
+              </div>
+              <div className="divide-y divide-border">
+                {Array.from({ length: FIXATION_DAYS_PER_WEEK }, (_, di) => {
+                  const idx = wi * FIXATION_DAYS_PER_WEEK + di;
+                  const entry = fixationManualEntries[idx];
+                  return (
+                    <div key={di} className="px-3 py-2 space-y-1.5">
+                      <p className="text-[11px] font-semibold text-muted-foreground">{DAY_NAMES[di]} — اليوم {idx + 1}</p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <div>
+                          <p className="text-[10px] text-muted-foreground mb-0.5">سورة البداية</p>
+                          <select value={entry.surahStart} onChange={e => updateEntry(idx, "surahStart", e.target.value)}
+                            className="w-full h-7 border border-input rounded-lg text-xs px-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary/20">
+                            {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground mb-0.5">آية البداية</p>
+                          <input type="number" min="1" value={entry.ayahStart}
+                            onChange={e => updateEntry(idx, "ayahStart", e.target.value)}
+                            className="w-full h-7 border border-input rounded-lg text-xs px-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary/20 text-center" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground mb-0.5">سورة النهاية</p>
+                          <select value={entry.surahEnd} onChange={e => updateEntry(idx, "surahEnd", e.target.value)}
+                            className="w-full h-7 border border-input rounded-lg text-xs px-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary/20">
+                            {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground mb-0.5">آية النهاية</p>
+                          <input type="number" min="1" value={entry.ayahEnd}
+                            onChange={e => updateEntry(idx, "ayahEnd", e.target.value)}
+                            className="w-full h-7 border border-input rounded-lg text-xs px-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary/20 text-center" />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <Button className="w-full font-bold" style={{ background: selectedTheme.primaryColor }}
+          onClick={saveManualFixation} disabled={saving}>
+          {saving ? <span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin inline-block ml-2" /> : null}
+          حفظ خطة التثبيت اليدوية ✓
         </Button>
       </div>
     );
