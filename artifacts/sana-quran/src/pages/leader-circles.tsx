@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useGetCurrentUser } from "@workspace/api-client-react";
+import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ChevronDown, ChevronUp, Users, Clock, Link2, Settings2, X,
   Check, Phone, Search, ArrowLeftRight, UserX, BookOpen,
+  Archive, PlaneTakeoff, ExternalLink,
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
 
@@ -157,8 +159,11 @@ function TransferModal({
 export default function LeaderCirclesPage() {
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const isLeader = user?.role === "leader";
+  const isDeputy = user?.role === "deputy";
   const isTrackSup = user?.role === "track_supervisor";
+  const canManage = isLeader || isDeputy || isTrackSup;
 
   const [circles, setCircles] = useState<EnrichedCircle[]>([]);
   const [allCircles, setAllCircles] = useState<AllCircleOption[]>([]);
@@ -171,6 +176,11 @@ export default function LeaderCirclesPage() {
   const [editData, setEditData] = useState({ meetingTime: "", whatsappLink: "", newStudentCapacity: "" });
   const [saving, setSaving] = useState(false);
 
+  const [leaveModal, setLeaveModal] = useState<{ studentId: number; studentName: string; circleId: number } | null>(null);
+  const [leaveStart, setLeaveStart] = useState("");
+  const [leaveEnd, setLeaveEnd] = useState("");
+  const [leaveSaving, setLeaveSaving] = useState(false);
+
   const [transferModal, setTransferModal] = useState<{
     type: "teacher" | "supervisor" | "student";
     circleId: number;
@@ -182,6 +192,44 @@ export default function LeaderCirclesPage() {
 
   const token = getToken();
   const headers = useCallback(() => ({ "Content-Type": "application/json", Authorization: `Bearer ${token}` }), [token]);
+
+  const handleArchiveStudent = async (studentId: number, studentName: string, circleId: number) => {
+    if (!confirm(`هل تريدين إخراج "${studentName}" من الحلقة؟`)) return;
+    try {
+      const res = await fetch(`${BASE}/api/students/${studentId}/archive`, {
+        method: "PATCH",
+        headers: headers(),
+        body: JSON.stringify({ circleId }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: `تم إخراج ${studentName} من الحلقة` });
+      await load();
+    } catch {
+      toast({ title: "فشل الإخراج", variant: "destructive" });
+    }
+  };
+
+  const handleSetLeave = async () => {
+    if (!leaveModal || !leaveStart || !leaveEnd) {
+      toast({ title: "أدخلي تاريخ البداية والنهاية", variant: "destructive" }); return;
+    }
+    setLeaveSaving(true);
+    try {
+      const res = await fetch(`${BASE}/api/students/${leaveModal.studentId}/leave`, {
+        method: "PATCH",
+        headers: headers(),
+        body: JSON.stringify({ circleId: leaveModal.circleId, leaveStart, leaveEnd }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: `تم منح إجازة لـ ${leaveModal.studentName}` });
+      setLeaveModal(null); setLeaveStart(""); setLeaveEnd("");
+      await load();
+    } catch {
+      toast({ title: "فشل تسجيل الإجازة", variant: "destructive" });
+    } finally {
+      setLeaveSaving(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -531,17 +579,47 @@ export default function LeaderCirclesPage() {
                                   {circle.students.length === 0 ? (
                                     <p className="text-xs text-muted-foreground">لا توجد طالبات</p>
                                   ) : circle.students.map(s => (
-                                    <div key={s.id} className="flex items-center justify-between gap-2">
-                                      <span className="text-sm">{s.fullName}</span>
-                                      {(isLeader || isTrackSup) && (
+                                    <div key={s.id} className="flex items-center justify-between gap-2 py-0.5">
+                                      <button
+                                        onClick={() => navigate(`/students/${s.id}`)}
+                                        className="text-sm text-primary hover:underline text-right flex-1 min-w-0 truncate"
+                                      >
+                                        {s.fullName}
+                                      </button>
+                                      <div className="flex gap-1 shrink-0">
                                         <button
-                                          onClick={() => setTransferModal({ type: "student", circleId: circle.id, label: `نقل طالبة`, studentId: s.id, studentName: s.fullName })}
-                                          className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 flex-shrink-0"
-                                          title="نقل لحلقة أخرى"
+                                          onClick={() => navigate(`/students/${s.id}`)}
+                                          className="p-1 rounded bg-muted/60 hover:bg-muted text-muted-foreground"
+                                          title="فتح الملف الشخصي"
                                         >
-                                          <ArrowLeftRight className="w-3 h-3" />
+                                          <ExternalLink className="w-3 h-3" />
                                         </button>
-                                      )}
+                                        {canManage && (
+                                          <>
+                                            <button
+                                              onClick={() => setTransferModal({ type: "student", circleId: circle.id, label: `نقل طالبة`, studentId: s.id, studentName: s.fullName })}
+                                              className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
+                                              title="نقل لحلقة أخرى"
+                                            >
+                                              <ArrowLeftRight className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              onClick={() => { setLeaveModal({ studentId: s.id, studentName: s.fullName, circleId: circle.id }); setLeaveStart(""); setLeaveEnd(""); }}
+                                              className="p-1 rounded bg-amber-50 text-amber-600 hover:bg-amber-100"
+                                              title="منح إجازة"
+                                            >
+                                              <PlaneTakeoff className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              onClick={() => handleArchiveStudent(s.id, s.fullName, circle.id)}
+                                              className="p-1 rounded bg-rose-50 text-rose-600 hover:bg-rose-100"
+                                              title="إخراج من الحلقة"
+                                            >
+                                              <Archive className="w-3 h-3" />
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
@@ -581,6 +659,41 @@ export default function LeaderCirclesPage() {
           onClose={() => setTransferModal(null)}
           loading={transferLoading}
         />
+      )}
+
+      {leaveModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <PlaneTakeoff className="w-4 h-4 text-amber-500" />
+                منح إجازة
+              </h3>
+              <button onClick={() => setLeaveModal(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-sm font-semibold text-amber-800 text-center">
+                {leaveModal.studentName}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">تاريخ البداية</p>
+                  <Input type="date" value={leaveStart} onChange={e => setLeaveStart(e.target.value)} className="text-sm" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">تاريخ النهاية</p>
+                  <Input type="date" value={leaveEnd} onChange={e => setLeaveEnd(e.target.value)} className="text-sm" />
+                </div>
+              </div>
+            </div>
+            <div className="p-3 flex gap-2 border-t">
+              <Button size="sm" className="flex-1" disabled={leaveSaving} onClick={handleSetLeave}>
+                {leaveSaving ? "جاري الحفظ..." : "تأكيد الإجازة"}
+              </Button>
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => setLeaveModal(null)}>إلغاء</Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

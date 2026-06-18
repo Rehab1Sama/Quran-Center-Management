@@ -171,8 +171,8 @@ export default function StudentProfilePage({ id }: { id: number }) {
   const [perCircleLeaveStart, setPerCircleLeaveStart] = useState("");
   const [perCircleLeaveEnd, setPerCircleLeaveEnd] = useState("");
 
-  const canEdit = ["leader", "track_supervisor"].includes(user?.role ?? "");
-  const canNote = ["leader", "track_supervisor", "teacher", "supervisor"].includes(user?.role ?? "");
+  const canEdit = ["leader", "deputy", "track_supervisor"].includes(user?.role ?? "");
+  const canNote = ["leader", "deputy", "track_supervisor", "teacher", "supervisor"].includes(user?.role ?? "");
   const canSeePlan = ["track_supervisor", "teacher", "supervisor"].includes(user?.role ?? "");
 
   const profileTrackType: string = (profile?.circle as any)?.trackType ?? "";

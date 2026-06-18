@@ -273,7 +273,7 @@ function StepIndicator({ current }: { current: number }) {
 
 export default function ReviewPlanTab({ studentId, studentName, circleName, trackType, plan, onPlanChange, readOnly = false, onAfterSave, userRole }: Props) {
   const { toast } = useToast();
-  const [step, setStep] = useState<"view" | "pick_content" | "plan_type" | "start_date" | "choose" | "theme" | "manual" | "renew_theme" | "renew_surah" | "renew_confirm" | "fixation_quota" | "fixation_start" | "fixation_theme" | "fixation_date" | "fixation_manual">("view");
+  const [step, setStep] = useState<"view" | "pick_content" | "plan_type" | "start_date" | "choose" | "theme" | "manual" | "renew_theme" | "renew_surah" | "renew_confirm" | "fixation_quota" | "fixation_start" | "fixation_theme" | "fixation_date" | "fixation_manual" | "fixation_manual_date" | "fixation_manual_theme">("view");
   const [saving, setSaving] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState<PlanTheme>(
     plan?.theme ?? THEME_PRESETS[0].theme
@@ -442,136 +442,62 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
     );
   }
 
-  // ── مسار التثبيت: خطوة ١ — اختيار النصاب ─────────────────────
+  // ── مسار التثبيت: خطوة ١ — اختيار النصاب (يدوي فقط) ─────────────────────
   if (step === "fixation_quota") {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-1">
           <button onClick={() => setStep("view")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
-          <h3 className="font-bold text-sm">١ · اختاري طريقة الخطة</h3>
+          <h3 className="font-bold text-sm">١ · اختاري النصاب اليومي</h3>
         </div>
-        <p className="text-xs text-muted-foreground">هل تريدين نظام جاهز أم تكتبين خطتك بنفسك؟</p>
-        <div className="grid grid-cols-3 gap-2">
+        <p className="text-xs text-muted-foreground">ستملئين جدول الـ 24 جلسة (6 أسابيع × 4 أيام) بنفسك</p>
+        <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => { setFixationPlanMode("auto"); setFixationQuota(1); }}
-            className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 transition-all ${fixationPlanMode === "auto" && fixationQuota === 1 ? "border-emerald-500 bg-emerald-50 shadow-md" : "border-border bg-muted/20 hover:border-emerald-300"}`}
+            onClick={() => { setFixationQuota(1); setFixationPlanMode("manual"); setStep("fixation_manual"); }}
+            className="flex flex-col items-center gap-2 p-5 rounded-2xl border-2 border-emerald-400 bg-emerald-50 hover:shadow-md transition-all"
           >
-            <span className="text-2xl">📖</span>
+            <span className="text-3xl">📖</span>
             <p className="font-bold text-sm text-emerald-800">وجه كامل</p>
-            <p className="text-[10px] text-emerald-700 text-center">الموقع يرتب لكِ الخطة</p>
+            <p className="text-[10px] text-emerald-700 text-center">وجه كامل لكل جلسة</p>
           </button>
           <button
-            onClick={() => { setFixationPlanMode("auto"); setFixationQuota(0.5); }}
-            className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 transition-all ${fixationPlanMode === "auto" && fixationQuota === 0.5 ? "border-sky-500 bg-sky-50 shadow-md" : "border-border bg-muted/20 hover:border-sky-300"}`}
+            onClick={() => { setFixationQuota(0.5); setFixationPlanMode("manual"); setStep("fixation_manual"); }}
+            className="flex flex-col items-center gap-2 p-5 rounded-2xl border-2 border-sky-400 bg-sky-50 hover:shadow-md transition-all"
           >
-            <span className="text-2xl">📄</span>
+            <span className="text-3xl">📄</span>
             <p className="font-bold text-sm text-sky-800">نصف وجه</p>
-            <p className="text-[10px] text-sky-700 text-center">الموقع يرتب لكِ الخطة</p>
-          </button>
-          <button
-            onClick={() => setFixationPlanMode("manual")}
-            className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 transition-all ${fixationPlanMode === "manual" ? "border-violet-500 bg-violet-50 shadow-md" : "border-border bg-muted/20 hover:border-violet-300"}`}
-          >
-            <span className="text-2xl">✏️</span>
-            <p className="font-bold text-sm text-violet-800">يدوية</p>
-            <p className="text-[10px] text-violet-700 text-center">أكتب خطتي بنفسي</p>
+            <p className="text-[10px] text-sky-700 text-center">نصف وجه لكل جلسة</p>
           </button>
         </div>
-        <div className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
-          <p className="font-semibold">
-            {fixationPlanMode === "manual"
-              ? "ستملئين جدول 24 يوم (6 أسابيع × 4 أيام) بالسور والآيات يدوياً"
-              : `خطة جاهزة: ${FIXATION_CYCLE} جلسة · ${FIXATION_WEEKS} أسابيع × ${FIXATION_DAYS_PER_WEEK} أيام · نصاب ${fixationQuota === 1 ? "وجه" : "نصف وجه"} / يوم`
-            }
-          </p>
+        <div className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
+          <p>ستملئين {FIXATION_CYCLE} جلسة · {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام (الأحد – الأربعاء) بالسور والآيات بنفسك</p>
         </div>
-        <Button className="w-full" onClick={() => {
-          if (fixationPlanMode === "manual") {
-            setStep("fixation_manual");
-          } else {
-            setStep("fixation_start");
-          }
-        }}>
-          التالي ←
-        </Button>
       </div>
     );
   }
 
-  // ── مسار التثبيت: خطوة "يدوية" — الطالبة تملأ جدولها بنفسها ──
+  // ── مسار التثبيت: خطوة ٢ — الطالبة تملأ جدولها بنفسها ──
   if (step === "fixation_manual") {
     const DAY_NAMES = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء"];
     const updateEntry = (idx: number, field: string, value: string) => {
       setFixationManualEntries(prev => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
     };
-    const todayStr = new Date().toISOString().slice(0, 10);
-
-    async function saveManualFixation() {
-      setSaving(true);
-      try {
-        const entries = fixationManualEntries.map(e => ({
-          dayNumber: e.dayNumber,
-          surahStart: e.surahStart,
-          ayahStart: parseInt(e.ayahStart) || 1,
-          surahEnd: e.surahEnd,
-          ayahEnd: parseInt(e.ayahEnd) || 1,
-          pages: 0,
-        }));
-        const body: Record<string, unknown> = {
-          planType: "manual",
-          cycleLength: 24,
-          planEntries: entries,
-          theme: selectedTheme,
-        };
-        if (startDate) body.startDate = startDate;
-        const res = await fetch(`${BASE}/api/students/${studentId}/review-plan`, {
-          method: "POST", headers: authHeader(), body: JSON.stringify(body),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          onPlanChange(data);
-          setStep("view");
-          toast({ title: "تم حفظ خطة التثبيت اليدوية ✓" });
-          onAfterSave?.();
-        } else {
-          const err = await res.json();
-          toast({ title: err.error ?? "حدث خطأ", variant: "destructive" });
-        }
-      } finally {
-        setSaving(false);
-      }
-    }
 
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-1">
           <button onClick={() => setStep("fixation_quota")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
-          <h3 className="font-bold text-sm">خطة التثبيت اليدوية</h3>
+          <h3 className="font-bold text-sm">٢ · اكتبي نصيب كل جلسة</h3>
         </div>
-        <p className="text-xs text-muted-foreground">اكتبي ما ستراجعينه في كل جلسة من الجلسات الـ 24 (6 أسابيع × 4 أيام)</p>
-
-        {/* Theme */}
-        <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2">التنسيق</p>
-          <div className="flex gap-2 flex-wrap">
-            {THEME_PRESETS.map(preset => (
-              <button key={preset.name} onClick={() => setSelectedTheme(preset.theme)}
-                className={`w-7 h-7 rounded-full border-2 transition-all ${selectedTheme.primaryColor === preset.theme.primaryColor ? "border-foreground scale-110" : "border-transparent"}`}
-                style={{ background: preset.theme.primaryColor }} title={preset.name} />
-            ))}
-          </div>
-        </div>
-
-        {/* Date */}
-        <div>
-          <p className="text-xs font-medium text-muted-foreground mb-1">تاريخ البداية</p>
-          <input type="date" className="w-full border rounded-xl px-3 py-2 text-sm bg-background"
-            value={startDate || todayStr} min={todayStr}
-            onChange={e => setStartDate(e.target.value)} />
+        <div className="flex items-center gap-2 bg-muted/40 rounded-xl px-3 py-2">
+          <span className="text-lg">{fixationQuota === 1 ? "📖" : "📄"}</span>
+          <p className="text-xs text-muted-foreground">
+            النصاب: <span className="font-bold text-foreground">{fixationQuota === 1 ? "وجه كامل" : "نصف وجه"}</span> · {FIXATION_CYCLE} جلسة · {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام
+          </p>
         </div>
 
         {/* 24-row table */}
-        <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
           {Array.from({ length: FIXATION_WEEKS }, (_, wi) => (
             <div key={wi} className="rounded-xl border border-border overflow-hidden">
               <div className="bg-muted/50 px-3 py-1.5">
@@ -620,10 +546,101 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
           ))}
         </div>
 
+        <Button className="w-full" onClick={() => setStep("fixation_manual_date")}>
+          التالي ← اختاري تاريخ البداية
+        </Button>
+      </div>
+    );
+  }
+
+  // ── مسار التثبيت: خطوة ٣ — تاريخ البداية (يدوي) ─────────────────────
+  if (step === "fixation_manual_date") {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <button onClick={() => setStep("fixation_manual")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
+          <h3 className="font-bold text-sm">٣ · اختاري تاريخ البداية</h3>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-4">
+          <input type="date" className="w-full border rounded-xl px-3 py-2 text-sm bg-background"
+            value={startDate || todayStr} min={todayStr}
+            onChange={e => setStartDate(e.target.value)} />
+          {!startDate && <p className="text-xs text-emerald-700 font-medium mt-2">✓ سيبدأ اليوم تلقائيًا إذا لم تختاري تاريخًا</p>}
+        </div>
+        <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1">
+          <p className="font-semibold">ملخص الخطة:</p>
+          <p>• النصاب: <span className="font-bold">{fixationQuota === 1 ? "وجه كامل" : "نصف وجه"}</span> / جلسة</p>
+          <p>• المدة: {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام ({FIXATION_CYCLE} جلسة)</p>
+          <p>• أيام العمل: الأحد، الاثنين، الثلاثاء، الأربعاء</p>
+        </div>
+        <Button className="w-full" onClick={() => setStep("fixation_manual_theme")}>
+          التالي ← اختاري التنسيق
+        </Button>
+      </div>
+    );
+  }
+
+  // ── مسار التثبيت: خطوة ٤ — الثيم (يدوي) + حفظ ─────────────────────
+  if (step === "fixation_manual_theme") {
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    async function saveManualFixation() {
+      setSaving(true);
+      try {
+        const entries = fixationManualEntries.map(e => ({
+          dayNumber: e.dayNumber,
+          surahStart: e.surahStart,
+          ayahStart: parseInt(e.ayahStart) || 1,
+          surahEnd: e.surahEnd,
+          ayahEnd: parseInt(e.ayahEnd) || 1,
+          pages: fixationQuota,
+        }));
+        const body: Record<string, unknown> = {
+          planType: "manual",
+          cycleLength: 24,
+          planEntries: entries,
+          theme: selectedTheme,
+          startDate: startDate || todayStr,
+        };
+        const res = await fetch(`${BASE}/api/students/${studentId}/review-plan`, {
+          method: "POST", headers: authHeader(), body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          onPlanChange(data);
+          setStep("view");
+          toast({ title: "تم حفظ خطة التثبيت ✓" });
+          onAfterSave?.();
+        } else {
+          const err = await res.json();
+          toast({ title: err.error ?? "حدث خطأ", variant: "destructive" });
+        }
+      } finally {
+        setSaving(false);
+      }
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <button onClick={() => setStep("fixation_manual_date")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
+          <h3 className="font-bold text-sm">٤ · اختاري لون الخطة</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {THEME_PRESETS.map(preset => (
+            <button key={preset.name} onClick={() => setSelectedTheme(preset.theme)}
+              className={`p-3 rounded-xl border-2 transition-all text-right ${selectedTheme.primaryColor === preset.theme.primaryColor ? "border-primary shadow-md" : "border-border hover:border-primary/40"}`}
+              style={{ background: preset.theme.secondaryColor }}>
+              <div className="w-6 h-6 rounded-full mb-1" style={{ background: preset.theme.primaryColor }} />
+              <p className="text-xs font-bold" style={{ color: preset.theme.accentColor }}>{preset.name}</p>
+            </button>
+          ))}
+        </div>
         <Button className="w-full font-bold" style={{ background: selectedTheme.primaryColor }}
           onClick={saveManualFixation} disabled={saving}>
           {saving ? <span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin inline-block ml-2" /> : null}
-          حفظ خطة التثبيت اليدوية ✓
+          حفظ خطة التثبيت ✓
         </Button>
       </div>
     );

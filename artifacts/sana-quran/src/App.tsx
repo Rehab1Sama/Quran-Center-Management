@@ -143,7 +143,7 @@ function AppRoutes() {
 
         {/* Leader and Deputy shared routes */}
         <Route path="/circles">
-          {(isLeader || isTrackSupervisor) ? <LeaderCirclesPage /> : <Redirect to="/" />}
+          {(isLeader || isTrackSupervisor || isDeputy) ? <LeaderCirclesPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/deputy-circles">
           {isDeputy ? <DeputyCirclesPage /> : <Redirect to="/" />}
