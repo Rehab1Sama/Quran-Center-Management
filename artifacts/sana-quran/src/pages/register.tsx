@@ -320,6 +320,7 @@ export default function RegisterPage() {
     const phoneErr = validatePhone(form.phone);
     if (phoneErr) newErrors.phone = phoneErr;
     if (!hasMemorized) newErrors.hasMemorized = "يرجى الإجابة على سؤال الحفظ";
+    if (circles.length > 0 && !selectedCircleId) newErrors.circleId = "يرجى اختيار الحلقة";
 
     const questions = wizardConfig?.questions ?? [];
     for (const q of questions) {
@@ -361,7 +362,7 @@ export default function RegisterPage() {
           educationLevel: form.educationLevel || undefined,
           memorizeFrom: form.memorizeFrom || undefined,
           track: selectedTrack?.name ?? "",
-          circleId: undefined,
+          circleId: selectedCircleId ?? undefined,
           role: "student",
           isNewcomer: hasMemorized === "no",
           extraData: Object.keys(extraData).length > 0 ? extraData : undefined,
@@ -422,8 +423,10 @@ export default function RegisterPage() {
                 </div>
                 <p className="text-xl font-bold mb-2">تم التسجيل بنجاح! 🎉</p>
                 <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                  سيتم مراجعة بياناتك وإضافتك لحلقتك قريبًا إن شاء الله.
-                  {selectedCircleName && <><br /><span className="font-semibold text-primary">حلقتك المفضلة: {selectedCircleName}</span></>}
+                  {selectedCircleName
+                    ? <>تم إضافتك مباشرة لحلقتك 🎉<br /><span className="font-semibold text-primary">حلقة: {selectedCircleName}</span><br /><span className="text-xs">يمكنك تسجيل الدخول الآن والانضمام لحلقتك</span></>
+                    : "تم التسجيل بنجاح! سيتواصل معكِ فريق المقرأة قريبًا."
+                  }
                 </p>
                 <Link href="/login">
                   <button className="w-full py-2.5 rounded-xl font-bold text-white text-sm" style={{ background: "linear-gradient(135deg,hsl(210,51%,21%) 0%,hsl(177,35%,40%) 100%)" }}>
@@ -624,12 +627,13 @@ export default function RegisterPage() {
                   {/* اختيار الحلقة */}
                   {circles.length > 0 && (
                     <div className="space-y-2">
-                      <Label className="text-sm font-semibold">اختاري الحلقة المفضلة</Label>
-                      <p className="text-xs text-muted-foreground">ستكونين في قائمة انتظار هذه الحلقة</p>
+                      <Label className="text-sm font-semibold">اختاري حلقتك *</Label>
+                      <p className="text-xs text-muted-foreground">ستنضمين مباشرة لهذه الحلقة بعد التسجيل</p>
                       <div className="space-y-2">
                         {circles.map(c => (
-                          <button key={c.circleId} type="button" onClick={() => { setSelectedCircleId(c.circleId); setSelectedCircleName(c.name); }}
-                            className={`w-full text-right px-4 py-3 rounded-xl border-2 transition-all flex items-center justify-between ${selectedCircleId === c.circleId ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}>
+                          <button key={c.circleId} type="button"
+                            onClick={() => { setSelectedCircleId(c.circleId); setSelectedCircleName(c.name); setErrors(e => { const n = { ...e }; delete n.circleId; return n; }); }}
+                            className={`w-full text-right px-4 py-3 rounded-xl border-2 transition-all flex items-center justify-between ${selectedCircleId === c.circleId ? "border-primary bg-primary/5" : errors.circleId ? "border-rose-300 hover:border-primary/50" : "border-border hover:border-primary/50"}`}>
                             <div>
                               <p className="font-semibold text-sm">{c.name}</p>
                               {c.meetingTime && <p className="text-xs text-muted-foreground">{c.meetingTime}</p>}
@@ -646,6 +650,7 @@ export default function RegisterPage() {
                           </button>
                         ))}
                       </div>
+                      {errors.circleId && <p className="text-xs text-rose-600">{errors.circleId}</p>}
                       {selectedCircleId && (
                         <button type="button" onClick={() => { setSelectedCircleId(null); setSelectedCircleName(""); }}
                           className="text-xs text-muted-foreground hover:text-foreground transition-colors">إلغاء الاختيار</button>
