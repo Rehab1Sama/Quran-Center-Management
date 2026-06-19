@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, registrationSettingsTable, usersTable, studentsTable, circlesTable, studentEnrollmentsTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, desc, gt } from "drizzle-orm";
 import { authenticate, requireRole } from "../middlewares/authenticate";
 import { hashPassword } from "../lib/auth";
 import { OpenRegistrationBody, SubmitRegistrationBody } from "@workspace/api-zod";
@@ -351,19 +351,19 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
   const extraData = (req.body as any).extraData ?? null;
   const isNewcomer = (req.body as any).isNewcomer === true;
 
-  // منع تكرار التسجيل بنفس الاسم + البريد الإلكتروني + نفس الحلقة فقط
-  const existingUsers = await db
-    .select({ id: usersTable.id, name: usersTable.name, circleId: usersTable.circleId })
+  // منع التسجيل المتكرر بنفس البريد خلال أقل من 5 دقائق (يمنع الإرسال بالغلط)
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  const [recentReg] = await db
+    .select({ createdAt: usersTable.createdAt })
     .from(usersTable)
-    .where(eq(usersTable.email, email.toLowerCase()));
-  const duplicate = existingUsers.find(u =>
-    u.name.trim().toLowerCase() === fullName.trim().toLowerCase() &&
-    (u.circleId ?? null) === (circleId ?? null)
-  );
-  if (duplicate) {
-    res.status(409).json({
-      error: `يا ${fullName.trim().split(" ")[0]}، تم تسجيل حسابك في هذه الحلقة من قبل. الرجاء عدم تكرار التسجيل`,
-      duplicateName: fullName.trim().split(" ")[0],
+    .where(eq(usersTable.email, email.toLowerCase()))
+    .orderBy(desc(usersTable.createdAt))
+    .limit(1);
+  if (recentReg && recentReg.createdAt > fiveMinutesAgo) {
+    const secondsLeft = Math.ceil((recentReg.createdAt.getTime() + 5 * 60 * 1000 - Date.now()) / 1000);
+    const minutesLeft = Math.ceil(secondsLeft / 60);
+    res.status(429).json({
+      error: `يبدو أنكِ سجّلتِ للتو — يرجى الانتظار ${minutesLeft} ${minutesLeft === 1 ? "دقيقة" : "دقائق"} قبل التسجيل مجدداً`,
     });
     return;
   }
