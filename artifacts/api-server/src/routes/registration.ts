@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, registrationSettingsTable, usersTable, studentsTable, circlesTable, studentEnrollmentsTable } from "@workspace/db";
 import { eq, sql, desc, gt } from "drizzle-orm";
 import { authenticate, requireRole } from "../middlewares/authenticate";
-import { hashPassword } from "../lib/auth";
+import { hashPassword, generateToken } from "../lib/auth";
 import { OpenRegistrationBody, SubmitRegistrationBody } from "@workspace/api-zod";
 import { appendStudentToSheet } from "../lib/sheets";
 import { sendEmailOTP } from "../lib/email";
@@ -438,7 +438,8 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
     }).catch(() => {});
   }
 
-  res.status(201).json({ success: true, autoApproved: true, emailSent: false });
+  const token = newUser ? generateToken(newUser.id, newUser.role) : null;
+  res.status(201).json({ success: true, autoApproved: true, emailSent: false, token });
 });
 
 export default router;

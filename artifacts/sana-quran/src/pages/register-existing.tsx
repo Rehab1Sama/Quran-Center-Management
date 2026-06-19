@@ -10,7 +10,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, XCircle, BookOpen, Search, ChevronDown } from "lucide-react";
 import logoUrl from "@/assets/logo.jpg";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { setToken } from "@/lib/auth";
 import { COUNTRIES } from "@/lib/countries";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -144,6 +145,7 @@ export default function RegisterExistingPage() {
     query: { queryKey: ["regStatus"] },
   });
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [submitted, setSubmitted] = useState(false);
   const [circles, setCircles] = useState<Circle[]>([]);
   const [loading, setLoading] = useState(false);
@@ -221,7 +223,12 @@ export default function RegisterExistingPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "خطأ");
-      setSubmitted(true);
+      if (data.token) {
+        setToken(data.token);
+        setLocation("/");
+      } else {
+        setSubmitted(true);
+      }
     } catch (err: any) {
       toast({ title: "خطأ في التسجيل", description: err.message, variant: "destructive" });
     } finally {

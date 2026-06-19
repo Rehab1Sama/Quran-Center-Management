@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGetRegistrationStatus } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, XCircle, Search, ChevronDown, ChevronRight } from "lucide-react";
 import logoUrl from "@/assets/logo.jpg";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { setToken } from "@/lib/auth";
 import { COUNTRIES } from "@/lib/countries";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -265,6 +266,7 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
 export default function RegisterPage() {
   const { data: status, isLoading: statusLoading } = useGetRegistrationStatus({ query: { queryKey: ["regStatus"] } });
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -368,11 +370,14 @@ export default function RegisterPage() {
           extraData: Object.keys(extraData).length > 0 ? extraData : undefined,
         }),
       });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data?.error ?? "خطأ في التسجيل");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "خطأ في التسجيل");
+      if (data.token) {
+        setToken(data.token);
+        setLocation("/");
+      } else {
+        setSubmitted(true);
       }
-      setSubmitted(true);
     } catch (err: any) {
       toast({ title: "خطأ في التسجيل", description: err.message ?? "يرجى التحقق من البيانات", variant: "destructive" });
     } finally {
