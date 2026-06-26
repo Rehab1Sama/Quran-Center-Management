@@ -273,7 +273,7 @@ function StepIndicator({ current }: { current: number }) {
 
 export default function ReviewPlanTab({ studentId, studentName, circleName, trackType, plan, onPlanChange, readOnly = false, onAfterSave, userRole }: Props) {
   const { toast } = useToast();
-  const [step, setStep] = useState<"view" | "pick_content" | "plan_type" | "start_date" | "choose" | "theme" | "manual" | "renew_theme" | "renew_surah" | "renew_confirm" | "fixation_quota" | "fixation_start" | "fixation_theme" | "fixation_date" | "fixation_manual" | "fixation_manual_date" | "fixation_manual_theme">("view");
+  const [step, setStep] = useState<"view" | "pick_content" | "plan_type" | "start_date" | "choose" | "theme" | "manual" | "renew_theme" | "renew_surah" | "renew_confirm" | "fixation_quota" | "fixation_manual" | "fixation_manual_date" | "fixation_manual_theme">("view");
   const [saving, setSaving] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState<PlanTheme>(
     plan?.theme ?? THEME_PRESETS[0].theme
@@ -301,14 +301,9 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
 
   // حالة خاصة بمسار التثبيت
   const [fixationQuota, setFixationQuota] = useState<0.5 | 1>(1);
-  const [fixationPlanMode, setFixationPlanMode] = useState<"auto" | "manual">("auto");
   const [fixationManualEntries, setFixationManualEntries] = useState<Array<{dayNumber: number; surahStart: string; ayahStart: string; surahEnd: string; ayahEnd: string}>>(() =>
     Array.from({ length: 24 }, (_, i) => ({ dayNumber: i + 1, surahStart: "البقرة", ayahStart: "1", surahEnd: "البقرة", ayahEnd: "10" }))
   );
-  const [fixationStartMode, setFixationStartMode] = useState<"juz" | "surah">("juz");
-  const [fixationStartJuz, setFixationStartJuz] = useState<number>(1);
-  const [fixationStartSurahLocal, setFixationStartSurahLocal] = useState("");
-  const [fixationStartAyahLocal, setFixationStartAyahLocal] = useState("1");
 
   // نافذة اختيار الآية
   type AyahPickerState = {
@@ -423,40 +418,6 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
     if (token) base["Authorization"] = `Bearer ${token}`;
     return base;
   }, []);
-
-  async function createFixationPlan() {
-    setSaving(true);
-    try {
-      const body: Record<string, unknown> = {
-        quota: fixationQuota,
-        cycleLength: 24,
-        theme: selectedTheme,
-      };
-      if (fixationStartMode === "juz") {
-        const juz = JUZ_RANGES.find(j => j.n === fixationStartJuz);
-        if (juz) { body.startSurah = juz.startSurah; body.startAyah = juz.startAyah; }
-      } else if (fixationStartSurahLocal) {
-        body.startSurah = fixationStartSurahLocal;
-        body.startAyah = parseInt(fixationStartAyahLocal) || 1;
-      }
-      if (startDate) body.startDate = startDate;
-      const res = await fetch(`${BASE}/api/students/${studentId}/review-plan`, {
-        method: "POST", headers: authHeader(), body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        onPlanChange(data);
-        setStep("view");
-        toast({ title: "تم إنشاء خطة التثبيت ✓" });
-        onAfterSave?.();
-      } else {
-        const err = await res.json();
-        toast({ title: err.error ?? "حدث خطأ", variant: "destructive" });
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function deletePlan() {
     if (!window.confirm("هل أنتِ متأكدة من حذف الخطة نهائيًا؟ سيمكن الطالبة من إعادة إنشائها من جديد.")) return;
@@ -710,126 +671,6 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
           onClick={saveManualFixation} disabled={saving}>
           {saving ? <span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin inline-block ml-2" /> : null}
           حفظ خطة التثبيت ✓
-        </Button>
-      </div>
-    );
-  }
-
-  // ── مسار التثبيت: خطوة ٢ — نقطة البداية ─────────────────────
-  if (step === "fixation_start") {
-    const canProceed = fixationStartMode === "juz" ? fixationStartJuz > 0 : fixationStartSurahLocal !== "";
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 mb-1">
-          <button onClick={() => setStep("fixation_quota")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
-          <h3 className="font-bold text-sm">٢ · من أين تبدئين؟</h3>
-        </div>
-        <div className="grid grid-cols-2 gap-1 p-1 bg-muted rounded-xl">
-          {(["juz", "surah"] as const).map(m => (
-            <button key={m} onClick={() => setFixationStartMode(m)}
-              className={`py-2 rounded-lg text-sm font-semibold transition-all ${fixationStartMode === m ? "bg-background shadow text-foreground" : "text-muted-foreground"}`}>
-              {m === "juz" ? "جزء البداية" : "سورة البداية"}
-            </button>
-          ))}
-        </div>
-        {fixationStartMode === "juz" ? (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">اختاري الجزء الذي تبدئين منه التثبيت</p>
-            <div className="grid grid-cols-6 gap-1.5">
-              {JUZ_RANGES.map(j => (
-                <button key={j.n} onClick={() => setFixationStartJuz(j.n)}
-                  className={`py-2.5 rounded-lg text-xs font-bold border-2 transition-all ${fixationStartJuz === j.n ? "border-emerald-500 bg-emerald-100 text-emerald-800 shadow-sm" : "border-border bg-background hover:border-emerald-300"}`}>
-                  {j.n}
-                </button>
-              ))}
-            </div>
-            {fixationStartJuz > 0 && (
-              <p className="text-xs text-emerald-700 font-semibold bg-emerald-50 rounded-lg px-3 py-2">
-                ✓ ابتداءً من الجزء {fixationStartJuz} — {JUZ_RANGES.find(j => j.n === fixationStartJuz)?.startSurah}
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">اختاري السورة والآية التي تبدئين منها</p>
-            <div className="flex gap-2">
-              <select className="flex-1 border rounded-lg px-2 py-2 text-sm bg-background"
-                value={fixationStartSurahLocal}
-                onChange={e => setFixationStartSurahLocal(e.target.value)}>
-                <option value="">— اختاري السورة —</option>
-                {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-              </select>
-              <input type="number" min="1" placeholder="آية" className="w-20 border rounded-lg px-2 py-2 text-sm bg-background"
-                value={fixationStartAyahLocal}
-                onChange={e => setFixationStartAyahLocal(e.target.value)} />
-            </div>
-          </div>
-        )}
-        <Button className="w-full" disabled={!canProceed}
-          onClick={() => { setSelectedTheme(THEME_PRESETS[0].theme); setStep("fixation_theme"); }}>
-          التالي ← اختاري الثيم
-        </Button>
-      </div>
-    );
-  }
-
-  // ── مسار التثبيت: خطوة ٣ — الثيم ───────────────────────────
-  if (step === "fixation_theme") {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 mb-1">
-          <button onClick={() => setStep("fixation_start")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
-          <h3 className="font-bold text-sm">٣ · اختاري لون الخطة</h3>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {THEME_PRESETS.map(preset => (
-            <button key={preset.name} onClick={() => setSelectedTheme(preset.theme)}
-              className={`p-3 rounded-xl border-2 transition-all text-right ${selectedTheme.primaryColor === preset.theme.primaryColor ? "border-primary shadow-md" : "border-border hover:border-primary/40"}`}
-              style={{ background: preset.theme.secondaryColor }}>
-              <div className="w-6 h-6 rounded-full mb-1" style={{ background: preset.theme.primaryColor }} />
-              <p className="text-xs font-bold" style={{ color: preset.theme.accentColor }}>{preset.name}</p>
-            </button>
-          ))}
-        </div>
-        <Button className="w-full" style={{ background: selectedTheme.primaryColor }}
-          onClick={() => setStep("fixation_date")}>
-          التالي ← اختاري تاريخ البداية
-        </Button>
-      </div>
-    );
-  }
-
-  // ── مسار التثبيت: خطوة ٤ — تاريخ البداية ───────────────────
-  if (step === "fixation_date") {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const totalWajh = fixationQuota * FIXATION_CYCLE;
-    const startLabel = fixationStartMode === "juz"
-      ? `الجزء ${fixationStartJuz} (${JUZ_RANGES.find(j => j.n === fixationStartJuz)?.startSurah ?? ""})`
-      : `${fixationStartSurahLocal} آية ${fixationStartAyahLocal}`;
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 mb-1">
-          <button onClick={() => setStep("fixation_theme")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
-          <h3 className="font-bold text-sm">٤ · تاريخ البداية</h3>
-        </div>
-        <div className="rounded-xl bg-muted/40 p-4 space-y-3">
-          <input type="date" className="w-full border rounded-xl px-3 py-2 text-sm bg-background"
-            value={startDate || todayStr} min={todayStr}
-            onChange={e => setStartDate(e.target.value)} />
-          {!startDate && <p className="text-xs text-emerald-700 font-medium">✓ سيبدأ اليوم تلقائيًا إذا لم تختاري تاريخًا</p>}
-        </div>
-        <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-xs space-y-1 text-blue-800">
-          <p className="font-semibold">ملخص الخطة:</p>
-          <p>• النصاب: <span className="font-bold">{fixationQuota === 1 ? "وجه كامل" : "نصف وجه"}</span> يوميًا</p>
-          <p>• البداية: <span className="font-bold">{startLabel}</span></p>
-          <p>• المدة: {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام ({FIXATION_CYCLE} جلسة)</p>
-          <p>• إجمالي النصاب: <span className="font-bold">{totalWajh} وجه</span></p>
-          <p>• أيام العمل: الأحد، الاثنين، الثلاثاء، الأربعاء</p>
-        </div>
-        <Button className="w-full font-bold" style={{ background: selectedTheme.primaryColor }}
-          onClick={createFixationPlan} disabled={saving}>
-          {saving ? <><span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin inline-block ml-2" /></> : null}
-          إنشاء خطة التثبيت ✓
         </Button>
       </div>
     );
