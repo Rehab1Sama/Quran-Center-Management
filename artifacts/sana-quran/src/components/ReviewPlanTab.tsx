@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { SURAHS } from "@/lib/quran";
+import { SURAHS, calculatePages } from "@/lib/quran";
 import {
   BookOpen, Loader2, AlertTriangle, CheckCircle2, Download,
   Palette, Edit3, RefreshCw, ChevronDown, ChevronUp,
@@ -490,9 +490,39 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
   // ── مسار التثبيت: خطوة ٢ — الطالبة تملأ جدولها بنفسها ──
   if (step === "fixation_manual") {
     const DAY_NAMES = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء"];
+
     const updateEntry = (idx: number, field: string, value: string) => {
       setFixationManualEntries(prev => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
     };
+
+    // زر "تابعي من السابق": تملأ بداية كل جلسة من نهاية الجلسة التي قبلها
+    function fillFromPrevious() {
+      setFixationManualEntries(prev => {
+        const next = [...prev];
+        for (let i = 1; i < next.length; i++) {
+          const pr = next[i - 1];
+          const surah = SURAHS.find(s => s.name === pr.surahEnd);
+          const ayahNum = parseInt(pr.ayahEnd) || 1;
+          if (surah && ayahNum >= surah.ayahs) {
+            const nextSurah = SURAHS.find(s => s.number === surah.number + 1);
+            if (nextSurah) next[i] = { ...next[i], surahStart: nextSurah.name, ayahStart: "1" };
+          } else {
+            next[i] = { ...next[i], surahStart: pr.surahEnd, ayahStart: String(ayahNum + 1) };
+          }
+        }
+        return next;
+      });
+    }
+
+    // حساب وجوه الجلسة ومقارنتها بالنصاب
+    function entryStatus(entry: typeof fixationManualEntries[0]) {
+      const pages = calculatePages(entry.surahStart, parseInt(entry.ayahStart) || 1, entry.surahEnd, parseInt(entry.ayahEnd) || 1);
+      const diff = Math.round((pages - fixationQuota) * 10) / 10;
+      return { pages, diff };
+    }
+
+    const allEntries = fixationManualEntries;
+    const wrongCount = allEntries.filter(e => Math.abs(entryStatus(e).diff) >= 0.1).length;
 
     return (
       <>
@@ -502,11 +532,25 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
             <button onClick={() => setStep("fixation_quota")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
             <h3 className="font-bold text-sm">٢ · اكتبي نصيب كل جلسة</h3>
           </div>
+
+          {/* شريط معلومات + زر التعبئة */}
           <div className="flex items-center gap-2 bg-muted/40 rounded-xl px-3 py-2">
             <span className="text-lg">{fixationQuota === 1 ? "📖" : "📄"}</span>
-            <p className="text-xs text-muted-foreground">
-              النصاب: <span className="font-bold text-foreground">{fixationQuota === 1 ? "وجه كامل" : "نصف وجه"}</span> · {FIXATION_CYCLE} جلسة · {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام · اضغطي على رقم الآية لتختاريه
-            </p>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-muted-foreground">
+                النصاب: <span className="font-bold text-foreground">{fixationQuota === 1 ? "وجه كامل" : "نصف وجه"}</span> / جلسة · اضغطي على الآية لتختاريها
+              </p>
+              {wrongCount > 0 && (
+                <p className="text-[10px] text-orange-600 font-medium mt-0.5">⚠ {wrongCount} جلسة لا تساوي النصاب المطلوب</p>
+              )}
+            </div>
+            <button
+              onClick={fillFromPrevious}
+              className="shrink-0 text-[10px] bg-primary/10 text-primary font-semibold px-2 py-1 rounded-lg hover:bg-primary/20 transition-colors"
+              title="تملأ بداية كل جلسة من نهاية الجلسة السابقة"
+            >
+              ↕ تابعي
+            </button>
           </div>
 
           {/* 24-row table */}
@@ -520,9 +564,32 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
                   {Array.from({ length: FIXATION_DAYS_PER_WEEK }, (_, di) => {
                     const idx = wi * FIXATION_DAYS_PER_WEEK + di;
                     const entry = fixationManualEntries[idx];
+                    const { pages, diff } = entryStatus(entry);
+                    const isExact = Math.abs(diff) < 0.1;
+                    const isOver  = diff > 0.1;
+                    const isUnder = diff < -0.1;
                     return (
                       <div key={di} className="px-3 py-2 space-y-1.5">
-                        <p className="text-[11px] font-semibold text-muted-foreground">{DAY_NAMES[di]} — اليوم {idx + 1}</p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-[11px] font-semibold text-muted-foreground">{DAY_NAMES[di]} — اليوم {idx + 1}</p>
+                          {/* شارة الوجوه */}
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                            isExact ? "bg-emerald-100 text-emerald-700"
+                            : isOver  ? "bg-orange-100 text-orange-700"
+                            : isUnder ? "bg-red-100 text-red-700"
+                            : ""
+                          }`}>
+                            {pages === 0 ? "—" : `${pages} وجه${isOver ? " ▲" : isUnder ? " ▼" : " ✓"}`}
+                          </span>
+                        </div>
+                        {/* تنبيه إذا لم يطابق النصاب */}
+                        {!isExact && pages > 0 && (
+                          <p className={`text-[10px] font-medium rounded px-1.5 py-0.5 ${isOver ? "bg-orange-50 text-orange-600" : "bg-red-50 text-red-600"}`}>
+                            {isOver
+                              ? `النصاب ${fixationQuota} وجه · أدخلتِ ${pages} (زيادة ${Math.abs(diff)} وجه)`
+                              : `النصاب ${fixationQuota} وجه · أدخلتِ ${pages} (ناقص ${Math.abs(diff)} وجه)`}
+                          </p>
+                        )}
                         <div className="grid grid-cols-2 gap-1.5">
                           <div>
                             <p className="text-[10px] text-muted-foreground mb-0.5">سورة البداية</p>
