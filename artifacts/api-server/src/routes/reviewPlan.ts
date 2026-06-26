@@ -151,11 +151,11 @@ function posFromAbs(abs: number): { surah: string; ayah: number } {
 }
 
 // آخر N أيام عمل (بدون الجمعة) من اليوم
-function getLastNWorkingDays(today: string, n: number): string[] {
+function getLastNWorkingDays(today: string, n: number, trackType: string | null = null): string[] {
   const dates: string[] = [];
   const d = new Date(today);
   while (dates.length < n) {
-    if (d.getDay() !== 5) dates.unshift(d.toISOString().slice(0, 10));
+    if (isWorkingDay(d.getDay(), trackType)) dates.unshift(d.toISOString().slice(0, 10));
     if (dates.length < n) d.setDate(d.getDate() - 1);
   }
   return dates;
@@ -934,8 +934,6 @@ router.get("/review-plans/students-plans-list", authenticate, async (req, res): 
     recordsByStudent[r.studentId].push(r);
   }
 
-  const weekDates = getLastNWorkingDays(today, 6);
-
   const withPlan: unknown[] = [];
   const withoutPlan: unknown[] = [];
 
@@ -956,8 +954,10 @@ router.get("/review-plans/students-plans-list", authenticate, async (req, res): 
         track: circle?.track ?? "",
       });
     } else {
+      // أيام العمل تعتمد على نوع المسار: التثبيت (أحد-أربعاء) / الفتيات (كل يوم إلا الجمعة)
+      const planTrackType = plan.trackType ?? circleEffectiveType;
       const cycleStart = plan.currentCycleStart ?? plan.startDate;
-      const rawDay = workingDayNumber(cycleStart, today);
+      const rawDay = workingDayNumber(cycleStart, today, planTrackType);
       const dayInCycle = Math.min(rawDay, plan.cycleLength);
       const isCompleted = rawDay > plan.cycleLength;
       const studentRecords = recordsByStudent[student.id] ?? [];
@@ -969,14 +969,15 @@ router.get("/review-plans/students-plans-list", authenticate, async (req, res): 
         s + ((circleEffectiveType === "simple_review" || circleEffectiveType === "fixation") ? (r.memorizePages ?? 0) : (r.reviewFarPages ?? 0)), 0);
       const isCompletedEarly = cycleFarPages >= plan.totalPages && rawDay <= plan.cycleLength;
 
-      // التقرير الأسبوعي: آخر 6 أيام عمل
+      // التقرير الأسبوعي: آخر 6 أيام عمل — حسب مسار الطالبة
+      const weekDates = getLastNWorkingDays(today, 6, planTrackType);
       const weeklyProgress = weekDates.map(date => {
         const dayRecs = studentRecords.filter(r => r.date === date);
         const hasRecord = dayRecs.length > 0;
         const isAbsent = dayRecs.some(r => r.isAbsent);
         const actual = dayRecs.reduce((s, r) =>
           s + ((circleEffectiveType === "simple_review" || circleEffectiveType === "fixation") ? (r.memorizePages ?? 0) : (r.reviewFarPages ?? 0)), 0);
-        const cycleWD = workingDayNumber(cycleStart, date);
+        const cycleWD = workingDayNumber(cycleStart, date, planTrackType);
         const entry = plan.planEntries[cycleWD - 1];
         const planned = Math.round((entry?.pages ?? (plan.totalPages / plan.cycleLength)) * 10) / 10;
         return { date, planned, actual: Math.round(actual * 10) / 10, absent: isAbsent, hasRecord };
@@ -1036,16 +1037,18 @@ router.get("/review-plans/students-plans-list", authenticate, async (req, res): 
     if (!plan) {
       byCircleMap[cid].students.push({ id: student.id, name: student.fullName, hasPlan: false });
     } else {
+      const circleEffType = circle ? effectiveTrackType(circle) : "girls";
+      const byCirclePlanTrackType = plan.trackType ?? circleEffType;
       const cycleStart = plan.currentCycleStart ?? plan.startDate;
-      const rawDay = workingDayNumber(cycleStart, today);
+      const rawDay = workingDayNumber(cycleStart, today, byCirclePlanTrackType);
       const dayInCycle = Math.min(rawDay, plan.cycleLength);
       const isCompleted = rawDay > plan.cycleLength;
       const pct = Math.min(100, Math.round((dayInCycle / plan.cycleLength) * 100));
       const studentRecords = recordsByStudent[student.id] ?? [];
       const missedDaysLast30 = calcMissedDays(plan, studentRecords);
-      const circleEffType = circle ? effectiveTrackType(circle) : "girls";
       const cycleRecs = studentRecords.filter(r => r.date >= cycleStart && !r.isAbsent);
-      const cycleFarPgs = cycleRecs.reduce((s, r) => s + (r.reviewFarPages ?? 0), 0);
+      const cycleFarPgs = cycleRecs.reduce((s, r) =>
+        s + ((circleEffType === "simple_review" || circleEffType === "fixation") ? (r.memorizePages ?? 0) : (r.reviewFarPages ?? 0)), 0);
       const isCompletedEarly = cycleFarPgs >= plan.totalPages && rawDay <= plan.cycleLength;
       byCircleMap[cid].students.push({
         id: student.id,
