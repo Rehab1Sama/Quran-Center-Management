@@ -36,6 +36,7 @@ import whiteLabelRouter from "./whiteLabel";
 import schoolConfigRouter from "./schoolConfig";
 import firstSetupRouter from "./firstSetup";
 import adminRouter from "./admin";
+import registrationStudentsRouter from "./registrationStudents";
 
 const router: IRouter = Router();
 
@@ -76,5 +77,6 @@ router.use(whiteLabelRouter);
 router.use(schoolConfigRouter);
 router.use(firstSetupRouter);
 router.use(adminRouter);
+router.use(registrationStudentsRouter);
 
 export default router;

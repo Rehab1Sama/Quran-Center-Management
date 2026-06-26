@@ -57,6 +57,8 @@ import UnlinkedStaffPage from "@/pages/unlinked-staff";
 import UnlinkedStudentsPage from "@/pages/unlinked-students";
 import ArchivedStaffPage from "@/pages/archived-staff";
 import DbSettingsPage from "@/pages/db-settings";
+import RegistrationStudentsPage from "@/pages/registration-students";
+import CirclesStaffingPage from "@/pages/circles-staffing";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 import { canEnterData, isFeatureEnabled, shouldHideReviewPlans } from "@/lib/schoolConfig";
@@ -275,6 +277,12 @@ function AppRoutes() {
         </Route>
         <Route path="/db-settings">
           {isLeader ? <DbSettingsPage /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/registration-students">
+          {isLeaderOrDeputy ? <RegistrationStudentsPage /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/circles-staffing">
+          {isLeaderOrDeputy ? <CirclesStaffingPage /> : <Redirect to="/" />}
         </Route>
 
         <Route path="/students/:id">

@@ -25,7 +25,9 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
 
   const circles = await db.select().from(circlesTable);
   const allTracks = await db.select().from(tracksTable);
-  const allStudents = await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false));
+  const registrationCircleIds = new Set(circles.filter(c => c.trackType === "registration").map(c => c.id));
+  const allStudents = (await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false)))
+    .filter(s => !s.circleId || !registrationCircleIds.has(s.circleId));
   const allUsers = await db.select().from(usersTable).where(eq(usersTable.isArchived, false));
 
   let records = allRecords;

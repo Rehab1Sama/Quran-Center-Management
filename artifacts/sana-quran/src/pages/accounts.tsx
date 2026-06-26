@@ -861,7 +861,10 @@ export default function AccountsPage() {
                         : <Square className="w-4 h-4 text-muted-foreground shrink-0" />
                       }
                       <span className="text-sm font-medium">{c.name}</span>
-                      {c.track && <span className="text-xs text-muted-foreground mr-auto">{c.track}</span>}
+                      <span className="text-xs text-muted-foreground mr-auto flex items-center gap-1.5">
+                        {(c as any).meetingTime && <span className="text-teal-600">{(c as any).meetingTime}</span>}
+                        {c.track && <span>{c.track}</span>}
+                      </span>
                     </button>
                   );
                 });
