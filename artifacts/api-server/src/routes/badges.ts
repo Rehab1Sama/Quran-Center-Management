@@ -14,7 +14,7 @@ router.get("/badge-events", authenticate, async (req, res): Promise<void> => {
 });
 
 router.post("/badge-events", authenticate, async (req, res): Promise<void> => {
-  if (req.userRole !== "leader") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (req.userRole !== "leader" && req.userRole !== "track_supervisor") { res.status(403).json({ error: "Forbidden" }); return; }
   const { name, description, emoji, color, targetType, dateFrom, dateTo, isActive } = req.body;
   if (!name || !emoji || !color || !targetType || !dateFrom || !dateTo) {
     res.status(400).json({ error: "Missing required fields" }); return;
@@ -27,7 +27,7 @@ router.post("/badge-events", authenticate, async (req, res): Promise<void> => {
 });
 
 router.patch("/badge-events/:id", authenticate, async (req, res): Promise<void> => {
-  if (req.userRole !== "leader") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (req.userRole !== "leader" && req.userRole !== "track_supervisor") { res.status(403).json({ error: "Forbidden" }); return; }
   const id = parseInt(req.params.id as string);
   const [row] = await db.update(badgeEventsTable).set(req.body).where(eq(badgeEventsTable.id, id)).returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
@@ -36,7 +36,7 @@ router.patch("/badge-events/:id", authenticate, async (req, res): Promise<void> 
 });
 
 router.delete("/badge-events/:id", authenticate, async (req, res): Promise<void> => {
-  if (req.userRole !== "leader") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (req.userRole !== "leader" && req.userRole !== "track_supervisor") { res.status(403).json({ error: "Forbidden" }); return; }
   const id = parseInt(req.params.id as string);
   await db.delete(badgeAssignmentsTable).where(eq(badgeAssignmentsTable.badgeEventId, id));
   await db.delete(badgeEventsTable).where(eq(badgeEventsTable.id, id));
@@ -45,7 +45,7 @@ router.delete("/badge-events/:id", authenticate, async (req, res): Promise<void>
 
 // Auto-assign: leader triggers, system calculates qualifying entities
 router.post("/badge-events/:id/auto-assign", authenticate, async (req, res): Promise<void> => {
-  if (req.userRole !== "leader") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (req.userRole !== "leader" && req.userRole !== "track_supervisor") { res.status(403).json({ error: "Forbidden" }); return; }
   const eventId = parseInt(req.params.id as string);
 
   const [event] = await db.select().from(badgeEventsTable).where(eq(badgeEventsTable.id, eventId));
@@ -191,8 +191,8 @@ router.get("/badge-assignments", authenticate, async (req, res): Promise<void> =
   if (entityId) assignments = assignments.filter(a => a.entityId === parseInt(entityId));
   if (badgeEventId) assignments = assignments.filter(a => a.badgeEventId === parseInt(badgeEventId));
 
-  // Non-leaders only see their own assignments
-  if (req.userRole !== "leader") {
+  // Non-leaders only see their own assignments (except track_supervisor who can manage)
+  if (req.userRole !== "leader" && req.userRole !== "track_supervisor") {
     assignments = assignments.filter(a => a.entityId === req.userId && a.entityType === req.userRole);
   }
 
@@ -206,7 +206,7 @@ router.get("/badge-assignments", authenticate, async (req, res): Promise<void> =
 });
 
 router.post("/badge-assignments", authenticate, async (req, res): Promise<void> => {
-  if (req.userRole !== "leader") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (req.userRole !== "leader" && req.userRole !== "track_supervisor") { res.status(403).json({ error: "Forbidden" }); return; }
   const { badgeEventId, entityType, entityId, entityName, notes } = req.body;
   if (!badgeEventId || !entityType || entityId == null || !entityName) {
     res.status(400).json({ error: "Missing required fields" }); return;
@@ -222,7 +222,7 @@ router.post("/badge-assignments", authenticate, async (req, res): Promise<void> 
 });
 
 router.delete("/badge-assignments/:id", authenticate, async (req, res): Promise<void> => {
-  if (req.userRole !== "leader") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (req.userRole !== "leader" && req.userRole !== "track_supervisor") { res.status(403).json({ error: "Forbidden" }); return; }
   await db.delete(badgeAssignmentsTable).where(eq(badgeAssignmentsTable.id, parseInt(req.params.id as string)));
   res.status(204).send();
 });

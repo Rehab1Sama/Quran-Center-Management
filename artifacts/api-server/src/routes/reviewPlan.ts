@@ -217,19 +217,30 @@ export function buildPlanEntries(
   const len = Math.max(1, Math.min(60, cycleLength));
   const absStart = absAyah(startSurah, startAyah);
   const absEnd = absAyah(endSurah, endAyah);
-  const totalAyahs = Math.max(1, absEnd - absStart + 1);
+  const totalQuranAyahs = absAyah("الناس", 6);
+
+  // نطاق دائري: نهاية السورة تسبق البداية في ترتيب المصحف (مثل: من الناس إلى يس)
+  const isCircular = absEnd < absStart;
+  const totalAyahs = isCircular
+    ? (totalQuranAyahs - absStart + 1) + absEnd
+    : Math.max(1, absEnd - absStart + 1);
+
   const ayahsPerDay = Math.ceil(totalAyahs / len);
   const pagesPerDay = totalPages / len;
 
+  function virtualToAbs(vi: number): number {
+    if (!isCircular) return absStart + vi;
+    const fromStart = totalQuranAyahs - absStart + 1;
+    if (vi < fromStart) return absStart + vi;
+    return vi - fromStart + 1;
+  }
+
   const entries: PlanDayEntry[] = [];
-  let cursor = absStart;
-
   for (let day = 1; day <= len; day++) {
-    const start = posFromAbs(cursor);
-    const isLast = day === len;
-    const endAbs = isLast ? absEnd : Math.min(cursor + ayahsPerDay - 1, absEnd);
-    const end = posFromAbs(endAbs);
-
+    const startVi = (day - 1) * ayahsPerDay;
+    const endVi = Math.min(day * ayahsPerDay - 1, totalAyahs - 1);
+    const start = posFromAbs(virtualToAbs(startVi));
+    const end = posFromAbs(virtualToAbs(endVi));
     entries.push({
       dayNumber: day,
       surahStart: start.surah,
@@ -238,9 +249,6 @@ export function buildPlanEntries(
       ayahEnd: end.ayah,
       pages: Math.round(pagesPerDay * 10) / 10,
     });
-
-    cursor = endAbs + 1;
-    if (cursor > absEnd && day < len) cursor = absStart;
   }
   return entries;
 }
@@ -917,6 +925,7 @@ router.get("/review-plans/students-plans-list", authenticate, async (req, res): 
       withoutPlan.push({
         id: student.id,
         name: student.fullName,
+        phone: student.phone ?? null,
         circleId: student.circleId,
         circleName: circle?.name ?? "",
         trackType: circleEffectiveType,
@@ -957,6 +966,7 @@ router.get("/review-plans/students-plans-list", authenticate, async (req, res): 
       withPlan.push({
         id: student.id,
         name: student.fullName,
+        phone: student.phone ?? null,
         circleId: student.circleId,
         circleName: circle?.name ?? "",
         trackType: circleEffectiveType,

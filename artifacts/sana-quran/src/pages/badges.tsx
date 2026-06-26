@@ -40,7 +40,7 @@ export default function BadgesPage({ userRole, userId }: BadgesPageProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const isLeader = userRole === "leader";
+  const isLeader = userRole === "leader" || userRole === "track_supervisor";
 
   const { data: events = [] } = useListBadgeEvents({});
   const { data: assignments = [] } = useListBadgeAssignments({});

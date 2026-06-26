@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   BookOpen, CheckCircle2, AlertTriangle, XCircle,
   Users, Download, ChevronDown, ChevronUp, Loader2,
-  RefreshCw, TrendingUp, BarChart2, Bell, Clock, Share2,
+  RefreshCw, TrendingUp, BarChart2, Bell, Clock, Share2, MessageCircle,
 } from "lucide-react";
+import { makeWhatsAppLink } from "@/lib/utils";
 import { calculatePages, SURAHS, getSurahByName } from "@/lib/quran";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 
@@ -25,6 +26,7 @@ type DayProgress = {
 type StudentWithPlan = {
   id: number;
   name: string;
+  phone?: string | null;
   circleId: number;
   circleName: string;
   trackType: string;
@@ -49,6 +51,7 @@ type StudentWithPlan = {
 type StudentWithoutPlan = {
   id: number;
   name: string;
+  phone?: string | null;
   circleId: number;
   circleName: string;
   trackType: string;
@@ -763,6 +766,18 @@ function PlanCard({ s, onNavigate, onDownload, downloading }: {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <p className="text-sm font-bold truncate">{s.name}</p>
+            {s.phone && (
+              <a
+                href={makeWhatsAppLink(s.phone)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="text-emerald-500 hover:text-emerald-700 transition-colors shrink-0"
+                title="واتساب"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+              </a>
+            )}
             {s.isCompletedEarly && (
               <Badge className="text-[9px] px-1.5 py-0 bg-emerald-100 text-emerald-700 border-emerald-200">
                 متقدمة ⭐
@@ -844,7 +859,21 @@ function NoPlanCard({ s, onNavigate }: { s: StudentWithoutPlan; onNavigate: (id:
     >
       <XCircle className="w-5 h-5 text-rose-400 shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold truncate">{s.name}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-semibold truncate">{s.name}</p>
+          {s.phone && (
+            <a
+              href={makeWhatsAppLink(s.phone)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="text-emerald-500 hover:text-emerald-700 transition-colors shrink-0"
+              title="واتساب"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+            </a>
+          )}
+        </div>
         <p className="text-[10px] text-muted-foreground">{s.circleName} — {trackTypeLabel(s.trackType)}</p>
       </div>
       <span className="text-[10px] text-rose-500 font-medium shrink-0">بدون خطة</span>

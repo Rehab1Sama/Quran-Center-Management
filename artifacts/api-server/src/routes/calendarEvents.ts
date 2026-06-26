@@ -18,7 +18,7 @@ router.get("/calendar-events", authenticate, async (req, res): Promise<void> => 
 });
 
 router.post("/calendar-events", authenticate, async (req, res): Promise<void> => {
-  if (req.userRole !== "leader") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (req.userRole !== "leader" && req.userRole !== "track_supervisor") { res.status(403).json({ error: "Forbidden" }); return; }
   const { title, date, endDate, color, eventType, description } = req.body;
   if (!title || !date || !color || !eventType) { res.status(400).json({ error: "Missing required fields" }); return; }
   const [row] = await db.insert(calendarEventsTable).values({
@@ -28,7 +28,7 @@ router.post("/calendar-events", authenticate, async (req, res): Promise<void> =>
 });
 
 router.patch("/calendar-events/:id", authenticate, async (req, res): Promise<void> => {
-  if (req.userRole !== "leader") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (req.userRole !== "leader" && req.userRole !== "track_supervisor") { res.status(403).json({ error: "Forbidden" }); return; }
   const id = parseInt(req.params.id as string);
   const { title, date, endDate, color, eventType, description } = req.body;
   const [row] = await db.update(calendarEventsTable).set({ title, date, endDate, color, eventType, description }).where(eq(calendarEventsTable.id, id)).returning();
@@ -37,7 +37,7 @@ router.patch("/calendar-events/:id", authenticate, async (req, res): Promise<voi
 });
 
 router.delete("/calendar-events/:id", authenticate, async (req, res): Promise<void> => {
-  if (req.userRole !== "leader") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (req.userRole !== "leader" && req.userRole !== "track_supervisor") { res.status(403).json({ error: "Forbidden" }); return; }
   await db.delete(calendarEventsTable).where(eq(calendarEventsTable.id, parseInt(req.params.id as string)));
   res.status(204).send();
 });

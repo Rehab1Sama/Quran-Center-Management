@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useListCircles, useListCircleNames, useGetCurrentUser, useListStudents, useUpdateStudent, useArchiveStudent, useGetMonthlyAttendanceReport, useCreateUser, useListTracks } from "@workspace/api-client-react";
 import MessagesSection from "@/components/MessagesSection";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, Users, ChevronDown, ChevronUp, Archive, ArrowLeftRight, Search, UserCircle, BarChart2, Link2, Clock, UserPlus, Settings2, Check, X, Sun, Moon } from "lucide-react";
+import { BookOpen, Users, ChevronDown, ChevronUp, Archive, ArrowLeftRight, Search, UserCircle, BarChart2, Link2, Clock, UserPlus, Settings2, Check, X, Sun, Moon, MessageCircle } from "lucide-react";
+import { makeWhatsAppLink } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 
 type CircleItem = { id: number; name: string; track: string };
-type Student = { id: number; fullName: string; circleId?: number | null };
+type Student = { id: number; fullName: string; circleId?: number | null; phone?: string | null };
 type EnrichedCircle = {
   id: number; name: string; track: string;
   meetingTime: string | null; whatsappLink: string | null;
@@ -482,7 +483,21 @@ export default function TrackPage() {
                   return (
                     <div key={student.id} className="flex items-center justify-between px-4 py-3">
                       <div>
-                        <p className="font-semibold text-sm">{student.fullName}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-semibold text-sm">{student.fullName}</p>
+                          {student.phone && (
+                            <a
+                              href={makeWhatsAppLink(student.phone)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              className="text-emerald-500 hover:text-emerald-700 transition-colors"
+                              title="واتساب"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground">{circle?.name ?? "—"}</p>
                       </div>
                       <div className="flex gap-1.5">
@@ -668,7 +683,21 @@ export default function TrackPage() {
                                 className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5 shadow-sm"
                                 data-testid={`student-row-${student.id}`}
                               >
-                                <span className="text-sm font-medium">{student.fullName}</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm font-medium">{student.fullName}</span>
+                                  {(() => { const s = allStudents?.find(x => x.id === student.id); return s?.phone ? (
+                                    <a
+                                      href={makeWhatsAppLink(s.phone)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={e => e.stopPropagation()}
+                                      className="text-emerald-500 hover:text-emerald-700 transition-colors"
+                                      title="واتساب"
+                                    >
+                                      <MessageCircle className="w-3.5 h-3.5" />
+                                    </a>
+                                  ) : null; })()}
+                                </div>
                                 <div className="flex gap-1.5">
                                   <button
                                     onClick={() => navigate(`/students/${student.id}`)}

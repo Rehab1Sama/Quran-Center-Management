@@ -3,7 +3,8 @@ import { useListStudents, useGetCurrentUser, useListRecords } from "@workspace/a
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Users, Archive, BookOpen, AlertTriangle, CheckCircle2, Download, Loader2, ChevronDown, ChevronUp, TrendingUp } from "lucide-react";
+import { Users, Archive, BookOpen, AlertTriangle, CheckCircle2, Download, Loader2, ChevronDown, ChevronUp, TrendingUp, MessageCircle } from "lucide-react";
+import { makeWhatsAppLink } from "@/lib/utils";
 import { formatPages } from "@/lib/quran";
 import MessagesSection from "@/components/MessagesSection";
 
@@ -263,8 +264,20 @@ export default function MyCirclePage() {
                         data-testid={`row-student-${student.id}`}
                       >
                         <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold">{student.fullName}</span>
+                            {(student as any).phone && (
+                              <a
+                                href={makeWhatsAppLink((student as any).phone)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                className="text-emerald-500 hover:text-emerald-700 transition-colors"
+                                title="واتساب"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" />
+                              </a>
+                            )}
                             {onLeave && (
                               <Badge className="bg-amber-100 text-amber-700 border-0 text-xs px-1.5">إجازة</Badge>
                             )}
