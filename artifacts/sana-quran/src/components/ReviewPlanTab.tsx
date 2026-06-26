@@ -310,6 +310,56 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
   const [fixationStartSurahLocal, setFixationStartSurahLocal] = useState("");
   const [fixationStartAyahLocal, setFixationStartAyahLocal] = useState("1");
 
+  // نافذة اختيار الآية
+  type AyahPickerState = {
+    entryIdx: number;
+    field: "ayahStart" | "ayahEnd";
+    surahName: string;
+    currentValue: number;
+    source: "manual" | "fixation";
+  };
+  const [ayahPicker, setAyahPicker] = useState<AyahPickerState | null>(null);
+
+  function AyahPickerOverlay() {
+    if (!ayahPicker) return null;
+    const surah = SURAHS.find(s => s.name === ayahPicker.surahName);
+    const maxAyah = surah?.ayahs ?? 1;
+    return (
+      <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.45)" }} onClick={() => setAyahPicker(null)}>
+        <div className="bg-background rounded-t-2xl w-full max-w-md pb-safe" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-4 pt-4 pb-2">
+            <p className="text-sm font-bold">{ayahPicker.surahName}</p>
+            <p className="text-xs text-muted-foreground">{maxAyah} آية</p>
+          </div>
+          <div className="overflow-y-auto max-h-64 px-3 pb-6">
+            <div className="grid grid-cols-8 gap-1.5">
+              {Array.from({ length: maxAyah }, (_, i) => i + 1).map(n => (
+                <button
+                  key={n}
+                  onClick={() => {
+                    if (ayahPicker.source === "manual") {
+                      setManualEntries(prev => prev.map((e, i) =>
+                        i === ayahPicker.entryIdx ? { ...e, [ayahPicker.field]: n } : e
+                      ));
+                    } else {
+                      setFixationManualEntries(prev => prev.map((e, i) =>
+                        i === ayahPicker.entryIdx ? { ...e, [ayahPicker.field]: String(n) } : e
+                      ));
+                    }
+                    setAyahPicker(null);
+                  }}
+                  className={`py-2 rounded-lg text-xs font-bold border transition-all ${ayahPicker.currentValue === n ? "bg-primary text-white border-primary" : "border-border bg-background hover:border-primary/50"}`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   async function autoDetectAndEnterPick() {
     setAutoDetecting(true);
     setSelectedJuz(new Set());
@@ -484,72 +534,91 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
     };
 
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 mb-1">
-          <button onClick={() => setStep("fixation_quota")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
-          <h3 className="font-bold text-sm">٢ · اكتبي نصيب كل جلسة</h3>
-        </div>
-        <div className="flex items-center gap-2 bg-muted/40 rounded-xl px-3 py-2">
-          <span className="text-lg">{fixationQuota === 1 ? "📖" : "📄"}</span>
-          <p className="text-xs text-muted-foreground">
-            النصاب: <span className="font-bold text-foreground">{fixationQuota === 1 ? "وجه كامل" : "نصف وجه"}</span> · {FIXATION_CYCLE} جلسة · {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام
-          </p>
-        </div>
+      <>
+        <AyahPickerOverlay />
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <button onClick={() => setStep("fixation_quota")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
+            <h3 className="font-bold text-sm">٢ · اكتبي نصيب كل جلسة</h3>
+          </div>
+          <div className="flex items-center gap-2 bg-muted/40 rounded-xl px-3 py-2">
+            <span className="text-lg">{fixationQuota === 1 ? "📖" : "📄"}</span>
+            <p className="text-xs text-muted-foreground">
+              النصاب: <span className="font-bold text-foreground">{fixationQuota === 1 ? "وجه كامل" : "نصف وجه"}</span> · {FIXATION_CYCLE} جلسة · {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام · اضغطي على رقم الآية لتختاريه
+            </p>
+          </div>
 
-        {/* 24-row table */}
-        <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
-          {Array.from({ length: FIXATION_WEEKS }, (_, wi) => (
-            <div key={wi} className="rounded-xl border border-border overflow-hidden">
-              <div className="bg-muted/50 px-3 py-1.5">
-                <p className="text-xs font-bold text-foreground">الأسبوع {wi + 1}</p>
-              </div>
-              <div className="divide-y divide-border">
-                {Array.from({ length: FIXATION_DAYS_PER_WEEK }, (_, di) => {
-                  const idx = wi * FIXATION_DAYS_PER_WEEK + di;
-                  const entry = fixationManualEntries[idx];
-                  return (
-                    <div key={di} className="px-3 py-2 space-y-1.5">
-                      <p className="text-[11px] font-semibold text-muted-foreground">{DAY_NAMES[di]} — اليوم {idx + 1}</p>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <div>
-                          <p className="text-[10px] text-muted-foreground mb-0.5">سورة البداية</p>
-                          <select value={entry.surahStart} onChange={e => updateEntry(idx, "surahStart", e.target.value)}
-                            className="w-full h-7 border border-input rounded-lg text-xs px-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary/20">
-                            {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-muted-foreground mb-0.5">آية البداية</p>
-                          <input type="number" min="1" value={entry.ayahStart}
-                            onChange={e => updateEntry(idx, "ayahStart", e.target.value)}
-                            className="w-full h-7 border border-input rounded-lg text-xs px-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary/20 text-center" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-muted-foreground mb-0.5">سورة النهاية</p>
-                          <select value={entry.surahEnd} onChange={e => updateEntry(idx, "surahEnd", e.target.value)}
-                            className="w-full h-7 border border-input rounded-lg text-xs px-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary/20">
-                            {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-muted-foreground mb-0.5">آية النهاية</p>
-                          <input type="number" min="1" value={entry.ayahEnd}
-                            onChange={e => updateEntry(idx, "ayahEnd", e.target.value)}
-                            className="w-full h-7 border border-input rounded-lg text-xs px-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary/20 text-center" />
+          {/* 24-row table */}
+          <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+            {Array.from({ length: FIXATION_WEEKS }, (_, wi) => (
+              <div key={wi} className="rounded-xl border border-border overflow-hidden">
+                <div className="bg-muted/50 px-3 py-1.5">
+                  <p className="text-xs font-bold text-foreground">الأسبوع {wi + 1}</p>
+                </div>
+                <div className="divide-y divide-border">
+                  {Array.from({ length: FIXATION_DAYS_PER_WEEK }, (_, di) => {
+                    const idx = wi * FIXATION_DAYS_PER_WEEK + di;
+                    const entry = fixationManualEntries[idx];
+                    return (
+                      <div key={di} className="px-3 py-2 space-y-1.5">
+                        <p className="text-[11px] font-semibold text-muted-foreground">{DAY_NAMES[di]} — اليوم {idx + 1}</p>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <div>
+                            <p className="text-[10px] text-muted-foreground mb-0.5">سورة البداية</p>
+                            <select value={entry.surahStart}
+                              onChange={e => {
+                                const s = SURAHS.find(s => s.name === e.target.value);
+                                updateEntry(idx, "surahStart", e.target.value);
+                                if (s && parseInt(entry.ayahStart) > s.ayahs) updateEntry(idx, "ayahStart", "1");
+                              }}
+                              className="w-full h-7 border border-input rounded-lg text-xs px-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary/20">
+                              {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-muted-foreground mb-0.5">آية البداية</p>
+                            <button
+                              onClick={() => setAyahPicker({ entryIdx: idx, field: "ayahStart", surahName: entry.surahStart, currentValue: parseInt(entry.ayahStart) || 1, source: "fixation" })}
+                              className="w-full h-7 border border-input rounded-lg text-xs px-2 bg-background text-center font-semibold hover:border-primary/60 transition-colors"
+                            >
+                              {entry.ayahStart}
+                            </button>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-muted-foreground mb-0.5">سورة النهاية</p>
+                            <select value={entry.surahEnd}
+                              onChange={e => {
+                                const s = SURAHS.find(s => s.name === e.target.value);
+                                updateEntry(idx, "surahEnd", e.target.value);
+                                if (s && parseInt(entry.ayahEnd) > s.ayahs) updateEntry(idx, "ayahEnd", String(s.ayahs));
+                              }}
+                              className="w-full h-7 border border-input rounded-lg text-xs px-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary/20">
+                              {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-muted-foreground mb-0.5">آية النهاية</p>
+                            <button
+                              onClick={() => setAyahPicker({ entryIdx: idx, field: "ayahEnd", surahName: entry.surahEnd, currentValue: parseInt(entry.ayahEnd) || 1, source: "fixation" })}
+                              className="w-full h-7 border border-input rounded-lg text-xs px-2 bg-background text-center font-semibold hover:border-primary/60 transition-colors"
+                            >
+                              {entry.ayahEnd}
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        <Button className="w-full" onClick={() => setStep("fixation_manual_date")}>
-          التالي ← اختاري تاريخ البداية
-        </Button>
-      </div>
+          <Button className="w-full" onClick={() => setStep("fixation_manual_date")}>
+            التالي ← اختاري تاريخ البداية
+          </Button>
+        </div>
+      </>
     );
   }
 
@@ -1458,79 +1527,76 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
   // ── Manual plan editor ──────────────────────────────────────────
   if (step === "manual") {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <button onClick={() => plan ? setStep("renew_surah") : setStep("pick_content")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
-          <h3 className="font-bold text-sm">توزيع ٢١ يوم عمل</h3>
-        </div>
-        <p className="text-xs text-muted-foreground">عدّلي السورة والآية لكل يوم حسب رغبتك</p>
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {manualEntries.map((entry, idx) => (
-            <div key={entry.dayNumber} className="bg-muted/40 rounded-xl p-3 space-y-2">
-              <p className="text-xs font-bold text-primary">اليوم {entry.dayNumber}</p>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <p className="text-[10px] text-muted-foreground mb-1">من سورة</p>
-                  <select
-                    className="w-full border rounded px-2 py-1 text-xs bg-background"
-                    value={entry.surahStart}
-                    onChange={e => {
-                      const updated = [...manualEntries];
-                      updated[idx] = { ...entry, surahStart: e.target.value };
-                      setManualEntries(updated);
-                    }}
-                  >
-                    {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground mb-1">آية</p>
-                  <input
-                    type="number" min="1"
-                    className="w-full border rounded px-2 py-1 text-xs bg-background"
-                    value={entry.ayahStart}
-                    onChange={e => {
-                      const updated = [...manualEntries];
-                      updated[idx] = { ...entry, ayahStart: parseInt(e.target.value) || 1 };
-                      setManualEntries(updated);
-                    }}
-                  />
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground mb-1">إلى سورة</p>
-                  <select
-                    className="w-full border rounded px-2 py-1 text-xs bg-background"
-                    value={entry.surahEnd}
-                    onChange={e => {
-                      const updated = [...manualEntries];
-                      updated[idx] = { ...entry, surahEnd: e.target.value };
-                      setManualEntries(updated);
-                    }}
-                  >
-                    {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground mb-1">آية</p>
-                  <input
-                    type="number" min="1"
-                    className="w-full border rounded px-2 py-1 text-xs bg-background"
-                    value={entry.ayahEnd}
-                    onChange={e => {
-                      const updated = [...manualEntries];
-                      updated[idx] = { ...entry, ayahEnd: parseInt(e.target.value) || 1 };
-                      setManualEntries(updated);
-                    }}
-                  />
+      <>
+        <AyahPickerOverlay />
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <button onClick={() => plan ? setStep("renew_surah") : setStep("pick_content")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
+            <h3 className="font-bold text-sm">توزيع {manualEntries.length} يوم عمل</h3>
+          </div>
+          <p className="text-xs text-muted-foreground">عدّلي السورة والآية لكل يوم حسب رغبتك · اضغطي على رقم الآية لتختاريه من قائمة</p>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {manualEntries.map((entry, idx) => (
+              <div key={entry.dayNumber} className="bg-muted/40 rounded-xl p-3 space-y-2">
+                <p className="text-xs font-bold text-primary">اليوم {entry.dayNumber}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-1">من سورة</p>
+                    <select
+                      className="w-full border rounded px-2 py-1 text-xs bg-background"
+                      value={entry.surahStart}
+                      onChange={e => {
+                        const s = SURAHS.find(s => s.name === e.target.value);
+                        const updated = [...manualEntries];
+                        updated[idx] = { ...entry, surahStart: e.target.value, ayahStart: Math.min(entry.ayahStart, s?.ayahs ?? 1) };
+                        setManualEntries(updated);
+                      }}
+                    >
+                      {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-1">آية البداية</p>
+                    <button
+                      className="w-full border rounded px-2 py-1 text-xs bg-background text-center font-semibold hover:border-primary/60 transition-colors"
+                      onClick={() => setAyahPicker({ entryIdx: idx, field: "ayahStart", surahName: entry.surahStart, currentValue: entry.ayahStart, source: "manual" })}
+                    >
+                      {entry.ayahStart}
+                    </button>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-1">إلى سورة</p>
+                    <select
+                      className="w-full border rounded px-2 py-1 text-xs bg-background"
+                      value={entry.surahEnd}
+                      onChange={e => {
+                        const s = SURAHS.find(s => s.name === e.target.value);
+                        const updated = [...manualEntries];
+                        updated[idx] = { ...entry, surahEnd: e.target.value, ayahEnd: Math.min(entry.ayahEnd, s?.ayahs ?? 1) };
+                        setManualEntries(updated);
+                      }}
+                    >
+                      {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-1">آية النهاية</p>
+                    <button
+                      className="w-full border rounded px-2 py-1 text-xs bg-background text-center font-semibold hover:border-primary/60 transition-colors"
+                      onClick={() => setAyahPicker({ entryIdx: idx, field: "ayahEnd", surahName: entry.surahEnd, currentValue: entry.ayahEnd, source: "manual" })}
+                    >
+                      {entry.ayahEnd}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          <Button className="w-full" onClick={() => createPlan("manual", selectedTheme, manualEntries)}>
+            حفظ الخطة
+          </Button>
         </div>
-        <Button className="w-full" onClick={() => createPlan("manual", selectedTheme, manualEntries)}>
-          حفظ الخطة
-        </Button>
-      </div>
+      </>
     );
   }
 

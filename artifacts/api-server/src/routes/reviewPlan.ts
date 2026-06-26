@@ -91,8 +91,8 @@ function wajhOf(surahName: string, ayah: number): number {
   return result;
 }
 
-// حساب عدد الأوجه الدقيق بين نطاقين بناءً على عدّ الأوجه الكاملة من مصحف المدينة المنورة
-function pagesBetween(s1: string, a1: number, s2: string, a2: number): number {
+// حساب عدد الأوجه الدقيق بين نطاقين (تصاعدي فقط) بناءً على مصحف المدينة المنورة
+function pagesBetweenLinear(s1: string, a1: number, s2: string, a2: number): number {
   const idx1 = SURAHS.findIndex(s => s.name === s1);
   const idx2 = SURAHS.findIndex(s => s.name === s2);
   if (idx1 === -1 || idx2 === -1) return 0.5;
@@ -127,6 +127,19 @@ function pagesBetween(s1: string, a1: number, s2: string, a2: number): number {
 
   // كل وجه كامل في البيانات = 0.5 وجه بمنطق المستخدم (2 إدخالات = وجه واحد)
   return Math.max(0.5, count * 0.5);
+}
+
+// نسخة تدعم النطاق الدائري (عكسي): من الناس إلى يس مثلًا
+function pagesBetween(s1: string, a1: number, s2: string, a2: number): number {
+  const absStart = absAyah(s1, a1);
+  const absEnd = absAyah(s2, a2);
+  if (absEnd < absStart) {
+    // نطاق دائري: من s1 حتى نهاية القرآن + من بداية القرآن حتى s2
+    const toEnd = pagesBetweenLinear(s1, a1, "الناس", 6);
+    const fromStart = pagesBetweenLinear("الفاتحة", 1, s2, a2);
+    return Math.max(0.5, toEnd + fromStart);
+  }
+  return pagesBetweenLinear(s1, a1, s2, a2);
 }
 
 function posFromAbs(abs: number): { surah: string; ayah: number } {
