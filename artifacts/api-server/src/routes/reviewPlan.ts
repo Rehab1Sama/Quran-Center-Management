@@ -129,15 +129,13 @@ function pagesBetweenLinear(s1: string, a1: number, s2: string, a2: number): num
   return Math.max(0.5, count * 0.5);
 }
 
-// نسخة تدعم النطاق الدائري (عكسي): من الناس إلى يس مثلًا
+// نسخة تدعم النطاق العكسي: من الناس إلى النبأ = نفس صفحات النبأ→الناس
 function pagesBetween(s1: string, a1: number, s2: string, a2: number): number {
   const absStart = absAyah(s1, a1);
   const absEnd = absAyah(s2, a2);
   if (absEnd < absStart) {
-    // نطاق دائري: من s1 حتى نهاية القرآن + من بداية القرآن حتى s2
-    const toEnd = pagesBetweenLinear(s1, a1, "الناس", 6);
-    const fromStart = pagesBetweenLinear("الفاتحة", 1, s2, a2);
-    return Math.max(0.5, toEnd + fromStart);
+    // نطاق عكسي: نحسب صفحات النطاق الأمامي [absEnd, absStart]
+    return pagesBetweenLinear(s2, a2, s1, a1);
   }
   return pagesBetweenLinear(s1, a1, s2, a2);
 }
@@ -230,36 +228,44 @@ export function buildPlanEntries(
   const len = Math.max(1, Math.min(60, cycleLength));
   const absStart = absAyah(startSurah, startAyah);
   const absEnd = absAyah(endSurah, endAyah);
-  const totalQuranAyahs = absAyah("الناس", 6);
 
-  // نطاق دائري: نهاية السورة تسبق البداية في ترتيب المصحف (مثل: من الناس إلى يس)
-  const isCircular = absEnd < absStart;
-  const totalAyahs = isCircular
-    ? (totalQuranAyahs - absStart + 1) + absEnd
-    : Math.max(1, absEnd - absStart + 1);
-
-  const ayahsPerDay = Math.ceil(totalAyahs / len);
-  const pagesPerDay = totalPages / len;
-
-  function virtualToAbs(vi: number): number {
-    if (!isCircular) return absStart + vi;
-    const fromStart = totalQuranAyahs - absStart + 1;
-    if (vi < fromStart) return absStart + vi;
-    return vi - fromStart + 1;
+  // نطاق عكسي: الطالبة حفظت من s1 إلى s2 بترتيب عكسي (مثل: من الناس إلى النبأ)
+  // المحتوى = [absEnd, absStart]، لكن يوم ١ يبدأ من s1 (الناس) وينتهي عند s2 (النبأ)
+  if (absEnd < absStart) {
+    const totalAyahs = Math.max(1, absStart - absEnd + 1);
+    const ayahsPerDay = Math.ceil(totalAyahs / len);
+    const pagesPerDay = totalPages / len;
+    const entries: PlanDayEntry[] = [];
+    for (let day = 1; day <= len; day++) {
+      // يوم ١ → أعلى نطاق (absStart = الناس)، يوم N → أدنى نطاق (absEnd = النبأ)
+      const chunkHigh = absStart - (day - 1) * ayahsPerDay;
+      const chunkLow  = Math.max(absStart - day * ayahsPerDay + 1, absEnd);
+      const start = posFromAbs(chunkLow);
+      const end   = posFromAbs(chunkHigh);
+      entries.push({
+        dayNumber: day,
+        surahStart: start.surah, ayahStart: start.ayah,
+        surahEnd:   end.surah,   ayahEnd:   end.ayah,
+        pages: Math.round(pagesPerDay * 10) / 10,
+      });
+    }
+    return entries;
   }
 
+  // نطاق عادي تصاعدي
+  const totalAyahs = Math.max(1, absEnd - absStart + 1);
+  const ayahsPerDay = Math.ceil(totalAyahs / len);
+  const pagesPerDay = totalPages / len;
   const entries: PlanDayEntry[] = [];
   for (let day = 1; day <= len; day++) {
     const startVi = (day - 1) * ayahsPerDay;
-    const endVi = Math.min(day * ayahsPerDay - 1, totalAyahs - 1);
-    const start = posFromAbs(virtualToAbs(startVi));
-    const end = posFromAbs(virtualToAbs(endVi));
+    const endVi   = Math.min(day * ayahsPerDay - 1, totalAyahs - 1);
+    const start = posFromAbs(absStart + startVi);
+    const end   = posFromAbs(absStart + endVi);
     entries.push({
       dayNumber: day,
-      surahStart: start.surah,
-      ayahStart: start.ayah,
-      surahEnd: end.surah,
-      ayahEnd: end.ayah,
+      surahStart: start.surah, ayahStart: start.ayah,
+      surahEnd:   end.surah,   ayahEnd:   end.ayah,
       pages: Math.round(pagesPerDay * 10) / 10,
     });
   }
