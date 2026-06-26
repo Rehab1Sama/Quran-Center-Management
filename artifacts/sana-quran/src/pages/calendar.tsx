@@ -176,7 +176,7 @@ export default function CalendarPage({ userRole }: CalendarPageProps) {
   const updateMutation = useUpdateCalendarEvent();
   const deleteMutation = useDeleteCalendarEvent();
 
-  const isLeader = userRole === "leader" || userRole === "track_supervisor";
+  const isLeader = userRole === "leader" || userRole === "deputy";
 
   function invalidate() {
     qc.invalidateQueries({ queryKey: ["listCalendarEvents"] });
