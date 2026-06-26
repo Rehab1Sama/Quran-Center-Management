@@ -273,6 +273,11 @@ export function buildPlanEntriesFromSections(
   cycleLength: number = 21,
 ): PlanDayEntry[] {
   if (!sections.length) return buildPlanEntries("الفاتحة", 1, "الناس", 6, totalPages, cycleLength);
+  // نطاق واحد (دائري أو تصاعدي): نفوّض لـ buildPlanEntries التي تتعامل مع كلا الحالتين
+  if (sections.length === 1) {
+    const s = sections[0];
+    return buildPlanEntries(s.startSurah, s.startAyah, s.endSurah, s.endAyah, totalPages, cycleLength);
+  }
   const ranges = sections
     .map(s => ({ absStart: absAyah(s.startSurah, s.startAyah), absEnd: absAyah(s.endSurah, s.endAyah) }))
     .filter(r => r.absEnd >= r.absStart);
