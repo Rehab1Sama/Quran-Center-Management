@@ -711,16 +711,14 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
 
   if (req.userRole === "student") {
     const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-    const [targetStudent] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
-    // تطبيع الأسماء: إزالة التشكيل والمسافات الزائدة وتوحيد الحالة
-    const norm = (s: string) => (s ?? "").trim()
-      .replace(/[\u064B-\u065F\u0670\u0640]/g, "") // إزالة حروف التشكيل والتطويل
-      .replace(/\s+/g, " ")
-      .toLowerCase();
-    const myName = norm(me?.name ?? "");
-    const studentName = norm(targetStudent?.fullName ?? "");
-    if (!myName || myName !== studentName) { res.status(403).json({ error: "Forbidden" }); return; }
-    if (me?.circleId && me.circleId !== targetStudent?.circleId) { res.status(403).json({ error: "Forbidden" }); return; }
+    // يجب أن يكون للمستخدم حلقة — بدونها لا يمكن التحقق بشكل آمن
+    if (!me?.circleId) { res.status(403).json({ error: "Forbidden" }); return; }
+    // نبحث بالاسم + الحلقة معًا (نفس منطق PATCH وauth/me)
+    const [myStudent] = await db.select().from(studentsTable).where(
+      and(eq(studentsTable.fullName, me.name), eq(studentsTable.circleId, me.circleId))
+    );
+    // إذا لم تُوجد طالبة أو الـ id لا يطابق المطلوب → ممنوع
+    if (!myStudent || myStudent.id !== studentId) { res.status(403).json({ error: "Forbidden" }); return; }
   } else if (req.userRole === "teacher") {
     const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
     const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));

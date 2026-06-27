@@ -876,9 +876,13 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
           toast({ title: "تم حفظ خطة التثبيت ✓" });
           onAfterSave?.();
         } else {
-          const err = await res.json();
-          toast({ title: err.error ?? "حدث خطأ", variant: "destructive" });
+          let errMsg = "حدث خطأ أثناء الحفظ";
+          try { const err = await res.json(); errMsg = err.error ?? errMsg; } catch { /* ignore */ }
+          toast({ title: errMsg, variant: "destructive" });
         }
+      } catch (err) {
+        toast({ title: "تعذّر الاتصال بالسيرفر، حاولي مجدداً", variant: "destructive" });
+        console.error("saveManualFixation error:", err);
       } finally {
         setSaving(false);
       }
