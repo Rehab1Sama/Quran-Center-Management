@@ -3,10 +3,11 @@ import { useListStudents, useGetCurrentUser, useListRecords } from "@workspace/a
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Users, Archive, Loader2, MessageCircle } from "lucide-react";
+import { Users, Archive, Loader2, MessageCircle, BookOpen } from "lucide-react";
 import { makeWhatsAppLink } from "@/lib/utils";
 import { formatPages } from "@/lib/quran";
 import MessagesSection from "@/components/MessagesSection";
+import { getCurrentPlanDay } from "@/components/ReviewPlanSection";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -26,6 +27,7 @@ function authHeader(): Record<string, string> {
 
 export default function MyCirclePage() {
   const [showArchived, setShowArchived] = useState(false);
+  const [circlePlans, setCirclePlans] = useState<any[]>([]);
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const circleId = user?.circleId ?? undefined;
   const trackType: string = (user as any)?.trackType ?? "";
@@ -42,6 +44,14 @@ export default function MyCirclePage() {
     circleId ? { circleId } : undefined,
     { query: { queryKey: ["records", circleId], enabled: !!circleId } }
   );
+
+  // Fetch review plans for girls/fixation circles
+  useEffect(() => {
+    if (!circleId) { setCirclePlans([]); return; }
+    if (trackType !== "girls" && trackType !== "fixation") { setCirclePlans([]); return; }
+    fetch(`${BASE}/api/circles/${circleId}/review-plans`, { headers: authHeader() })
+      .then(r => r.ok ? r.json() : []).then(setCirclePlans).catch(() => setCirclePlans([]));
+  }, [circleId, trackType]);
 
   // Get latest record per student
   const latestByStudent: Record<number, any> = {};
@@ -138,6 +148,18 @@ export default function MyCirclePage() {
                   {students.map(student => {
                     const record = latestByStudent[student.id];
                     const onLeave = isOnLeave(student);
+                    const studentPlan = circlePlans.find((p: any) => p.studentId === student.id);
+                    let planBadge: React.ReactNode = null;
+                    if (studentPlan) {
+                      const pMode: "girls" | "fixation" = studentPlan.planType === "fixation" ? "fixation" : "girls";
+                      const totalDays = studentPlan.planType === "fixation" ? 24 : 21;
+                      const todayDay = getCurrentPlanDay(studentPlan.startDate, totalDays, pMode);
+                      if (todayDay > 0 && todayDay <= totalDays) {
+                        planBadge = <Badge className="bg-violet-100 text-violet-700 border-0 text-[10px] px-1.5 py-0">يوم {todayDay}</Badge>;
+                      } else if (todayDay > totalDays) {
+                        planBadge = <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px] px-1.5 py-0">✓ اكتملت</Badge>;
+                      }
+                    }
                     return (
                       <tr key={student.id}
                         className={`border-b border-border/50 transition-colors ${onLeave ? "bg-amber-50/50" : "hover:bg-muted/30"}`}
@@ -161,6 +183,7 @@ export default function MyCirclePage() {
                             {onLeave && (
                               <Badge className="bg-amber-100 text-amber-700 border-0 text-xs px-1.5">إجازة</Badge>
                             )}
+                            {planBadge}
                           </div>
                         </td>
                         <td className="py-3 px-4 text-teal-600 font-medium">

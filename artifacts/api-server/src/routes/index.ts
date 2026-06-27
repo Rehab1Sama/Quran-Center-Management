@@ -35,6 +35,7 @@ import schoolConfigRouter from "./schoolConfig";
 import firstSetupRouter from "./firstSetup";
 import adminRouter from "./admin";
 import registrationStudentsRouter from "./registrationStudents";
+import reviewPlansRouter from "./reviewPlans";
 
 const router: IRouter = Router();
 
@@ -74,5 +75,6 @@ router.use(schoolConfigRouter);
 router.use(firstSetupRouter);
 router.use(adminRouter);
 router.use(registrationStudentsRouter);
+router.use(reviewPlansRouter);
 
 export default router;

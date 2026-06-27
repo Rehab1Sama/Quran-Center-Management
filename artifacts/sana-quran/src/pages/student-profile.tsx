@@ -28,6 +28,7 @@ import {
   Target, CheckCircle2, Circle, PlaneTakeoff, XCircle, PlusCircle, Layers,
   Mail, MessageCircle,
 } from "lucide-react";
+import ReviewPlanSection from "@/components/ReviewPlanSection";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 
@@ -744,6 +745,36 @@ export default function StudentProfilePage({ id }: { id: number }) {
           </CardContent>
         </Card>
       )}
+
+      {/* Review Plan Sections — per girls/fixation circle */}
+      {(() => {
+        const enrollments: Array<{ circleId: number; circleName: string; circleTrack: string; circleTrackType?: string; isArchived: boolean }> = (profile as any).enrollments ?? [];
+        const canCreatePlan = ["leader", "track_supervisor", "student"].includes(user?.role ?? "");
+        const planEnrollments = enrollments.filter(en => !en.isArchived && (en.circleTrackType === "girls" || en.circleTrackType === "fixation"));
+        if (planEnrollments.length === 0) {
+          const primaryTrack = (profile.circle as any)?.trackType ?? "";
+          if ((primaryTrack === "girls" || primaryTrack === "fixation") && profile.circle) {
+            return (
+              <ReviewPlanSection
+                studentId={id}
+                circleId={(profile.circle as any).id}
+                trackType={primaryTrack}
+                canCreate={canCreatePlan}
+              />
+            );
+          }
+          return null;
+        }
+        return planEnrollments.map(en => (
+          <ReviewPlanSection
+            key={en.circleId}
+            studentId={id}
+            circleId={en.circleId}
+            trackType={en.circleTrackType!}
+            canCreate={canCreatePlan}
+          />
+        ));
+      })()}
 
       {/* Attendance Summary */}
       <Card className="border-0 shadow-sm">

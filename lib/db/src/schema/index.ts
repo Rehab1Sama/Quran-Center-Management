@@ -18,3 +18,4 @@ export * from "./lowMemorizationAlerts";
 export * from "./dataEntryAssignments";
 export * from "./dataEntrySessions";
 export * from "./whitelabelConfigs";
+export * from "./reviewPlans";

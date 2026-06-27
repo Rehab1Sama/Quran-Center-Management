@@ -746,6 +746,7 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
       leaveEnd: studentEnrollmentsTable.leaveEnd,
       circleName: circlesTable.name,
       circleTrack: circlesTable.track,
+      circleTrackType: circlesTable.trackType,
     })
     .from(studentEnrollmentsTable)
     .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))

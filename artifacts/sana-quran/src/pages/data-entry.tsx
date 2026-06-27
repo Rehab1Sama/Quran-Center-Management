@@ -42,6 +42,7 @@ import {
   XCircle,
   Mic,
 } from "lucide-react";
+import { getDayDates, getCurrentPlanDay } from "@/components/ReviewPlanSection";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
@@ -612,6 +613,7 @@ export default function DataEntryPage() {
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
   const [confirmAbsenceOpen, setConfirmAbsenceOpen] = useState(false);
   const [submittedDays, setSubmittedDays] = useState<string[]>([]);
+  const [circlePlans, setCirclePlans] = useState<any[]>([]);
 
   // Assigned circles for data_entry users
   const [assignedCircles, setAssignedCircles] = useState<any[]>([]);
@@ -631,6 +633,17 @@ export default function DataEntryPage() {
   useEffect(() => {
     if ((user as any)?.track && !selectedTrack) setSelectedTrack((user as any).track);
   }, [(user as any)?.track]);
+
+  // Fetch circle review plans for color comparison
+  useEffect(() => {
+    if (!selectedCircleId) { setCirclePlans([]); return; }
+    const circle = (circles ?? [] as any[]).find((c: any) => c.id === selectedCircleId) as any;
+    if (!circle || (circle.trackType !== "girls" && circle.trackType !== "fixation")) { setCirclePlans([]); return; }
+    const token = getToken();
+    fetch(`${BASE}/api/circles/${selectedCircleId}/review-plans`, {
+      headers: { Authorization: `Bearer ${token ?? ""}` },
+    }).then(r => r.ok ? r.json() : []).then(setCirclePlans).catch(() => setCirclePlans([]));
+  }, [selectedCircleId, circles]);
 
   // Submitted days for selected circle (to hide already-done days)
   useEffect(() => {
@@ -1164,6 +1177,33 @@ export default function DataEntryPage() {
                     (user as any)?.role === "leader" ||
                     (recordForEdit && new Date(recordForEdit.createdAt).getTime() > Date.now() - 2 * 60 * 60 * 1000);
 
+                  // Plan comparison badge
+                  const studentPlan = circlePlans.find((p: any) => p.studentId === student.studentId);
+                  let planBadge: React.ReactNode = null;
+                  if (studentPlan && studentPlan.days?.length > 0) {
+                    const pMode: "girls" | "fixation" = studentPlan.planType === "fixation" ? "fixation" : "girls";
+                    const totalDays = studentPlan.planType === "fixation" ? 24 : 21;
+                    const todayDay = getCurrentPlanDay(studentPlan.startDate, totalDays, pMode);
+                    const dayEntry = studentPlan.days.find((d: any) => d.dayNumber === todayDay);
+                    const planned = dayEntry?.pages ?? 0;
+                    if (todayDay > 0 && todayDay <= totalDays && planned > 0) {
+                      if (recordForEdit?.isAbsent) {
+                        planBadge = <Badge className="bg-gray-100 text-gray-500 border-0 text-[10px] px-1.5 py-0">غائبة</Badge>;
+                      } else if (recordForEdit && !recordForEdit.isAbsent) {
+                        const entered = studentPlan.planType === "fixation"
+                          ? (recordForEdit.reviewPages ?? recordForEdit.reviewFarPages ?? 0)
+                          : (recordForEdit.reviewFarPages ?? 0);
+                        if (entered >= planned * 1.05) {
+                          planBadge = <Badge className="bg-blue-100 text-blue-700 border-0 text-[10px] px-1.5 py-0">↑ تجاوزت</Badge>;
+                        } else if (entered >= planned * 0.95) {
+                          planBadge = <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px] px-1.5 py-0">✓ نصاب الخطة</Badge>;
+                        } else if (entered > 0) {
+                          planBadge = <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px] px-1.5 py-0">⚠ أقل من الخطة</Badge>;
+                        }
+                      }
+                    }
+                  }
+
                   return (
                     <div
                       key={`${student.studentId}-${student.circleId}`}
@@ -1188,6 +1228,7 @@ export default function DataEntryPage() {
                               إجازة
                             </Badge>
                           )}
+                          {planBadge}
                         </div>
                         {student.track && (
                           <p className="text-xs text-muted-foreground mt-0.5">{student.track}</p>
