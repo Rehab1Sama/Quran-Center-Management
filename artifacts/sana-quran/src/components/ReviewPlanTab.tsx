@@ -1793,7 +1793,8 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
     return count;
   }
   const workingDaysSince = plan.currentCycleStart ? workingDaysSinceCycleStart(plan.currentCycleStart) : 0;
-  const canRenewNow = true;
+  // يمكن التجديد عند: اكتمال الدورة (اليوم >= طول الدورة) أو مرور ٢١ يوم عمل
+  const canRenewNow = plan.dayInCycle >= plan.cycleLength || workingDaysSince >= 21;
 
   return (
     <div className="space-y-4">
@@ -1887,6 +1888,13 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
             {canActuallyEdit && canRenewNow && !isFixation && (
               <button onClick={() => { setSelectedTheme(THEME_PRESETS[0].theme); setStep("renew_theme"); }}
                 className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors">
+                <RefreshCw className="w-4 h-4 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">تجديد</span>
+              </button>
+            )}
+            {canActuallyEdit && !canRenewNow && !isFixation && (
+              <button disabled title={`يمكن التجديد بعد إكمال الدورة أو مرور 21 يوم عمل (باقي ${Math.max(0, 21 - workingDaysSince)} يوم)`}
+                className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/30 opacity-40 cursor-not-allowed">
                 <RefreshCw className="w-4 h-4 text-muted-foreground" />
                 <span className="text-[10px] text-muted-foreground">تجديد</span>
               </button>

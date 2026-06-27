@@ -844,6 +844,20 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
 
   const [existing] = await db.select().from(reviewPlansTable).where(eq(reviewPlansTable.studentId, studentId));
 
+  // قيد التجديد: لا يُسمح بتجديد الخطة قبل اكتمال الدورة أو مرور ٢١ يوم عمل (سبت–خميس)
+  if (existing) {
+    const cycleStartForCheck = existing.currentCycleStart ?? existing.startDate;
+    const rawWDForCheck = workingDayNumber(cycleStartForCheck, today);
+    const workingDaysPassed = workingDaysBetween(cycleStartForCheck, today);
+    const cycleComplete = rawWDForCheck > existing.cycleLength;
+    if (!cycleComplete && workingDaysPassed < 21) {
+      const remaining = 21 - workingDaysPassed;
+      res.status(400).json({
+        error: `لا يمكن تجديد الخطة قبل اكتمال الدورة أو مرور ٢١ يوم عمل (باقي ${remaining} يوم)`,
+      });
+      return;
+    }
+  }
 
   // Helper: insert plan notification — fires for all roles so teacher/supervisor see it
   async function insertPlanNotification(

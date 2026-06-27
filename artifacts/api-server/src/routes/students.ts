@@ -21,6 +21,11 @@ router.get("/students", authenticate, async (req, res): Promise<void> => {
   // When filtering by circleId: use enrollments as the source of truth
   if (circleIdRaw) {
     const circleId = parseInt(circleIdRaw as string, 10);
+    // الطالبة لا يحق لها رؤية طالبات حلقة غير حلقتها
+    if (req.userRole === "student" && circleId !== req.userCircleId) {
+      res.json([]);
+      return;
+    }
     // isArchived=true → show enrollment-archived in this circle; otherwise show active
     const wantEnrollmentArchived = isArchivedRaw === "true";
     const enrollments = await db

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useGetCurrentUser } from "@workspace/api-client-react";
 import { getToken } from "@/lib/auth";
+import ReviewPlanTab from "@/components/ReviewPlanTab";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -371,22 +372,24 @@ function SelfEntrySection({ plan, onSubmitted }: { plan: any; onSubmitted: () =>
 }
 
 // ── Student's own plan view ──────────────────────────────────────────────────
-function StudentReviewPlanView({ studentId }: { studentId: number }) {
+function StudentReviewPlanView({ studentId, user }: { studentId: number; user: any }) {
   const [plan, setPlan] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [circle, setCircle] = useState<any>(null);
 
   function loadPlan() {
     setLoading(true);
     const token = getToken();
-    fetch(`${BASE}/api/students/${studentId}/review-plan`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(setPlan)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    Promise.all([
+      fetch(`${BASE}/api/students/${studentId}/review-plan`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${BASE}/api/circles`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([planData, circlesData]) => {
+      setPlan(planData);
+      if (Array.isArray(circlesData) && circlesData.length > 0) setCircle(circlesData[0]);
+    }).finally(() => setLoading(false));
   }
 
   useEffect(() => {
@@ -409,6 +412,23 @@ function StudentReviewPlanView({ studentId }: { studentId: number }) {
   }
 
   if (!plan) {
+    const trackType: string = circle?.trackType ?? user?.circleDataEntryType ?? "girls";
+    const canCreate = trackType === "girls" || trackType === "fixation" || trackType === "simple_review";
+    if (canCreate) {
+      return (
+        <div className="max-w-2xl mx-auto">
+          <ReviewPlanTab
+            studentId={studentId}
+            studentName={user?.name ?? ""}
+            circleName={circle?.name ?? ""}
+            trackType={trackType}
+            plan={null}
+            onPlanChange={setPlan}
+            userRole="student"
+          />
+        </div>
+      );
+    }
     return (
       <div className="max-w-2xl mx-auto space-y-4">
         <h1 className="text-xl font-bold">خطة المراجعة</h1>
@@ -416,7 +436,6 @@ function StudentReviewPlanView({ studentId }: { studentId: number }) {
           <CardContent className="py-10 text-center text-sm text-muted-foreground space-y-3">
             <BookOpen className="w-10 h-10 mx-auto text-muted-foreground/40" />
             <p>لا توجد خطة مراجعة نشطة</p>
-            <p className="text-xs">يمكن إنشاء الخطة عبر المعلمة من صفحتك الشخصية</p>
           </CardContent>
         </Card>
       </div>
@@ -1868,7 +1887,7 @@ export default function ReviewPlansPage() {
     const sid = (user as any).studentId;
     return (
       <div className="p-4 max-w-2xl mx-auto">
-        {sid ? <StudentReviewPlanView studentId={sid} /> : (
+        {sid ? <StudentReviewPlanView studentId={sid} user={user} /> : (
           <div className="text-center py-12 text-sm text-muted-foreground">
             <BookOpen className="w-8 h-8 mx-auto mb-3 text-muted-foreground/40" />
             لا يوجد سجل طالبة مرتبط بحسابك

@@ -44,8 +44,8 @@ router.get("/circles", authenticate, async (req, res): Promise<void> => {
     // إذا لم يُسند لها حلقات → ترى جميع الحلقات النشطة (سلوك افتراضي)
   }
 
-  // Teachers/supervisors can only see their circle
-  if (req.userRole === "teacher" || req.userRole === "supervisor") {
+  // Teachers/supervisors/students can only see their circle
+  if (req.userRole === "teacher" || req.userRole === "supervisor" || req.userRole === "student") {
     circles = circles.filter(c => c.id === req.userCircleId);
   }
 
