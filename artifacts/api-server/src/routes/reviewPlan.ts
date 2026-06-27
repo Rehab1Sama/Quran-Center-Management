@@ -714,7 +714,7 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
     const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
     const [circle] = student?.circleId ? await db.select().from(circlesTable).where(eq(circlesTable.id, student.circleId)) : [null];
     if (!circle || circle.supervisorId !== me?.id) { res.status(403).json({ error: "Forbidden" }); return; }
-  } else if (!["leader","track_supervisor","data_entry"].includes(req.userRole!)) {
+  } else if (!["leader","track_supervisor","data_entry","deputy"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
 

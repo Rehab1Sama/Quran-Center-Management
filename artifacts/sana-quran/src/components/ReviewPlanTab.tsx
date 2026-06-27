@@ -1927,7 +1927,8 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
         // ── جدول مسار التثبيت: عرض أسبوعي ٦ أسابيع × ٤ أيام ──────
         <div className="space-y-3">
           {Array.from({ length: 6 }, (_, weekIdx) => {
-            const weekDays = plan.planEntries.slice(weekIdx * 4, weekIdx * 4 + 4);
+            const sortedEntries = [...plan.planEntries].sort((a, b) => a.dayNumber - b.dayNumber);
+            const weekDays = sortedEntries.slice(weekIdx * 4, weekIdx * 4 + 4);
             if (!weekDays.length) return null;
             return (
               <div key={weekIdx} className="rounded-xl border border-border/50 overflow-hidden shadow-sm">
@@ -2056,7 +2057,7 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
                 </tr>
               </thead>
               <tbody>
-                {plan.planEntries.map((entry, idx) => {
+                {[...plan.planEntries].sort((a, b) => a.dayNumber - b.dayNumber).map((entry, idx) => {
                   const dayDate = getWorkingDayDate(plan.currentCycleStart, entry.dayNumber, plan.trackType);
                   const dayJs = new Date(dayDate);
                   const dayName = AR_DAYS_NAMES[dayJs.getDay()];
