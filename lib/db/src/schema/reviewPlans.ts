@@ -54,6 +54,8 @@ export const reviewPlansTable = pgTable("review_plans", {
   theme: jsonb("theme").$type<PlanTheme>().notNull().default(DEFAULT_THEME),
   status: text("status").notNull().default("active"),
   previousPlans: jsonb("previous_plans").$type<PlanSnapshot[]>().notNull().default([]),
+  lastEditedById: integer("last_edited_by_id"),
+  lastEditedByName: text("last_edited_by_name"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -101,6 +101,7 @@ type ReviewPlan = {
   isCompletedEarly?: boolean;
   updatedAt?: string;
   trackType?: string;
+  lastEditedByName?: string | null;
 };
 
 const THEME_PRESETS: { name: string; theme: PlanTheme }[] = [
@@ -236,6 +237,13 @@ function PlanCard({ plan, studentName, circleName }: { plan: ReviewPlan; student
             <p className="text-[10px] opacity-60" style={{ color: theme.accentColor }}>آخر حفظ</p>
           </div>
         </div>
+
+        {/* آخر تعديل */}
+        {plan.lastEditedByName && (
+          <p className="text-[10px] opacity-50 text-center mt-1" style={{ color: theme.accentColor }}>
+            آخر تعديل: {plan.lastEditedByName}
+          </p>
+        )}
       </div>
     </div>
   );

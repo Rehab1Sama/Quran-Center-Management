@@ -892,16 +892,20 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       planType: existing.planType,
     };
     const prevHistory = (existing.previousPlans ?? []) as PlanSnapshot[];
+    const [meUser] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
     const [updated] = await db.update(reviewPlansTable).set({
       planType, cycleCount: existing.cycleCount + 1,
       totalPages, cycleLength, currentCycleStart: planStartDate,
       memorizedUpToSurah: endSurah, memorizedUpToAyah: endAyah,
       planEntries, theme: theme ?? existing.theme, status: "active",
       previousPlans: [...prevHistory, snapshot],
+      lastEditedById: req.userId ?? null,
+      lastEditedByName: meUser?.name ?? null,
     }).where(eq(reviewPlansTable.studentId, studentId)).returning();
     await insertPlanNotification("plan_renewed", updated.cycleCount, updated.totalPages);
     res.json(fmtPlan(updated, { renewed: true }));
   } else {
+    const [meUser] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
     const [plan] = await db.insert(reviewPlansTable).values({
       studentId, trackType, planType, cycleCount: 1,
       totalPages, cycleLength, startDate: planStartDate,
@@ -909,6 +913,8 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       memorizedUpToSurah: endSurah, memorizedUpToAyah: endAyah,
       planEntries, theme: theme ?? defaultTheme, status: "active",
       previousPlans: [],
+      lastEditedById: req.userId ?? null,
+      lastEditedByName: meUser?.name ?? null,
     }).returning();
     await insertPlanNotification("plan_created", 1, plan.totalPages);
     res.status(201).json(fmtPlan(plan));
@@ -930,15 +936,18 @@ router.delete("/students/:id/review-plan", authenticate, async (req, res): Promi
 
 // ── PATCH /api/students/:id/review-plan — update entries or theme ──────────
 router.patch("/students/:id/review-plan", authenticate, async (req, res): Promise<void> => {
-  const isAdmin = ["leader", "deputy", "track_supervisor", "supervisor"].includes(req.userRole!);
-  if (!isAdmin && !["teacher", "student"].includes(req.userRole!)) {
+  // المعلمة والقائدة والمشرفة ومسؤولة المسار والنائبة تستطيع التعديل بلا قيود
+  const isAdmin = ["leader", "deputy", "track_supervisor", "supervisor", "teacher"].includes(req.userRole!);
+  if (!isAdmin && req.userRole !== "student") {
     res.status(403).json({ error: "Forbidden" }); return;
   }
   const studentId = parseInt(req.params.id as string);
 
+  // نحضر بيانات المستخدم الحالي دائمًا (لحفظ اسم المعدِّل)
+  const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+
   // Student can only edit their own plan
   if (req.userRole === "student") {
-    const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
     const conditions: Parameters<typeof and>[0][] = [eq(studentsTable.fullName, me?.name ?? "")];
     if (me?.circleId) conditions.push(eq(studentsTable.circleId, me.circleId));
     const [myStudent] = await db.select().from(studentsTable).where(and(...conditions));
@@ -946,7 +955,6 @@ router.patch("/students/:id/review-plan", authenticate, async (req, res): Promis
   }
   // Teacher can only edit plans for students in their circle
   if (req.userRole === "teacher") {
-    const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
     const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
     if (!me?.circleId || me.circleId !== student?.circleId) { res.status(403).json({ error: "Forbidden" }); return; }
   }
@@ -954,8 +962,8 @@ router.patch("/students/:id/review-plan", authenticate, async (req, res): Promis
   const [plan] = await db.select().from(reviewPlansTable).where(eq(reviewPlansTable.studentId, studentId));
   if (!plan) { res.status(404).json({ error: "لا توجد خطة" }); return; }
 
-  // القائدة والمشرفة ومسؤولة المسار لا يخضعن لقيد الـ 48 ساعة
-  if (!isAdmin) {
+  // الطالبة فقط تخضع لقيد الـ 48 ساعة
+  if (req.userRole === "student") {
     const planTime = plan.updatedAt ? new Date(plan.updatedAt).getTime() : new Date(plan.createdAt).getTime();
     const LOCK_MS = 48 * 60 * 60 * 1000;
     if (Date.now() - planTime > LOCK_MS) {
@@ -967,7 +975,10 @@ router.patch("/students/:id/review-plan", authenticate, async (req, res): Promis
     planEntries?: PlanDayEntry[]; planType?: "manual"|"auto"; theme?: PlanTheme;
   };
 
-  const updates: Partial<typeof reviewPlansTable.$inferInsert> = {};
+  const updates: Partial<typeof reviewPlansTable.$inferInsert> = {
+    lastEditedById: req.userId ?? null,
+    lastEditedByName: me?.name ?? null,
+  };
   if (planEntries) updates.planEntries = planEntries;
   if (planType) updates.planType = planType;
   if (theme) updates.theme = theme;
