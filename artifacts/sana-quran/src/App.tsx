@@ -41,6 +41,7 @@ import TeacherRotationPage from "@/pages/teacher-rotation";
 import ShortcomingsPage from "@/pages/shortcomings";
 import StumblingStatsPage from "@/pages/stumbling-stats";
 import ReviewPlansPage from "@/pages/review-plans";
+import FixationReportPage from "@/pages/fixation-report";
 import ThursdayReviewPage from "@/pages/thursday-review";
 import DeputyTasksPage from "@/pages/deputy-tasks";
 import DeputyBoardPage from "@/pages/deputy-board";
@@ -233,6 +234,11 @@ function AppRoutes() {
                 : <Redirect to="/" />
           )}
           {!isFeatureEnabled("review_plans") && <Redirect to="/" />}
+        </Route>
+        <Route path="/fixation-report">
+          {isFeatureEnabled("review_plans") && (isLeaderOrDeputy || isTrackSupervisor || isTeacher || isSupervisor)
+            ? <FixationReportPage />
+            : <Redirect to="/" />}
         </Route>
         <Route path="/thursday-review">
           {isLeader && isFeatureEnabled("review_plans") ? <ThursdayReviewPage /> : <Redirect to="/" />}
