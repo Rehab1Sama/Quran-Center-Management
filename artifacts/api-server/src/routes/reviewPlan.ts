@@ -325,8 +325,11 @@ function getFixationDayStatus(
   planDayDate: string,
 ): { exceeded: boolean; completed: boolean; partial: boolean; absent: boolean; actual: number; planned: number } {
   const planned = planEntry.pages;
-  const plannedStartAbs = absAyah(planEntry.surahStart, planEntry.ayahStart);
-  const plannedEndAbs = absAyah(planEntry.surahEnd, planEntry.ayahEnd);
+  const _psA = absAyah(planEntry.surahStart, planEntry.ayahStart);
+  const _peA = absAyah(planEntry.surahEnd, planEntry.ayahEnd);
+  // تطبيع النطاق: دائمًا plannedLow ≤ plannedHigh بغض النظر عن اتجاه التخزين
+  const plannedLow  = Math.min(_psA, _peA);
+  const plannedHigh = Math.max(_psA, _peA);
 
   // سجلات هذا اليوم تحديدًا (للأوجه الفعلية المعروضة)
   const dayRecs = allCycleRecords.filter(r => r.date === planDayDate);
@@ -339,12 +342,15 @@ function getFixationDayStatus(
   );
 
   for (const rec of rangeRecords) {
-    const actualStartAbs = absAyah(rec.memorizeSurahStart!, rec.memorizeAyahStart ?? 1);
-    const actualEndAbs = absAyah(rec.memorizeSurahEnd!, rec.memorizeAyahEnd ?? 1);
+    const _rsA = absAyah(rec.memorizeSurahStart!, rec.memorizeAyahStart ?? 1);
+    const _reA = absAyah(rec.memorizeSurahEnd!, rec.memorizeAyahEnd ?? 1);
+    // تطبيع نطاق السجل الفعلي أيضًا
+    const actualLow  = Math.min(_rsA, _reA);
+    const actualHigh = Math.max(_rsA, _reA);
 
     // هل يغطي هذا السجل النطاق المخطط لهذا اليوم بالكامل؟
-    if (actualStartAbs <= plannedStartAbs && actualEndAbs >= plannedEndAbs) {
-      const exceeded = actualEndAbs > plannedEndAbs || actualStartAbs < plannedStartAbs;
+    if (actualLow <= plannedLow && actualHigh >= plannedHigh) {
+      const exceeded = actualLow < plannedLow || actualHigh > plannedHigh;
       return {
         exceeded,
         completed: true,
@@ -356,8 +362,8 @@ function getFixationDayStatus(
     }
 
     // تغطية جزئية؟
-    const overlapStart = Math.max(actualStartAbs, plannedStartAbs);
-    const overlapEnd = Math.min(actualEndAbs, plannedEndAbs);
+    const overlapStart = Math.max(actualLow, plannedLow);
+    const overlapEnd = Math.min(actualHigh, plannedHigh);
     if (overlapEnd >= overlapStart) {
       // يوجد تداخل جزئي — نرجع جزئي (لكن نكمل البحث عن تغطية كاملة)
       // سنكتفي بأول تداخل جزئي كنتيجة احتياطية

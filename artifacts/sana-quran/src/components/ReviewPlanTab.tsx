@@ -273,7 +273,7 @@ function StepIndicator({ current }: { current: number }) {
 
 export default function ReviewPlanTab({ studentId, studentName, circleName, trackType, plan, onPlanChange, readOnly = false, onAfterSave, userRole }: Props) {
   const { toast } = useToast();
-  const [step, setStep] = useState<"view" | "pick_content" | "plan_type" | "start_date" | "choose" | "theme" | "manual" | "renew_theme" | "renew_surah" | "renew_confirm" | "fixation_quota" | "fixation_manual" | "fixation_manual_date" | "fixation_manual_theme">("view");
+  const [step, setStep] = useState<"view" | "pick_content" | "plan_type" | "start_date" | "choose" | "theme" | "manual" | "renew_theme" | "renew_surah" | "renew_confirm" | "fixation_quota" | "fixation_start" | "fixation_theme" | "fixation_date" | "fixation_manual" | "fixation_manual_date" | "fixation_manual_theme">("view");
   const [saving, setSaving] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState<PlanTheme>(
     plan?.theme ?? THEME_PRESETS[0].theme
@@ -301,6 +301,11 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
 
   // حالة خاصة بمسار التثبيت
   const [fixationQuota, setFixationQuota] = useState<0.5 | 1>(1);
+  const [fixationPlanMode, setFixationPlanMode] = useState<"auto" | "manual">("auto");
+  const [fixationStartMode, setFixationStartMode] = useState<"juz" | "surah">("juz");
+  const [fixationStartJuz, setFixationStartJuz] = useState<number>(30);
+  const [fixationStartSurahLocal, setFixationStartSurahLocal] = useState("");
+  const [fixationStartAyahLocal, setFixationStartAyahLocal] = useState("1");
   const [fixationManualEntries, setFixationManualEntries] = useState<Array<{dayNumber: number; surahStart: string; ayahStart: string; surahEnd: string; ayahEnd: string}>>(() =>
     Array.from({ length: 24 }, (_, i) => ({ dayNumber: i + 1, surahStart: "البقرة", ayahStart: "1", surahEnd: "البقرة", ayahEnd: "10" }))
   );
@@ -461,10 +466,9 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
           <button onClick={() => setStep("view")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
           <h3 className="font-bold text-sm">١ · اختاري النصاب اليومي</h3>
         </div>
-        <p className="text-xs text-muted-foreground">ستملئين جدول الـ 24 جلسة (6 أسابيع × 4 أيام) بنفسك</p>
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => { setFixationQuota(1); setFixationPlanMode("manual"); setStep("fixation_manual"); }}
+            onClick={() => { setFixationQuota(1); setStep("fixation_start"); }}
             className="flex flex-col items-center gap-2 p-5 rounded-2xl border-2 border-emerald-400 bg-emerald-50 hover:shadow-md transition-all"
           >
             <span className="text-3xl">📖</span>
@@ -472,7 +476,7 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
             <p className="text-[10px] text-emerald-700 text-center">وجه كامل لكل جلسة</p>
           </button>
           <button
-            onClick={() => { setFixationQuota(0.5); setFixationPlanMode("manual"); setStep("fixation_manual"); }}
+            onClick={() => { setFixationQuota(0.5); setStep("fixation_start"); }}
             className="flex flex-col items-center gap-2 p-5 rounded-2xl border-2 border-sky-400 bg-sky-50 hover:shadow-md transition-all"
           >
             <span className="text-3xl">📄</span>
@@ -481,8 +485,168 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
           </button>
         </div>
         <div className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
-          <p>ستملئين {FIXATION_CYCLE} جلسة · {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام (الأحد – الأربعاء) بالسور والآيات بنفسك</p>
+          <p>{FIXATION_CYCLE} جلسة · {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام (الأحد – الأربعاء)</p>
         </div>
+      </div>
+    );
+  }
+
+  // ── مسار التثبيت: خطوة ٢ — نقطة البداية ──────────────────────────────
+  if (step === "fixation_start") {
+    const canProceed = fixationStartMode === "juz" ? fixationStartJuz > 0 : fixationStartSurahLocal !== "";
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <button onClick={() => setStep("fixation_quota")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
+          <h3 className="font-bold text-sm">٢ · من أين تبدئين التثبيت؟</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-1 p-1 bg-muted rounded-xl">
+          {(["juz", "surah"] as const).map(m => (
+            <button key={m} onClick={() => setFixationStartMode(m)}
+              className={`py-2 rounded-lg text-sm font-semibold transition-all ${fixationStartMode === m ? "bg-background shadow text-foreground" : "text-muted-foreground"}`}>
+              {m === "juz" ? "جزء البداية" : "سورة البداية"}
+            </button>
+          ))}
+        </div>
+        {fixationStartMode === "juz" ? (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">اختاري الجزء الذي تبدئين منه (الطالبة ستراجع من هذا الجزء إلى الناس)</p>
+            <div className="grid grid-cols-6 gap-1.5">
+              {JUZ_RANGES.map(j => (
+                <button key={j.n} onClick={() => setFixationStartJuz(j.n)}
+                  className={`py-2.5 rounded-lg text-xs font-bold border-2 transition-all ${fixationStartJuz === j.n ? "border-emerald-500 bg-emerald-100 text-emerald-800 shadow-sm" : "border-border bg-background hover:border-emerald-300"}`}>
+                  {j.n}
+                </button>
+              ))}
+            </div>
+            {fixationStartJuz > 0 && (
+              <p className="text-xs text-emerald-700 font-semibold bg-emerald-50 rounded-lg px-3 py-2">
+                ✓ ابتداءً من الجزء {fixationStartJuz} — {JUZ_RANGES.find(j => j.n === fixationStartJuz)?.startSurah}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">اختاري السورة والآية التي تبدئين منها التثبيت</p>
+            <div className="flex gap-2">
+              <select className="flex-1 border rounded-lg px-2 py-2 text-sm bg-background"
+                value={fixationStartSurahLocal}
+                onChange={e => setFixationStartSurahLocal(e.target.value)}>
+                <option value="">— اختاري السورة —</option>
+                {SURAHS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+              </select>
+              <input type="number" min="1" placeholder="آية" className="w-20 border rounded-lg px-2 py-2 text-sm bg-background"
+                value={fixationStartAyahLocal}
+                onChange={e => setFixationStartAyahLocal(e.target.value)} />
+            </div>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <Button variant="outline" onClick={() => { setFixationPlanMode("manual"); setStep("fixation_manual"); }}>
+            ✏️ إدخال يدوي
+          </Button>
+          <Button disabled={!canProceed}
+            onClick={() => { setFixationPlanMode("auto"); setSelectedTheme(THEME_PRESETS[0].theme); setStep("fixation_theme"); }}>
+            التالي ← الثيم
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── مسار التثبيت: خطوة ٣ — الثيم (تلقائي) ──────────────────────────
+  if (step === "fixation_theme") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <button onClick={() => setStep("fixation_start")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
+          <h3 className="font-bold text-sm">٣ · اختاري لون الخطة</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {THEME_PRESETS.map(preset => (
+            <button key={preset.name} onClick={() => setSelectedTheme(preset.theme)}
+              className={`p-3 rounded-xl border-2 transition-all text-right ${selectedTheme.primaryColor === preset.theme.primaryColor ? "border-primary shadow-md" : "border-border hover:border-primary/40"}`}
+              style={{ background: preset.theme.secondaryColor }}>
+              <div className="w-6 h-6 rounded-full mb-1" style={{ background: preset.theme.primaryColor }} />
+              <p className="text-xs font-bold" style={{ color: preset.theme.accentColor }}>{preset.name}</p>
+            </button>
+          ))}
+        </div>
+        <Button className="w-full" style={{ background: selectedTheme.primaryColor }}
+          onClick={() => setStep("fixation_date")}>
+          التالي ← تاريخ البداية
+        </Button>
+      </div>
+    );
+  }
+
+  // ── مسار التثبيت: خطوة ٤ — تاريخ البداية + إنشاء (تلقائي) ──────────
+  if (step === "fixation_date") {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const totalWajh = fixationQuota * FIXATION_CYCLE;
+    const startLabel = fixationStartMode === "juz"
+      ? `الجزء ${fixationStartJuz} (${JUZ_RANGES.find(j => j.n === fixationStartJuz)?.startSurah ?? ""})`
+      : `${fixationStartSurahLocal} آية ${fixationStartAyahLocal}`;
+
+    async function createFixationPlan() {
+      setSaving(true);
+      try {
+        const body: Record<string, unknown> = {
+          quota: fixationQuota,
+          cycleLength: FIXATION_CYCLE,
+          theme: selectedTheme,
+        };
+        if (fixationStartMode === "juz") {
+          const juz = JUZ_RANGES.find(j => j.n === fixationStartJuz);
+          if (juz) { body.startSurah = juz.startSurah; body.startAyah = juz.startAyah; }
+        } else if (fixationStartSurahLocal) {
+          body.startSurah = fixationStartSurahLocal;
+          body.startAyah = parseInt(fixationStartAyahLocal) || 1;
+        }
+        if (startDate) body.startDate = startDate;
+        const res = await fetch(`${BASE}/api/students/${studentId}/review-plan`, {
+          method: "POST", headers: authHeader(), body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          onPlanChange(data);
+          setStep("view");
+          toast({ title: "تم إنشاء خطة التثبيت ✓" });
+          onAfterSave?.();
+        } else {
+          const err = await res.json();
+          toast({ title: err.error ?? "حدث خطأ", variant: "destructive" });
+        }
+      } finally {
+        setSaving(false);
+      }
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <button onClick={() => setStep("fixation_theme")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
+          <h3 className="font-bold text-sm">٤ · تاريخ البداية</h3>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-4">
+          <input type="date" className="w-full border rounded-xl px-3 py-2 text-sm bg-background"
+            value={startDate || todayStr} min={todayStr}
+            onChange={e => setStartDate(e.target.value)} />
+          {!startDate && <p className="text-xs text-emerald-700 font-medium mt-2">✓ سيبدأ اليوم تلقائيًا إذا لم تختاري تاريخًا</p>}
+        </div>
+        <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-xs space-y-1 text-blue-800">
+          <p className="font-semibold">ملخص الخطة:</p>
+          <p>• النصاب: <span className="font-bold">{fixationQuota === 1 ? "وجه كامل" : "نصف وجه"}</span> / جلسة</p>
+          <p>• البداية: <span className="font-bold">{startLabel}</span></p>
+          <p>• المدة: {FIXATION_WEEKS} أسابيع × {FIXATION_DAYS_PER_WEEK} أيام ({FIXATION_CYCLE} جلسة)</p>
+          <p>• إجمالي النصاب: <span className="font-bold">{totalWajh} وجه</span></p>
+          <p>• أيام العمل: الأحد، الاثنين، الثلاثاء، الأربعاء</p>
+        </div>
+        <Button className="w-full font-bold" style={{ background: selectedTheme.primaryColor }}
+          onClick={createFixationPlan} disabled={saving}>
+          {saving ? <span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin inline-block ml-2" /> : null}
+          إنشاء خطة التثبيت ✓
+        </Button>
       </div>
     );
   }
@@ -843,9 +1007,14 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
       const perfText = isPast && perf ? (perf.absent ? "—" : perf.exceeded ? "↑" : perf.completed ? "✓" : perf.partial ? "≈" : "✗") : "";
       const perfColor = perf?.absent ? "#9ca3af" : perf?.exceeded ? "#2563eb" : perf?.completed ? "#059669" : perf?.partial ? "#d97706" : "#dc2626";
       const rowBg = isToday ? p.theme.secondaryColor : isPast && perf?.exceeded ? "#eff6ff" : isPast && perf?.completed ? "#f0fdf4" : isPast && perf?.partial ? "#fffbeb" : isPast && perf && !perf.absent && !perf.completed ? "#fff1f2" : "white";
-      const section = entry.surahStart === entry.surahEnd
-        ? `${entry.surahStart} (${entry.ayahStart}–${entry.ayahEnd})`
-        : `${entry.surahStart} ${entry.ayahStart} ← ${entry.surahEnd} ${entry.ayahEnd}`;
+      const _ssIdx3 = SURAHS.findIndex(s => s.name === entry.surahStart);
+      const _seIdx3 = SURAHS.findIndex(s => s.name === entry.surahEnd);
+      const [_nS3, _nA3, _fS3, _fA3] = _seIdx3 > _ssIdx3
+        ? [entry.surahEnd, entry.ayahEnd, entry.surahStart, entry.ayahStart]
+        : [entry.surahStart, entry.ayahStart, entry.surahEnd, entry.ayahEnd];
+      const section = _nS3 === _fS3
+        ? `${_nS3} (${_nA3}–${_fA3})`
+        : `${_nS3} ${_nA3} ← ${_fS3} ${_fA3}`;
       return `<tr style="background:${rowBg};font-weight:${isToday ? "bold" : "normal"}"><td style="text-align:center">${entry.dayNumber}</td><td>${dayName}</td><td>${dateLabel}</td><td>${section}</td><td style="text-align:center">${entry.pages}</td><td style="text-align:center;color:${perfColor};font-weight:bold;font-size:15px">${perfText}</td></tr>`;
     }).join("");
     const startDate = new Date(p.currentCycleStart).toLocaleDateString("ar-SA", { year: "numeric", month: "long", day: "numeric" });
@@ -1783,9 +1952,15 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
                       const isToday = idx === plan.dayInCycle - 1;
                       const isPast = idx < plan.dayInCycle - 1;
                       const perf = plan.dayPerformance?.find(d => d.dayNumber === entry.dayNumber);
-                      const section = entry.surahStart === entry.surahEnd
-                        ? `${entry.surahStart} (${entry.ayahStart}–${entry.ayahEnd})`
-                        : `${entry.surahStart} ${entry.ayahStart} ← ${entry.surahEnd} ${entry.ayahEnd}`;
+                      // عرض النطاق بالاتجاه الصحيح: السورة القريبة (الأعلى رقمًا) على اليمين
+                      const _ssIdx = SURAHS.findIndex(s => s.name === entry.surahStart);
+                      const _seIdx = SURAHS.findIndex(s => s.name === entry.surahEnd);
+                      const [_nS, _nA, _fS, _fA] = _seIdx > _ssIdx
+                        ? [entry.surahEnd, entry.ayahEnd, entry.surahStart, entry.ayahStart]
+                        : [entry.surahStart, entry.ayahStart, entry.surahEnd, entry.ayahEnd];
+                      const section = _nS === _fS
+                        ? `${_nS} (${_nA}–${_fA})`
+                        : `${_nS} ${_nA} ← ${_fS} ${_fA}`;
 
                       // ألوان الحالة — أزرق / أخضر / أصفر / رمادي
                       const isExceeded  = isPast && perf && !perf.absent && perf.exceeded;
@@ -1887,9 +2062,14 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
                   const isToday = idx === plan.dayInCycle - 1;
                   const isPast = idx < plan.dayInCycle - 1;
                   const perf = plan.dayPerformance?.find(d => d.dayNumber === entry.dayNumber);
-                  const section = entry.surahStart === entry.surahEnd
-                    ? `${entry.surahStart} (${entry.ayahStart}–${entry.ayahEnd})`
-                    : `${entry.surahStart} ${entry.ayahStart} ← ${entry.surahEnd} ${entry.ayahEnd}`;
+                  const _ssIdx2 = SURAHS.findIndex(s => s.name === entry.surahStart);
+                  const _seIdx2 = SURAHS.findIndex(s => s.name === entry.surahEnd);
+                  const [_nS2, _nA2, _fS2, _fA2] = _seIdx2 > _ssIdx2
+                    ? [entry.surahEnd, entry.ayahEnd, entry.surahStart, entry.ayahStart]
+                    : [entry.surahStart, entry.ayahStart, entry.surahEnd, entry.ayahEnd];
+                  const section = _nS2 === _fS2
+                    ? `${_nS2} (${_nA2}–${_fA2})`
+                    : `${_nS2} ${_nA2} ← ${_fS2} ${_fA2}`;
                   return (
                     <tr key={entry.dayNumber} className="border-b border-border/30"
                       style={{
