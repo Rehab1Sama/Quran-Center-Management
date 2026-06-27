@@ -746,9 +746,17 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
   const quota = typeof body.quota === "number" ? body.quota : null; // وجه (1) أو نصف وجه (0.5) للتثبيت
 
   const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
-  if (!student?.circleId) { res.status(400).json({ error: "الطالبة ليست في حلقة" }); return; }
+  if (!student) { res.status(400).json({ error: "الطالبة غير موجودة" }); return; }
 
-  const [circle] = await db.select().from(circlesTable).where(eq(circlesTable.id, student.circleId));
+  // لدور الطالبة: تُستخدم الحلقة المرتبطة بحسابها الحالي (JWT) لتحديد نوع الخطة
+  // هذا يضمن أن حساب حلقة الفتيات → خطة فتيات، وحساب التثبيت → خطة تثبيت
+  const effectiveCircleId = (req.userRole === "student" && req.userCircleId)
+    ? req.userCircleId
+    : student.circleId;
+
+  if (!effectiveCircleId) { res.status(400).json({ error: "الطالبة ليست في حلقة" }); return; }
+
+  const [circle] = await db.select().from(circlesTable).where(eq(circlesTable.id, effectiveCircleId));
   const trackType = (circle as any)?.trackType ?? "girls";
 
   if (trackType !== "girls" && trackType !== "fixation") {
@@ -865,8 +873,8 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
     cycleCount: number,
     pages: number,
   ) {
-    const [cir] = student.circleId
-      ? await db.select().from(circlesTable).where(eq(circlesTable.id, student.circleId))
+    const [cir] = effectiveCircleId
+      ? await db.select().from(circlesTable).where(eq(circlesTable.id, effectiveCircleId))
       : [null];
     if (!cir) return;
     // Delete any unread notification for the same student (replace with fresh one)
@@ -952,10 +960,18 @@ router.patch("/students/:id/review-plan", authenticate, async (req, res): Promis
 
   // Student can only edit their own plan
   if (req.userRole === "student") {
+    // أولاً: بحث بالاسم + الحلقة الحالية
     const conditions: Parameters<typeof and>[0][] = [eq(studentsTable.fullName, me?.name ?? "")];
-    if (me?.circleId) conditions.push(eq(studentsTable.circleId, me.circleId));
+    if (req.userCircleId) conditions.push(eq(studentsTable.circleId, req.userCircleId));
     const [myStudent] = await db.select().from(studentsTable).where(and(...conditions));
-    if (!myStudent || myStudent.id !== studentId) { res.status(403).json({ error: "Forbidden" }); return; }
+    // إذا وُجدت الطالبة بالحلقة الحالية فقط تحقق من التطابق
+    // إذا لم تُوجد، تحقق بالاسم فقط (لحالة تعدد الحلقات)
+    if (myStudent) {
+      if (myStudent.id !== studentId) { res.status(403).json({ error: "Forbidden" }); return; }
+    } else {
+      const [byName] = await db.select().from(studentsTable).where(eq(studentsTable.fullName, me?.name ?? ""));
+      if (!byName || byName.id !== studentId) { res.status(403).json({ error: "Forbidden" }); return; }
+    }
   }
   // Teacher can only edit plans for students in their circle
   if (req.userRole === "teacher") {

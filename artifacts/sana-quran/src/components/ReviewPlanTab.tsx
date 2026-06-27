@@ -466,7 +466,7 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
     );
   }
 
-  // ── مسار التثبيت: خطوة ١ — اختيار النصاب (يدوي فقط) ─────────────────────
+  // ── مسار التثبيت: خطوة ١ — اختيار النصاب ─────────────────────────────────
   if (step === "fixation_quota") {
     return (
       <div className="space-y-4">
@@ -476,7 +476,7 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
         </div>
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => { setFixationQuota(1); setStep("fixation_manual"); }}
+            onClick={() => { setFixationQuota(1); setStep("fixation_start"); }}
             className="flex flex-col items-center gap-2 p-5 rounded-2xl border-2 border-emerald-400 bg-emerald-50 hover:shadow-md transition-all"
           >
             <span className="text-3xl">📖</span>
@@ -484,7 +484,7 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
             <p className="text-[10px] text-emerald-700 text-center">وجه كامل لكل جلسة</p>
           </button>
           <button
-            onClick={() => { setFixationQuota(0.5); setStep("fixation_manual"); }}
+            onClick={() => { setFixationQuota(0.5); setStep("fixation_start"); }}
             className="flex flex-col items-center gap-2 p-5 rounded-2xl border-2 border-sky-400 bg-sky-50 hover:shadow-md transition-all"
           >
             <span className="text-3xl">📄</span>

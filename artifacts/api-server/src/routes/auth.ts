@@ -316,14 +316,24 @@ router.get("/auth/me", authenticate, async (req, res): Promise<void> => {
 
   let studentId: number | null = null;
   if (user.role === "student") {
-    const conditions: Parameters<typeof and>[0][] = [eq(studentsTable.fullName, user.name)];
-    if (user.circleId) conditions.push(eq(studentsTable.circleId, user.circleId));
-    const [student] = await db
-      .select({ id: studentsTable.id })
-      .from(studentsTable)
-      .where(and(...conditions))
-      .limit(1);
-    studentId = student?.id ?? null;
+    // أولاً: ابحثي بالاسم + الحلقة المحددة
+    if (user.circleId) {
+      const [byCircle] = await db
+        .select({ id: studentsTable.id })
+        .from(studentsTable)
+        .where(and(eq(studentsTable.fullName, user.name), eq(studentsTable.circleId, user.circleId)))
+        .limit(1);
+      studentId = byCircle?.id ?? null;
+    }
+    // ثانياً: إذا لم يُعثر عليها، ابحثي بالاسم فقط (حالة تعدد الحلقات)
+    if (!studentId) {
+      const [byName] = await db
+        .select({ id: studentsTable.id })
+        .from(studentsTable)
+        .where(eq(studentsTable.fullName, user.name))
+        .limit(1);
+      studentId = byName?.id ?? null;
+    }
   }
 
   let circleDataEntryType: string | null = null;
