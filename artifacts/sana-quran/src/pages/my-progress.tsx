@@ -14,8 +14,6 @@ import { formatPages } from "@/lib/quran";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import AudioContent from "@/pages/audio";
 import { useToast } from "@/hooks/use-toast";
-import ReviewPlanTab from "@/components/ReviewPlanTab";
-
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function authHdr(): Record<string, string> {
@@ -25,7 +23,7 @@ function authHdr(): Record<string, string> {
   return h;
 }
 
-type Tab = "progress" | "audio" | "circle" | "plan";
+type Tab = "progress" | "audio" | "circle";
 
 export default function MyProgressPage() {
   const [tab, setTab] = useState<Tab>("progress");
@@ -37,10 +35,6 @@ export default function MyProgressPage() {
   const [newGoalTitle, setNewGoalTitle] = useState("");
   const [newGoalDate, setNewGoalDate] = useState("");
   const [newGoalNotes, setNewGoalNotes] = useState("");
-
-  // Review plan state
-  const [reviewPlan, setReviewPlan] = useState<any>(null);
-  const [planLoading, setPlanLoading] = useState(false);
 
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const studentId: number | undefined = (user as any)?.studentId ?? undefined;
@@ -56,23 +50,6 @@ export default function MyProgressPage() {
 
   const activeGoals = (myGoals as any[]).filter((g: any) => !g.isCompleted);
   const leaderMessages = (myGoals as any[]).filter((g: any) => g.motivationalMessage);
-
-  useEffect(() => {
-    if (tab === "plan" && studentId && !reviewPlan && !planLoading) {
-      fetchReviewPlan();
-    }
-  }, [tab, studentId]);
-
-  async function fetchReviewPlan() {
-    if (!studentId) return;
-    setPlanLoading(true);
-    try {
-      const res = await fetch(`${BASE}/api/students/${studentId}/review-plan`, { headers: authHdr() });
-      if (res.ok) setReviewPlan(await res.json());
-    } finally {
-      setPlanLoading(false);
-    }
-  }
 
   async function handleSaveGoal() {
     if (!studentId || !newGoalTitle.trim()) return;
@@ -180,7 +157,6 @@ export default function MyProgressPage() {
     { id: "progress", label: "تقدمي", icon: <TrendingUp className="w-4 h-4" /> },
     { id: "audio",    label: "السماع",  icon: <Volume2 className="w-4 h-4" /> },
     { id: "circle",  label: "حلقتي",   icon: <Users className="w-4 h-4" /> },
-    ...((myTrackType === "girls" || myTrackType === "simple_review" || myTrackType === "fixation") ? [{ id: "plan" as Tab, label: "خطة المراجعة", icon: <BookOpen className="w-4 h-4" /> }] : []),
   ];
 
   return (
@@ -713,25 +689,6 @@ export default function MyProgressPage() {
         </div>
       )}
 
-      {/* ─── Tab 4: خطة المراجعة ─── */}
-      {tab === "plan" && (
-        <div className="space-y-4">
-          {planLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            </div>
-          ) : (
-            <ReviewPlanTab
-              studentId={studentId!}
-              studentName={user?.name ?? ""}
-              circleName={(myCircle as any)?.name ?? ""}
-              trackType={myTrackType}
-              plan={reviewPlan}
-              onPlanChange={setReviewPlan}
-            />
-          )}
-        </div>
-      )}
     </div>
   );
 }

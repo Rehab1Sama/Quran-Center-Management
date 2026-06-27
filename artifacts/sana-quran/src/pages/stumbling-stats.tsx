@@ -7,7 +7,6 @@ import {
   ChevronDown, ChevronUp, AlertTriangle, Users, BookOpen,
   ClipboardList, UserCheck, RefreshCw, Bell, CheckCircle2, RotateCcw, Shield, PlaneTakeoff,
 } from "lucide-react";
-import { shouldHideReviewPlans } from "@/lib/schoolConfig";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -23,8 +22,7 @@ type TeacherAlert = {
 };
 type StudentAlert = {
   studentId: number; studentName: string; circleName: string; track: string;
-  absenceCount: number; shortcomingCount: number; planMissedDays?: number;
-  issueLabel?: string; isLongStumbling?: boolean;
+  absenceCount: number; shortcomingCount: number;
 };
 type CycleCompleted = {
   studentId: number; studentName: string; circleName: string; track: string;
@@ -154,7 +152,7 @@ export default function StumblingStatsPage() {
 
   const dismissAllNotifs = async () => {
     if (!data) return;
-    const ids = new Set(data.planNotifications.map(n => n.id));
+    const ids = new Set((data.planNotifications ?? []).map((n: PlanNotification) => n.id));
     setDismissedNotifs(prev => new Set([...prev, ...ids]));
     await markAllNotificationsRead();
   };
@@ -171,10 +169,7 @@ export default function StumblingStatsPage() {
   const visibleNotifs = allNotifs.filter(n => n.type !== "leave_granted");
   const leaveNotifs = allNotifs.filter((n: any) => n.type === "leave_granted");
 
-  const isNoReviewPlanTrackSupervisor =
-    user?.role === "track_supervisor" && shouldHideReviewPlans(user.track);
-
-  const showCycleCompleted = !isNoReviewPlanTrackSupervisor;
+  const showCycleCompleted = true;
 
   const deputyAlert = data?.deputyAlert;
   const deputyHasIssue = deputyAlert?.hasDeputy &&
@@ -536,7 +531,7 @@ export default function StumblingStatsPage() {
                     {data.students.length === 0 ? (
                       <p className="text-sm text-center text-muted-foreground py-2">لا يوجد تعثر ✓</p>
                     ) : data.students.map((a, i) => (
-                      <div key={i} className={`rounded-xl p-3 border ${a.isLongStumbling ? "bg-rose-50/80 border-rose-200" : "bg-amber-50/60 border-amber-100"}`}>
+                      <div key={i} className="rounded-xl p-3 border bg-amber-50/60 border-amber-100">
                         <div className="flex items-center justify-between gap-2">
                           <p className="font-semibold text-sm text-foreground">{a.studentName}</p>
                           <div className="flex gap-1 flex-shrink-0 flex-wrap justify-end">
@@ -546,22 +541,11 @@ export default function StumblingStatsPage() {
                             {a.shortcomingCount >= 3 && (
                               <Badge className="bg-amber-100 text-amber-800 border-0 text-xs">{a.shortcomingCount} تقصير</Badge>
                             )}
-                            {(a.planMissedDays ?? 0) > 0 && (
-                              <Badge className={`border-0 text-xs ${a.isLongStumbling ? "bg-rose-200 text-rose-900" : "bg-teal-100 text-teal-800"}`}>
-                                {a.planMissedDays} يوم بلا مراجعة
-                                {a.isLongStumbling && " 🚨"}
-                              </Badge>
-                            )}
                           </div>
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {a.circleName} · {a.track}
                         </p>
-                        {a.issueLabel && (a.planMissedDays ?? 0) > 0 && (
-                          <p className={`text-xs mt-1 font-medium ${a.isLongStumbling ? "text-rose-700" : "text-teal-700"}`}>
-                            {a.issueLabel}
-                          </p>
-                        )}
                       </div>
                     ))}
                   </CardContent>

@@ -12,8 +12,6 @@ export * from "./examRecords";
 export * from "./badges";
 export * from "./teacherRotation";
 export * from "./studentGoals";
-export * from "./reviewPlans";
-export * from "./planNotifications";
 export * from "./deputyTasks";
 export * from "./deputyCircleVisits";
 export * from "./lowMemorizationAlerts";

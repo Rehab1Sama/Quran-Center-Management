@@ -19,7 +19,7 @@ const env = (import.meta as any).env as Record<string, string | undefined>;
 
 export const ALL_FEATURE_KEYS = [
   "stats_general", "stats_weekly", "stats_monthly", "stats_stumbling",
-  "shortcomings", "review_plans", "exam", "teacher_rotation",
+  "shortcomings", "exam", "teacher_rotation",
   "messages", "calendar", "registration", "leaves", "deputy_tasks",
   "badges", "audio", "store",
 ] as const;
@@ -65,13 +65,16 @@ export function getFieldLabel(key: string): string {
   return FIELD_LABELS[key] ?? key;
 }
 
-const NO_REVIEW_PLAN_CATEGORIES = new Set(["أطفال", "أمهات", "تصحيح تلاوة"]);
-const NO_REVIEW_PLAN_DATATYPES  = new Set(["recitation", "mishkah", "children", "mothers"]);
-const LEGACY_NO_REVIEW_TRACKS   = ["ألق", "سراج", "مهج", "مشكاة نور"];
-
 const NO_SHORTCOMINGS_CATEGORIES = new Set(["أطفال", "أمهات"]);
 const NO_SHORTCOMINGS_DATATYPES  = new Set(["children", "mothers"]);
 const LEGACY_NO_SHORTCOMINGS_TRACKS = ["ألق", "سراج", "مهج"];
+
+export function shouldHideReviewPlans(
+  _trackName: string | null | undefined,
+  _dataEntryType?: string | null,
+): boolean {
+  return false;
+}
 
 export function shouldHideShortcomings(
   trackName: string | null | undefined,
@@ -87,24 +90,3 @@ export function shouldHideShortcomings(
   return LEGACY_NO_SHORTCOMINGS_TRACKS.includes(trackName);
 }
 
-export function shouldHideReviewPlans(
-  trackName: string | null | undefined,
-  dataEntryType?: string | null,
-): boolean {
-  if (dataEntryType && NO_REVIEW_PLAN_DATATYPES.has(dataEntryType)) return true;
-  if (!trackName) return false;
-  const cfg = schoolConfig.defaultTrackTypes.find(t => t.name === trackName);
-  if (cfg) {
-    if (cfg.category && NO_REVIEW_PLAN_CATEGORIES.has(cfg.category)) return true;
-    if (NO_REVIEW_PLAN_DATATYPES.has(cfg.dataEntryType))             return true;
-    if (cfg.inputFields?.length) {
-      const hasReview = cfg.inputFields.some(f =>
-        f === "review_near" || f === "review_far" || f === "review"
-      );
-      const hasMem = cfg.inputFields.includes("memorize");
-      if (!hasMem && !hasReview) return true;
-      if (cfg.inputFields.includes("recitation") && !hasMem && !hasReview) return true;
-    }
-  }
-  return LEGACY_NO_REVIEW_TRACKS.includes(trackName);
-}

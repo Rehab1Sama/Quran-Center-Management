@@ -35,7 +35,7 @@ router.get("/school-config", (_req, res) => {
     roleNames,
     defaultTrackTypes: parse<{ name: string; dataEntryType: string }[]>(e.DEFAULT_TRACK_TYPES, []),
     enabledFeatures: parse<string[]>(e.VITE_ENABLED_FEATURES, [
-      "badges", "store", "audio", "review_plans", "teacher_rotation",
+      "badges", "store", "audio", "teacher_rotation",
       "shortcomings", "exam", "messages", "calendar", "deputy_tasks",
       "registration", "leaves",
     ]),

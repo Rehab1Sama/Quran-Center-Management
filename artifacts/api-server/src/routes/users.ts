@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, studentsTable, circlesTable, recordsTable, reviewPlansTable, studentGoalsTable, studentNotesTable, studentTransfersTable, planNotificationsTable, examRecordsTable } from "@workspace/db";
+import { db, usersTable, studentsTable, circlesTable, recordsTable, studentGoalsTable, studentNotesTable, studentTransfersTable, examRecordsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { hashPassword } from "../lib/auth";
 import { authenticate, requireRole } from "../middlewares/authenticate";
@@ -224,11 +224,9 @@ router.delete("/users/:id/permanent", authenticate, requireRole("leader"), async
     for (const student of students) {
       const sid = student.id;
       await db.delete(recordsTable).where(eq(recordsTable.studentId, sid));
-      await db.delete(reviewPlansTable).where(eq(reviewPlansTable.studentId, sid));
       await db.delete(studentGoalsTable).where(eq(studentGoalsTable.studentId, sid));
       await db.delete(studentNotesTable).where(eq(studentNotesTable.studentId, sid));
       await db.delete(studentTransfersTable).where(eq(studentTransfersTable.studentId, sid));
-      await db.delete(planNotificationsTable).where(eq(planNotificationsTable.studentId, sid));
       await db.delete(examRecordsTable).where(eq(examRecordsTable.studentId, sid));
       await db.delete(studentsTable).where(eq(studentsTable.id, sid));
     }

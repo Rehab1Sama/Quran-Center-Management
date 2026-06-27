@@ -1,10 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, recordsTable, studentsTable, usersTable, reviewPlansTable, circlesTable } from "@workspace/db";
+import { db, recordsTable, studentsTable, usersTable, circlesTable } from "@workspace/db";
 import { eq, and, gte, lte, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateRecordBody, UpdateRecordBody } from "@workspace/api-zod";
 import { checkAndCreateLowMemorizationAlert } from "./lowMemorizationAlerts";
-import { syncPlanMemorizedUpTo } from "../lib/planSync";
 
 const router: IRouter = Router();
 
@@ -123,111 +122,10 @@ router.get("/records/thursday-history", authenticate, async (req, res): Promise<
   res.json(Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date)));
 });
 
-router.post("/records/student-self-entry", authenticate, async (req, res): Promise<void> => {
-  if (req.userRole !== "student") {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-
-  const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
-  const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  if (!me) { res.status(403).json({ error: "Forbidden" }); return; }
-
-  const baseConditions: Parameters<typeof and>[0][] = [eq(studentsTable.fullName, me.name ?? ""), eq(studentsTable.isArchived, false)];
-  let student: typeof studentsTable.$inferSelect | undefined;
-  if (me.circleId) {
-    const [s] = await db.select().from(studentsTable).where(and(...baseConditions, eq(studentsTable.circleId, me.circleId)));
-    student = s;
-  }
-  // fallback: للطالبات في حلقة التثبيت قد يكون circleId مختلفًا في جدول المستخدمين
-  if (!student) {
-    const [s] = await db.select().from(studentsTable).where(and(...baseConditions));
-    student = s;
-  }
-  if (!student) { res.status(404).json({ error: "لم يتم العثور على سجل الطالبة" }); return; }
-
-  const isOnLeave = !!(student.leaveStart && student.leaveEnd && student.leaveStart <= today && today <= student.leaveEnd);
-  if (!isOnLeave) {
-    res.status(403).json({ error: "هذه الميزة متاحة فقط للطالبات في إجازة" });
-    return;
-  }
-
-  const [plan] = await db.select().from(reviewPlansTable)
-    .where(and(eq(reviewPlansTable.studentId, student.id), eq(reviewPlansTable.status, "active")));
-  if (!plan) { res.status(404).json({ error: "لا توجد خطة مراجعة نشطة" }); return; }
-
-  const {
-    status,
-    surahStart, ayahStart, surahEnd, ayahEnd, pages,
-    stoppedSurah, stoppedAyah, stoppedPages,
-    // legacy support
-    completed,
-  } = req.body as {
-    status?: "full" | "partial" | "none";
-    surahStart?: string; ayahStart?: number;
-    surahEnd?: string; ayahEnd?: number;
-    pages?: number;
-    stoppedSurah?: string; stoppedAyah?: number; stoppedPages?: number;
-    completed?: boolean;
-  };
-
-  // Normalise: support both old `completed` bool and new `status` string
-  const entryStatus: "full" | "partial" | "none" =
-    status ?? (completed === true ? "full" : "none");
-
-  const existing = await db.select().from(recordsTable)
-    .where(and(eq(recordsTable.studentId, student.id), eq(recordsTable.date, today)));
-  if (existing.length > 0) {
-    await db.delete(recordsTable).where(and(eq(recordsTable.studentId, student.id), eq(recordsTable.date, today)));
-  }
-
-  const useMemoForTrack = plan.trackType === "simple_review" || plan.trackType === "fixation";
-
-  const baseValues: any = {
-    studentId: student.id,
-    circleId: student.circleId!,
-    enteredById: req.userId!,
-    date: today,
-    isAbsent: false,
-  };
-
-  if (entryStatus === "none") {
-    const [record] = await db.insert(recordsTable).values({
-      ...baseValues,
-      reviewFarPages: 0,
-      memorizePages: 0,
-    }).returning();
-    res.status(201).json({ ...record, performanceStatus: "none" });
-    return;
-  }
-
-  // "full" or "partial"
-  const ss = surahStart ?? null;
-  const as_ = ayahStart ?? null;
-  const se = entryStatus === "full" ? (surahEnd ?? null) : (stoppedSurah ?? null);
-  const ae = entryStatus === "full" ? (ayahEnd ?? null) : (stoppedAyah ?? null);
-  const pg = entryStatus === "full" ? (pages ?? 0) : (stoppedPages ?? 0);
-
-  const values: any = { ...baseValues };
-
-  if (useMemoForTrack) {
-    values.memorizeSurahStart = ss;
-    values.memorizeAyahStart = as_;
-    values.memorizeSurahEnd = se;
-    values.memorizeAyahEnd = ae;
-    values.memorizePages = pg;
-  } else {
-    values.reviewFarSurahStart = ss;
-    values.reviewFarAyahStart = as_;
-    values.reviewFarSurahEnd = se;
-    values.reviewFarAyahEnd = ae;
-    values.reviewFarPages = pg;
-  }
-
-  const [record] = await db.insert(recordsTable).values(values).returning();
-  res.status(201).json({ ...record, performanceStatus: entryStatus });
+router.post("/records/student-self-entry-disabled", authenticate, async (_req, res): Promise<void> => {
+  res.status(410).json({ error: "هذه الخاصية غير متاحة حاليًا" });
 });
+
 
 router.post("/records", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "data_entry"].includes(req.userRole!)) {
@@ -243,13 +141,6 @@ router.post("/records", authenticate, async (req, res): Promise<void> => {
     ...parsed.data,
     enteredById: req.userId!,
   }).returning();
-
-  // تحديث memorizedUpToSurah في خطة التثبيت تلقائيًا إذا كان الحفظ أبعد مما سجّلناه
-  syncPlanMemorizedUpTo(
-    parsed.data.studentId,
-    parsed.data.memorizeSurahEnd as string | undefined,
-    parsed.data.memorizeAyahEnd as number | undefined,
-  ).catch(() => {});
 
   // فحص إنذار قلة الحفظ بعد الإدخال (بشكل غير متزامن لئلا يعيق الاستجابة)
   checkAndCreateLowMemorizationAlert(parsed.data.studentId, req.userId!).catch(() => {});
@@ -285,15 +176,6 @@ router.patch("/records/:id", authenticate, async (req, res): Promise<void> => {
   if (!record) {
     res.status(404).json({ error: "Record not found" });
     return;
-  }
-
-  // تحديث memorizedUpToSurah في خطة التثبيت إذا تغيّر الحفظ
-  if (parsed.data.memorizeSurahEnd && parsed.data.memorizeAyahEnd != null) {
-    syncPlanMemorizedUpTo(
-      record.studentId,
-      parsed.data.memorizeSurahEnd as string,
-      parsed.data.memorizeAyahEnd as number,
-    ).catch(() => {});
   }
 
   // فحص إنذار قلة الحفظ بعد التحديث أيضًا (بشكل غير متزامن)

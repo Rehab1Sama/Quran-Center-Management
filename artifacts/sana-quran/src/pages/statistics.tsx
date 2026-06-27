@@ -80,28 +80,6 @@ function useTeacherRecords(periodDays: number) {
   return data;
 }
 
-type ReviewPlanStats = {
-  totalWithPlan: number;
-  committed: number;
-  uncommitted: number;
-  commitmentRate: number;
-  byTrack: { trackName: string; total: number; committed: number; rate: number }[];
-};
-
-function useReviewPlanStats() {
-  const [data, setData] = useState<ReviewPlanStats | null>(null);
-  useEffect(() => {
-    const token = localStorage.getItem("sana_auth_token");
-    fetch(`${BASE}/api/stats/review-plan-stats`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(setData)
-      .catch(() => {});
-  }, []);
-  return data;
-}
-
 type JuzStats = {
   examsByJuz: { juzNumber: number; count: number }[];
   nearingJuzCompletion: number;
@@ -392,84 +370,8 @@ function JuzStatsCard({ juzStats }: { juzStats: JuzStats | null }) {
   );
 }
 
-function ReviewPlanStatsCard({ planStats }: { planStats: ReviewPlanStats | null }) {
-  if (!planStats || planStats.totalWithPlan === 0) return null;
-  const rateColor =
-    planStats.commitmentRate >= 80 ? "text-emerald-600" :
-    planStats.commitmentRate >= 50 ? "text-amber-600" : "text-rose-500";
-  return (
-    <Card className="border-0 shadow-sm">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-bold flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          الملتزمات بخطة المراجعة
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Summary row */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="text-center">
-            <p className={`text-2xl font-bold ${rateColor}`}>{planStats.commitmentRate}%</p>
-            <p className="text-xs text-muted-foreground mt-1">نسبة الالتزام</p>
-          </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-emerald-600">{planStats.committed}</p>
-            <p className="text-xs text-muted-foreground mt-1">ملتزمة</p>
-          </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-rose-500">{planStats.uncommitted}</p>
-            <p className="text-xs text-muted-foreground mt-1">غير ملتزمة</p>
-          </div>
-        </div>
-
-        {/* Progress bar */}
-        <div>
-          <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>{planStats.committed} من {planStats.totalWithPlan} طالبة لديها خطة</span>
-            <span className={`font-bold ${rateColor}`}>{planStats.commitmentRate}%</span>
-          </div>
-          <div className="bg-muted rounded-full h-3 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-700 ${
-                planStats.commitmentRate >= 80 ? "bg-emerald-500" :
-                planStats.commitmentRate >= 50 ? "bg-amber-400" : "bg-rose-400"
-              }`}
-              style={{ width: `${planStats.commitmentRate}%` }}
-            />
-          </div>
-        </div>
-
-        {/* By track breakdown */}
-        {planStats.byTrack.length > 1 && (
-          <div className="space-y-2 pt-1">
-            <p className="text-xs font-semibold text-muted-foreground">حسب المسار</p>
-            {planStats.byTrack.map(t => (
-              <div key={t.trackName} className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground w-28 shrink-0 truncate">{t.trackName}</span>
-                <div className="flex-1 bg-muted rounded-full h-2">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      t.rate >= 80 ? "bg-emerald-400" :
-                      t.rate >= 50 ? "bg-amber-400" : "bg-rose-400"
-                    }`}
-                    style={{ width: `${t.rate}%` }}
-                  />
-                </div>
-                <span className="text-xs font-bold w-10 text-right text-muted-foreground">
-                  {t.committed}/{t.total}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 function LeaderStats({ summary, circleStats, periodDays }: { summary: any; circleStats: any[]; periodDays: number }) {
   const teacherRecords = useTeacherRecords(periodDays);
-  const planStats = useReviewPlanStats();
   const juzStats = useJuzStats();
   const weeklyData = useWeeklyComparison();
   const today = new Date().toISOString().slice(0, 10);
@@ -572,9 +474,6 @@ function LeaderStats({ summary, circleStats, periodDays }: { summary: any; circl
           </CardContent>
         </Card>
       )}
-
-      {/* Review Plan Stats */}
-      <ReviewPlanStatsCard planStats={planStats} />
 
       {/* Juz Stats */}
       <JuzStatsCard juzStats={juzStats} />
@@ -693,7 +592,6 @@ function LeaderStats({ summary, circleStats, periodDays }: { summary: any; circl
 }
 
 function TrackSupervisorStats({ summary, circleStats }: { summary: any; circleStats: any[] }) {
-  const planStats = useReviewPlanStats();
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -709,8 +607,6 @@ function TrackSupervisorStats({ summary, circleStats }: { summary: any; circleSt
           {summary.totalRecitationPages > 0 && <StatCard label="التلاوة" value={formatPages(summary.totalRecitationPages)} color="text-emerald-600" icon={BookMarked} />}
         </div>
       )}
-      {/* Review Plan Stats */}
-      <ReviewPlanStatsCard planStats={planStats} />
 
       {circleStats?.length > 0 && (
         <Card className="border-0 shadow-sm">

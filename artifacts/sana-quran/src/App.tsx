@@ -40,9 +40,6 @@ import BadgesPage from "@/pages/badges";
 import TeacherRotationPage from "@/pages/teacher-rotation";
 import ShortcomingsPage from "@/pages/shortcomings";
 import StumblingStatsPage from "@/pages/stumbling-stats";
-import ReviewPlansPage from "@/pages/review-plans";
-import FixationReportPage from "@/pages/fixation-report";
-import ThursdayReviewPage from "@/pages/thursday-review";
 import DeputyTasksPage from "@/pages/deputy-tasks";
 import DeputyBoardPage from "@/pages/deputy-board";
 import DeputyCirclesPage from "@/pages/deputy-circles";
@@ -62,7 +59,7 @@ import RegistrationStudentsPage from "@/pages/registration-students";
 import CirclesStaffingPage from "@/pages/circles-staffing";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
-import { canEnterData, isFeatureEnabled, shouldHideReviewPlans } from "@/lib/schoolConfig";
+import { canEnterData, isFeatureEnabled } from "@/lib/schoolConfig";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -224,24 +221,6 @@ function AppRoutes() {
         </Route>
         <Route path="/stumbling-stats">
           {(isLeaderOrDeputy || isTrackSupervisor) && isFeatureEnabled("stats_stumbling") ? <StumblingStatsPage /> : <Redirect to="/" />}
-        </Route>
-        <Route path="/review-plans">
-          {isFeatureEnabled("review_plans") && (
-            isLeaderOrDeputy
-              ? <ReviewPlansPage />
-              : (isTrackSupervisor || isTeacher || isSupervisor || isStudent) && !shouldHideReviewPlans(user.track, (user as any).circleDataEntryType)
-                ? <ReviewPlansPage />
-                : <Redirect to="/" />
-          )}
-          {!isFeatureEnabled("review_plans") && <Redirect to="/" />}
-        </Route>
-        <Route path="/fixation-report">
-          {isFeatureEnabled("review_plans") && (isLeaderOrDeputy || isTrackSupervisor || isTeacher || isSupervisor)
-            ? <FixationReportPage />
-            : <Redirect to="/" />}
-        </Route>
-        <Route path="/thursday-review">
-          {isLeader && isFeatureEnabled("review_plans") ? <ThursdayReviewPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/badges">
           {isFeatureEnabled("badges") ? <BadgesPage userRole={user.role} userId={user.id} /> : <Redirect to="/" />}

@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useGetTodayBanner, useLogout, useGetMyMessages, useListStudents } from "@workspace/api-client-react";
 import { clearToken, getToken, setToken } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
-import { isFeatureEnabled, shouldHideReviewPlans, shouldHideShortcomings } from "@/lib/schoolConfig";
+import { isFeatureEnabled, shouldHideShortcomings } from "@/lib/schoolConfig";
 import {
   Users, ClipboardList, BarChart3,
   UserCheck, UserX, Home, LogOut, Menu, X,
@@ -705,7 +705,6 @@ function filterNav(items: NavItem[]): NavItem[] {
 }
 
 function getNavItems(role: string, unreadCount = 0, track?: string | null, circleDataEntryType?: string | null): NavItem[] {
-  const hideReviewPlan    = shouldHideReviewPlans(track, circleDataEntryType);
   const hideShortcomings  = shouldHideShortcomings(track, circleDataEntryType);
 
   if (role === "leader") {
@@ -727,9 +726,6 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
       { href: "/shortcomings", label: "التقصير", icon: AlertTriangle, feature: "shortcomings" },
       { href: "/stumbling-stats", label: "إحصائيات التعثر", icon: AlertTriangle, feature: "stats_stumbling" },
-      { href: "/review-plans", label: "خطط المراجعة", icon: BookOpen, feature: "review_plans" },
-      { href: "/fixation-report", label: "تقرير التثبيت", icon: BookOpen, feature: "review_plans" },
-      { href: "/thursday-review", label: "مراجعة الخميس", icon: CalendarCheck },
       { href: "/store-manage", label: "المتجر", icon: ShoppingBag, feature: "store" },
       { href: "/messages", label: "الرسائل", icon: MessageSquare, feature: "messages" },
       { href: "/registration", label: "التسجيل", icon: PenSquare, feature: "registration" },
@@ -765,8 +761,6 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
       { href: "/shortcomings", label: "التقصير", icon: AlertTriangle, feature: "shortcomings" },
       { href: "/stumbling-stats", label: "إحصائيات التعثر", icon: AlertTriangle, feature: "stats_stumbling" },
-      { href: "/review-plans", label: "خطط المراجعة", icon: BookOpen, feature: "review_plans" },
-      { href: "/fixation-report", label: "تقرير التثبيت", icon: BookOpen, feature: "review_plans" },
       { href: "/messages", label: "الرسائل", icon: MessageSquare, feature: "messages" },
       { href: "/registration", label: "التسجيل", icon: PenSquare, feature: "registration" },
       { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList, feature: "registration" },
@@ -792,8 +786,6 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
     return filterNav([
       { href: "/", label: "حلقتي", icon: Users },
       { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
-      ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen, feature: "review_plans" }] : []),
-      ...(!hideReviewPlan ? [{ href: "/fixation-report", label: "تقرير التثبيت", icon: BookOpen, feature: "review_plans" }] : []),
       { href: "/badges", label: "أوسمتي", icon: Award, feature: "badges" },
       { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
       { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount, feature: "messages" },
@@ -804,7 +796,6 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/", label: "تقدمي", icon: BarChart3 },
       { href: "/statistics", label: "إحصائياتي", icon: BarChart3, feature: "stats_general" },
       { href: "/badges", label: "أوسمتي", icon: Award, feature: "badges" },
-      ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen, feature: "review_plans" }] : []),
       { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
       { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount, feature: "messages" },
       { href: "/audio", label: "صوتيات المصحف", icon: Headphones, feature: "audio" },
@@ -825,8 +816,6 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
       ...(!hideShortcomings ? [{ href: "/shortcomings", label: "التقصير", icon: AlertTriangle, feature: "shortcomings" }] : []),
       ...(!hideShortcomings ? [{ href: "/stumbling-stats", label: "إحصائيات التعثر", icon: AlertTriangle, feature: "stats_stumbling" }] : []),
-      ...(!hideReviewPlan ? [{ href: "/review-plans", label: "خطط المراجعة", icon: BookOpen, feature: "review_plans" }] : []),
-      ...(!hideReviewPlan ? [{ href: "/fixation-report", label: "تقرير التثبيت", icon: BookOpen, feature: "review_plans" }] : []),
       { href: "/messages", label: "الرسائل", icon: MessageSquare, feature: "messages" },
       { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount, feature: "messages" },
       { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff, feature: "leaves" },

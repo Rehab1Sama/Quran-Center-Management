@@ -110,7 +110,6 @@ const FEATURE_GROUPS = [
   {
     label: "📚 الأدوات التعليمية",
     features: [
-      { key: "review_plans",    label: "خطط المراجعة",                 icon: BookOpen },
       { key: "exam",            label: "الاختبارات",                    icon: GraduationCap },
       { key: "teacher_rotation",label: "شقلبة المعلمات",               icon: RotateCcw },
     ],
@@ -160,7 +159,7 @@ const PACKAGES = [
     features: [
       "registration", "messages",
       "stats_general", "stats_weekly", "stats_monthly",
-      "shortcomings", "review_plans", "badges", "calendar", "leaves",
+      "shortcomings", "badges", "calendar", "leaves",
     ],
     badge: "⭐",
     color: "border-primary/30 bg-primary/5",

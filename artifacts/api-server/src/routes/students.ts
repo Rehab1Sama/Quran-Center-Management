@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, reviewPlansTable, usersTable, studentArchiveEventsTable, studentLeaveHistoryTable, studentEnrollmentsTable, planNotificationsTable } from "@workspace/db";
+import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, usersTable, studentArchiveEventsTable, studentLeaveHistoryTable, studentEnrollmentsTable } from "@workspace/db";
 import { eq, and, gte, desc, sql, ne, isNull } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateStudentBody, UpdateStudentBody } from "@workspace/api-zod";
@@ -378,10 +378,6 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
   const circleMap: Record<number, typeof circles[0]> = {};
   for (const c of circles) circleMap[c.id] = c;
 
-  const activePlans = await db.select().from(reviewPlansTable).where(eq(reviewPlansTable.status, "active"));
-  const planByStudent: Record<number, typeof activePlans[0]> = {};
-  for (const p of activePlans) planByStudent[p.studentId] = p;
-
   function getWorkingDaysBetween(start: string, end: string): string[] {
     const days: string[] = [];
     const cur = new Date(start + "T12:00:00Z");
@@ -396,19 +392,14 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
 
   const result = await Promise.all(onLeaveEnrollments.map(async enr => {
     const circle = circleMap[enr.circleId];
-    const plan = planByStudent[enr.id];
-
     const leaveStart = enr.leaveStart!;
     const leaveEnd = enr.leaveEnd!;
     const leaveDays = getWorkingDaysBetween(leaveStart, today);
-
     const trackType = circle?.trackType ?? "girls";
-    const useMemoForTrack = trackType === "simple_review" || trackType === "fixation";
     let enteredDays = 0;
     let enteredToday = false;
-    let todayStatus: "full" | "partial" | "none" | null = null;
 
-    if (plan && leaveDays.length > 0) {
+    if (leaveDays.length > 0) {
       const records = await db.select().from(recordsTable)
         .where(and(
           eq(recordsTable.studentId, enr.id),
@@ -418,14 +409,6 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
       for (const day of leaveDays) {
         const rec = records.find(r => r.date === day && !r.isAbsent);
         if (rec) { enteredDays++; if (day === today) enteredToday = true; }
-      }
-      const todayRec = records.find(r => r.date === today && !r.isAbsent);
-      if (todayRec) {
-        const actualPages = useMemoForTrack ? (todayRec.memorizePages ?? 0) : (todayRec.reviewFarPages ?? 0);
-        const plannedPerDay = plan.cycleLength > 0 ? plan.totalPages / plan.cycleLength : 0;
-        if (actualPages >= plannedPerDay && plannedPerDay > 0) todayStatus = "full";
-        else if (actualPages > 0) todayStatus = "partial";
-        else todayStatus = "none";
       }
     }
 
@@ -438,11 +421,11 @@ router.get("/students/on-leave", authenticate, async (req, res): Promise<void> =
       trackType,
       leaveStart,
       leaveEnd,
-      hasPlan: !!plan,
+      hasPlan: false,
       leaveDaysCount: leaveDays.length,
       enteredDays,
       enteredToday,
-      todayStatus,
+      todayStatus: null,
     };
   }));
 
@@ -513,18 +496,7 @@ router.patch("/students/:id/leave", authenticate, async (req, res): Promise<void
           `من: ${leaveStart} إلى: ${leaveEnd}`,
           reason ? `السبب: ${reason}` : null,
         ].filter(Boolean).join(" · ");
-        await db.insert(planNotificationsTable).values({
-          studentId: id,
-          studentName: student.fullName,
-          circleId: notifCircleId,
-          circleName: notifCircle.name,
-          track: notifCircle.track ?? "",
-          type: "leave_granted",
-          cycleCount: 0,
-          totalPages: 0,
-          note: noteText,
-          isRead: false,
-        });
+        // Leave notification recording removed (plan notifications removed)
       }
     }
   } else if (!leaveStart && !leaveEnd) {

@@ -110,7 +110,6 @@ function AttendanceHeatmap({ heatmapData }: { heatmapData: Array<{ date: string;
   );
 }
 import { useQueryClient } from "@tanstack/react-query";
-import ReviewPlanTab from "@/components/ReviewPlanTab";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -146,10 +145,6 @@ export default function StudentProfilePage({ id }: { id: number }) {
   const [leaveEnd, setLeaveEnd] = useState("");
   const [noteContent, setNoteContent] = useState("");
 
-  // Review plan state (for teacher/supervisor view)
-  const [studentReviewPlan, setStudentReviewPlan] = useState<any>(null);
-  const [planLoaded, setPlanLoaded] = useState(false);
-
   // Goals state
   const [goalFormOpen, setGoalFormOpen] = useState(false);
   const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
@@ -173,22 +168,8 @@ export default function StudentProfilePage({ id }: { id: number }) {
 
   const canEdit = ["leader", "deputy", "track_supervisor"].includes(user?.role ?? "");
   const canNote = ["leader", "deputy", "track_supervisor", "teacher", "supervisor"].includes(user?.role ?? "");
-  const canSeePlan = ["track_supervisor", "teacher", "supervisor"].includes(user?.role ?? "");
 
   const profileTrackType: string = (profile?.circle as any)?.trackType ?? "";
-  const showPlanSection = canSeePlan && (profileTrackType === "girls" || profileTrackType === "simple_review" || profileTrackType === "fixation");
-
-  useEffect(() => {
-    if (!showPlanSection || planLoaded) return;
-    const token = localStorage.getItem("sana_auth_token");
-    const h: Record<string, string> = {};
-    if (token) h["Authorization"] = `Bearer ${token}`;
-    fetch(`${BASE}/api/students/${id}/review-plan`, { headers: h })
-      .then(r => r.json())
-      .then(data => { setStudentReviewPlan(data ?? null); })
-      .catch(() => setStudentReviewPlan(null))
-      .finally(() => setPlanLoaded(true));
-  }, [showPlanSection, planLoaded, id]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["studentProfile", id] });
   const invalidateGoals = () => queryClient.invalidateQueries({ queryKey: ["studentGoals", id] });
@@ -1190,24 +1171,6 @@ export default function StudentProfilePage({ id }: { id: number }) {
             )}
           </CardContent>
         </Card>
-      )}
-
-      {/* Transfer History */}
-      {/* Review Plan Section — teacher/supervisor view */}
-      {showPlanSection && (
-        <div>
-          <ReviewPlanTab
-            studentId={id}
-            studentName={profile.fullName}
-            circleName={profile.circle?.name ?? ""}
-            trackType={profileTrackType}
-            plan={planLoaded ? studentReviewPlan : undefined}
-            onPlanChange={setStudentReviewPlan}
-            readOnly={user?.role === "track_supervisor"}
-            onAfterSave={() => navigate("/review-plans")}
-            userRole={user?.role}
-          />
-        </div>
       )}
 
       {profile.transfers.length > 0 && (
