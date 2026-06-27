@@ -77,6 +77,7 @@ EMAIL_PASS = "mkrstiewylmppfwu"
 RENDER_API_KEY = "rnd_GVBOUh6Hg2UIjUslXUd0rgcKOmig"
 NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbHNoamxkZW13eXlncnBsb3dpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzOTkyMDMsImV4cCI6MjA5NDk3NTIwM30.TU4gmL_8f-KBY_E8OnCzLX5mc1NEpXrqj_4-B0o6wAY"
 NEXT_PUBLIC_SUPABASE_URL = "https://uqlshjldemwyygrplowi.supabase.co"
+SUPABASE_DATABASE_URL = "postgresql://postgres.uqlshjldemwyygrplowi:Rrehabfall%4055@aws-0-eu-west-3.pooler.supabase.com:6543/postgres"
 
 [nix]
 channel = "stable-25_05"
