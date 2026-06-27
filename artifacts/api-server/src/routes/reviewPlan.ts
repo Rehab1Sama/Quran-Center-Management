@@ -281,22 +281,21 @@ export function buildPlanEntries(
       const actualHi = Math.min(hiIdxExcl - 1, totalWajhs - 1);
       const actualLo = Math.max(loIdxIncl, 0);
 
-      // الحد الأعلى: بداية الوجه الأعلى في هذا اليوم (حيث يبدأ الطالب المراجعة)
-      const hiAbs = inRange[actualHi].abs;
+      // الحد الأعلى: بداية الوجه الذي يعلو نطاق هذا اليوم مباشرةً (حصري)
+      // → يجعل بداية كل يوم مطابقة لنهاية اليوم الذي قبله
+      // استثناء: اليوم الأول ليس فوقه وجه، فنستخدم بداية الوجه الأعلى فعلياً
+      const hiAbs = hiIdxExcl < totalWajhs
+        ? inRange[hiIdxExcl].abs
+        : inRange[actualHi].abs;
 
-      // الحد الأدنى: نهاية الوجه الأدنى = بداية الوجه التالي - ١
-      const loMushafIdx = inRange[actualLo].mushafIdx;
-      let loEndAbs: number;
-      if (loMushafIdx + 1 >= MUSHAF_PAGES.length) {
-        loEndAbs = absAyahByNum(114, SURAHS[113].ayahs);
-      } else {
-        const [ns, na] = MUSHAF_PAGES[loMushafIdx + 1];
-        loEndAbs = absAyahByNum(ns, na) - 1;
-      }
-      loEndAbs = Math.max(loEndAbs, absEnd);
+      // الحد الأدنى: آية ١ من السورة التي ينتمي إليها أدنى وجه في هذا اليوم
+      // → تضمن أن كل سورة تُستعرض من أولها لا من منتصفها
+      const loWajhPos = posFromAbs(inRange[actualLo].abs);
+      const loSurahAyah1 = absAyah(loWajhPos.surah, 1);
+      const loAbs = Math.max(loSurahAyah1, absEnd);
 
       const sectionHigh = posFromAbs(hiAbs);
-      const sectionLow  = posFromAbs(loEndAbs);
+      const sectionLow  = posFromAbs(loAbs);
 
       entries.push({
         dayNumber: day,
