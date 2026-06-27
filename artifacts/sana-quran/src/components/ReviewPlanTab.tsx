@@ -953,9 +953,12 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
         toast({ title: data.renewed ? "تم تجديد دورة المراجعة ✓" : "تم إنشاء خطة المراجعة ✓" });
         onAfterSave?.();
       } else {
-        const err = await res.json();
-        toast({ title: err.error ?? "حدث خطأ", variant: "destructive" });
+        let errMsg = "حدث خطأ أثناء إنشاء الخطة";
+        try { const err = await res.json(); errMsg = err.error ?? errMsg; } catch { /* ignore */ }
+        toast({ title: errMsg, variant: "destructive" });
       }
+    } catch {
+      toast({ title: "تعذّر الاتصال بالخادم", variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -1262,10 +1265,13 @@ td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
                 disabled={!draftSection.startSurah || !draftSection.endSurah}
                 onClick={() => {
                   if (!draftSection.startSurah || !draftSection.endSurah) return;
-                  setSurahSections(s => [...s, {
-                    startSurah: draftSection.startSurah, startAyah: parseInt(draftSection.startAyah) || 1,
-                    endSurah: draftSection.endSurah, endAyah: parseInt(draftSection.endAyah) || 1,
-                  }]);
+                  const startIdx = SURAHS.findIndex(s => s.name === draftSection.startSurah);
+                  const endIdx   = SURAHS.findIndex(s => s.name === draftSection.endSurah);
+                  // إذا كان النطاق معكوسًا نعكسه تلقائيًا
+                  const [fromSurah, fromAyah, toSurah, toAyah] = startIdx <= endIdx
+                    ? [draftSection.startSurah, parseInt(draftSection.startAyah) || 1, draftSection.endSurah, parseInt(draftSection.endAyah) || 1]
+                    : [draftSection.endSurah,   parseInt(draftSection.endAyah)   || 1, draftSection.startSurah, parseInt(draftSection.startAyah) || 1];
+                  setSurahSections(s => [...s, { startSurah: fromSurah, startAyah: fromAyah, endSurah: toSurah, endAyah: toAyah }]);
                   setDraftSection({ startSurah: "", startAyah: "1", endSurah: "", endAyah: "1" });
                 }}
               >

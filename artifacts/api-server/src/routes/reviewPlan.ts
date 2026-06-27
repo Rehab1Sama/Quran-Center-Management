@@ -392,7 +392,12 @@ export function buildPlanEntriesFromSections(
     return buildPlanEntries(s.startSurah, s.startAyah, s.endSurah, s.endAyah, totalPages, cycleLength);
   }
   const ranges = sections
-    .map(s => ({ absStart: absAyah(s.startSurah, s.startAyah), absEnd: absAyah(s.endSurah, s.endAyah) }))
+    .map(s => {
+      const a = absAyah(s.startSurah, s.startAyah);
+      const b = absAyah(s.endSurah, s.endAyah);
+      // إذا كان النطاق معكوسًا (النهاية قبل البداية) نعكسه تلقائيًا بدل حذفه
+      return a <= b ? { absStart: a, absEnd: b } : { absStart: b, absEnd: a };
+    })
     .filter(r => r.absEnd >= r.absStart);
   if (!ranges.length) return buildPlanEntries("الفاتحة", 1, "الناس", 6, totalPages, cycleLength);
   const totalAyahs = ranges.reduce((s, r) => s + (r.absEnd - r.absStart + 1), 0);
