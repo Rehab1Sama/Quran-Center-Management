@@ -700,10 +700,11 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
 
   if (req.userRole === "student") {
     const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-    const conditions: Parameters<typeof and>[0][] = [eq(studentsTable.fullName, me?.name ?? "")];
-    if (me?.circleId) conditions.push(eq(studentsTable.circleId, me.circleId));
-    const [myStudent] = await db.select().from(studentsTable).where(and(...conditions));
-    if (!myStudent || myStudent.id !== studentId) { res.status(403).json({ error: "Forbidden" }); return; }
+    const [targetStudent] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
+    const myName = (me?.name ?? "").trim().toLowerCase();
+    const studentName = (targetStudent?.fullName ?? "").trim().toLowerCase();
+    if (!myName || myName !== studentName) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (me?.circleId && me.circleId !== targetStudent?.circleId) { res.status(403).json({ error: "Forbidden" }); return; }
   } else if (req.userRole === "teacher") {
     const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
     const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
