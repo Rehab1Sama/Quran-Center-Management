@@ -402,10 +402,9 @@ export function buildPlanEntriesFromSections(
   if (!ranges.length) return buildPlanEntries("الفاتحة", 1, "الناس", 6, totalPages, cycleLength);
   const totalAyahs = ranges.reduce((s, r) => s + (r.absEnd - r.absStart + 1), 0);
   const len = Math.max(1, Math.min(60, cycleLength));
-  const ayahsPerDay = Math.ceil(totalAyahs / len);
   const pagesPerDay = totalPages / len;
   function virtualToAbs(vi: number): number {
-    let rem = ((vi % totalAyahs) + totalAyahs) % totalAyahs;
+    let rem = Math.max(0, Math.min(vi, totalAyahs - 1));
     for (const r of ranges) {
       const slen = r.absEnd - r.absStart + 1;
       if (rem < slen) return r.absStart + rem;
@@ -415,10 +414,10 @@ export function buildPlanEntriesFromSections(
   }
   const entries: PlanDayEntry[] = [];
   for (let day = 1; day <= len; day++) {
-    const startVi = (day - 1) * ayahsPerDay;
-    const endVi = Math.min(day * ayahsPerDay - 1, totalAyahs - 1);
+    const startVi = Math.round((day - 1) * totalAyahs / len);
+    const endVi = Math.round(day * totalAyahs / len) - 1;
     const start = posFromAbs(virtualToAbs(startVi));
-    const end = posFromAbs(virtualToAbs(endVi));
+    const end = posFromAbs(virtualToAbs(Math.max(startVi, endVi)));
     entries.push({
       dayNumber: day,
       surahStart: start.surah, ayahStart: start.ayah,
@@ -845,20 +844,6 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
 
   const [existing] = await db.select().from(reviewPlansTable).where(eq(reviewPlansTable.studentId, studentId));
 
-  // قيد التجديد: لا يُسمح بتجديد الخطة قبل اكتمال الدورة أو مرور ٢١ يوم عمل (سبت–خميس)
-  if (existing) {
-    const cycleStartForCheck = existing.currentCycleStart ?? existing.startDate;
-    const rawWDForCheck = workingDayNumber(cycleStartForCheck, today);
-    const workingDaysPassed = workingDaysBetween(cycleStartForCheck, today);
-    const cycleComplete = rawWDForCheck > existing.cycleLength;
-    if (!cycleComplete && workingDaysPassed < 21) {
-      const remaining = 21 - workingDaysPassed;
-      res.status(400).json({
-        error: `لا يمكن تجديد الخطة قبل اكتمال الدورة أو مرور ٢١ يوم عمل (باقي ${remaining} يوم)`,
-      });
-      return;
-    }
-  }
 
   // Helper: insert plan notification — fires for all roles so teacher/supervisor see it
   async function insertPlanNotification(
