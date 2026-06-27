@@ -468,7 +468,7 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
         </div>
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => { setFixationQuota(1); setStep("fixation_start"); }}
+            onClick={() => { setFixationQuota(1); setStep("fixation_manual"); }}
             className="flex flex-col items-center gap-2 p-5 rounded-2xl border-2 border-emerald-400 bg-emerald-50 hover:shadow-md transition-all"
           >
             <span className="text-3xl">📖</span>
@@ -476,7 +476,7 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
             <p className="text-[10px] text-emerald-700 text-center">وجه كامل لكل جلسة</p>
           </button>
           <button
-            onClick={() => { setFixationQuota(0.5); setStep("fixation_start"); }}
+            onClick={() => { setFixationQuota(0.5); setStep("fixation_manual"); }}
             className="flex flex-col items-center gap-2 p-5 rounded-2xl border-2 border-sky-400 bg-sky-50 hover:shadow-md transition-all"
           >
             <span className="text-3xl">📄</span>
@@ -694,7 +694,7 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
         <div className="space-y-4">
           <div className="flex items-center gap-2 mb-1">
             <button onClick={() => setStep("fixation_quota")} className="text-sm text-muted-foreground hover:text-foreground">← رجوع</button>
-            <h3 className="font-bold text-sm">٢ · اكتبي نصيب كل جلسة</h3>
+            <h3 className="font-bold text-sm">٢ · أدخلي نصيب كل جلسة يدويًا</h3>
           </div>
 
           {/* شريط معلومات + زر التعبئة */}
@@ -857,10 +857,12 @@ export default function ReviewPlanTab({ studentId, studentName, circleName, trac
           ayahEnd: parseInt(e.ayahEnd) || 1,
           pages: fixationQuota,
         }));
+        const totalPagesFixed = Math.round(entries.reduce((s, e) => s + (e.pages || 0), 0) * 10) / 10;
         const body: Record<string, unknown> = {
           planType: "manual",
           cycleLength: 24,
           planEntries: entries,
+          totalPages: totalPagesFixed,
           theme: selectedTheme,
           startDate: startDate || todayStr,
         };

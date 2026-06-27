@@ -281,18 +281,17 @@ export function buildPlanEntries(
       const actualHi = Math.min(hiIdxExcl - 1, totalWajhs - 1);
       const actualLo = Math.max(loIdxIncl, 0);
 
-      // الحد الأعلى: بداية الوجه الذي يعلو نطاق هذا اليوم مباشرةً (حصري)
-      // → يجعل بداية كل يوم مطابقة لنهاية اليوم الذي قبله
-      // استثناء: اليوم الأول ليس فوقه وجه، فنستخدم بداية الوجه الأعلى فعلياً
-      const hiAbs = hiIdxExcl < totalWajhs
-        ? inRange[hiIdxExcl].abs
-        : inRange[actualHi].abs;
+      // الحد الأعلى: آية ١ من السورة التي تضم أعلى وجه في هذا اليوم
+      // → يعرض أعلى سورة فعلية لهذا اليوم (ليس حد اليوم الأعلى)
+      const hiWajhPos = posFromAbs(inRange[actualHi].abs);
+      const hiAbs = absAyah(hiWajhPos.surah, 1);
 
-      // الحد الأدنى: آية ١ من السورة التي ينتمي إليها أدنى وجه في هذا اليوم
-      // → تضمن أن كل سورة تُستعرض من أولها لا من منتصفها
+      // الحد الأدنى: آخر آية في السورة التي تضم أدنى وجه في هذا اليوم
+      // → يعرض نهاية السورة الأدنى بدلاً من بدايتها
       const loWajhPos = posFromAbs(inRange[actualLo].abs);
-      const loSurahAyah1 = absAyah(loWajhPos.surah, 1);
-      const loAbs = Math.max(loSurahAyah1, absEnd);
+      const loSurahObj = SURAHS.find(s => s.name === loWajhPos.surah);
+      const loSurahLastAyah = loSurahObj?.ayahs ?? 1;
+      const loAbs = Math.max(absAyah(loWajhPos.surah, loSurahLastAyah), absEnd);
 
       const sectionHigh = posFromAbs(hiAbs);
       const sectionLow  = posFromAbs(loAbs);
@@ -307,20 +306,62 @@ export function buildPlanEntries(
     return entries;
   }
 
-  // نطاق عادي تصاعدي
-  const totalAyahs = Math.max(1, absEnd - absStart + 1);
-  const ayahsPerDay = Math.ceil(totalAyahs / len);
+  // نطاق عادي تصاعدي — تقسيم بحدود الأوجه من مصحف المدينة
   const pagesPerDay = totalPages / len;
+
+  // جمع كل وجوه مصحف المدينة التي تقع ضمن النطاق [absStart, absEnd]
+  const inRangeFwd: Array<{ mushafIdx: number; abs: number }> = [];
+  for (let i = 0; i < MUSHAF_PAGES.length; i++) {
+    const [s, a] = MUSHAF_PAGES[i];
+    const ab = absAyahByNum(s, a);
+    if (ab >= absStart && ab <= absEnd) inRangeFwd.push({ mushafIdx: i, abs: ab });
+  }
+
+  // إذا لم تُوجد أوجه في النطاق، ارجع للتقسيم بالآيات
+  if (inRangeFwd.length === 0) {
+    const totalAyahs = Math.max(1, absEnd - absStart + 1);
+    const ayahsPerDay = Math.ceil(totalAyahs / len);
+    const entries: PlanDayEntry[] = [];
+    for (let day = 1; day <= len; day++) {
+      const startVi = (day - 1) * ayahsPerDay;
+      const endVi   = Math.min(day * ayahsPerDay - 1, totalAyahs - 1);
+      const start = posFromAbs(absStart + startVi);
+      const end   = posFromAbs(absStart + endVi);
+      entries.push({
+        dayNumber: day,
+        surahStart: start.surah, ayahStart: start.ayah,
+        surahEnd:   end.surah,   ayahEnd:   end.ayah,
+        pages: Math.round(pagesPerDay * 10) / 10,
+      });
+    }
+    return entries;
+  }
+
+  const totalWajhsFwd = inRangeFwd.length;
   const entries: PlanDayEntry[] = [];
   for (let day = 1; day <= len; day++) {
-    const startVi = (day - 1) * ayahsPerDay;
-    const endVi   = Math.min(day * ayahsPerDay - 1, totalAyahs - 1);
-    const start = posFromAbs(absStart + startVi);
-    const end   = posFromAbs(absStart + endVi);
+    const loIdxIncl = Math.round((day - 1) * totalWajhsFwd / len);
+    const hiIdxExcl = Math.round(day * totalWajhsFwd / len);
+    const actualLo  = Math.max(loIdxIncl, 0);
+    const actualHi  = Math.min(hiIdxExcl - 1, totalWajhsFwd - 1);
+
+    // الحد الأدنى: بداية الوجه (أو بداية النطاق لأول يوم)
+    const loAbs = inRangeFwd[actualLo].abs;
+    const sectionStart = posFromAbs(loAbs);
+
+    // الحد الأعلى: آخر آية قبل بداية الوجه التالي، أو آخر آية في النطاق
+    let hiAbs: number;
+    if (hiIdxExcl < totalWajhsFwd) {
+      hiAbs = inRangeFwd[hiIdxExcl].abs - 1;
+    } else {
+      hiAbs = absEnd;
+    }
+    const sectionEnd = posFromAbs(hiAbs);
+
     entries.push({
       dayNumber: day,
-      surahStart: start.surah, ayahStart: start.ayah,
-      surahEnd:   end.surah,   ayahEnd:   end.ayah,
+      surahStart: sectionStart.surah, ayahStart: sectionStart.ayah,
+      surahEnd:   sectionEnd.surah,   ayahEnd:   sectionEnd.ayah,
       pages: Math.round(pagesPerDay * 10) / 10,
     });
   }
@@ -703,6 +744,11 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
 
   if (trackType !== "girls" && trackType !== "fixation") {
     res.status(400).json({ error: "خطة المراجعة متاحة فقط لمسار الفتيات والتثبيت" }); return;
+  }
+
+  // خطة التثبيت: يدوية فقط — رفض الوضع التلقائي بدون quota
+  if (trackType === "fixation" && planType === "auto" && quota === null) {
+    res.status(400).json({ error: "خطة التثبيت يدوية فقط — يرجى إدخال الجدول يدويًا" }); return;
   }
 
   // خطة التثبيت: ٦ أسابيع × ٤ أيام = ٢٤ يوم عمل (ثابت)

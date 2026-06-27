@@ -134,9 +134,17 @@ router.post("/records/student-self-entry", authenticate, async (req, res): Promi
   const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
   if (!me) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const conditions: Parameters<typeof and>[0][] = [eq(studentsTable.fullName, me.name ?? ""), eq(studentsTable.isArchived, false)];
-  if (me.circleId) conditions.push(eq(studentsTable.circleId, me.circleId));
-  const [student] = await db.select().from(studentsTable).where(and(...conditions));
+  const baseConditions: Parameters<typeof and>[0][] = [eq(studentsTable.fullName, me.name ?? ""), eq(studentsTable.isArchived, false)];
+  let student: typeof studentsTable.$inferSelect | undefined;
+  if (me.circleId) {
+    const [s] = await db.select().from(studentsTable).where(and(...baseConditions, eq(studentsTable.circleId, me.circleId)));
+    student = s;
+  }
+  // fallback: للطالبات في حلقة التثبيت قد يكون circleId مختلفًا في جدول المستخدمين
+  if (!student) {
+    const [s] = await db.select().from(studentsTable).where(and(...baseConditions));
+    student = s;
+  }
   if (!student) { res.status(404).json({ error: "لم يتم العثور على سجل الطالبة" }); return; }
 
   const isOnLeave = !!(student.leaveStart && student.leaveEnd && student.leaveStart <= today && today <= student.leaveEnd);
