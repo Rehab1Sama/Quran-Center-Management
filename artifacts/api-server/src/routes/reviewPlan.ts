@@ -273,6 +273,7 @@ export function buildPlanEntries(
 
     const totalWajhs = inRange.length;
     const entries: PlanDayEntry[] = [];
+    let prevLoSurahNum = -1; // لتتبع سورة الحد الأدنى لليوم السابق ومنع التداخل
 
     for (let day = 1; day <= len; day++) {
       // يوم ١ = الأوجه الأعلى (الناس)، يوم len = الأوجه الأدنى (النبأ)
@@ -282,12 +283,20 @@ export function buildPlanEntries(
       const actualLo = Math.max(loIdxIncl, 0);
 
       // الحد الأعلى: آية ١ من السورة التي تضم أعلى وجه في هذا اليوم
-      // → يعرض أعلى سورة فعلية لهذا اليوم (ليس حد اليوم الأعلى)
       const hiWajhPos = posFromAbs(inRange[actualHi].abs);
-      const hiAbs = absAyah(hiWajhPos.surah, 1);
+      let hiSurahName = hiWajhPos.surah;
+
+      // منع التداخل: إذا كانت سورة الحد الأعلى هي نفس سورة الحد الأدنى لليوم السابق
+      // نتراجع خطوة للسورة التي قبلها (رقم أصغر = أبعد من الناس)
+      const hiSurahNum = SURAHS.findIndex(s => s.name === hiSurahName);
+      if (hiSurahNum !== -1 && SURAHS[hiSurahNum].n === prevLoSurahNum) {
+        const prevSurahIdx = SURAHS.findIndex(s => s.n === prevLoSurahNum - 1);
+        if (prevSurahIdx !== -1) hiSurahName = SURAHS[prevSurahIdx].name;
+      }
+
+      const hiAbs = absAyah(hiSurahName, 1);
 
       // الحد الأدنى: آخر آية في السورة التي تضم أدنى وجه في هذا اليوم
-      // → يعرض نهاية السورة الأدنى بدلاً من بدايتها
       const loWajhPos = posFromAbs(inRange[actualLo].abs);
       const loSurahObj = SURAHS.find(s => s.name === loWajhPos.surah);
       const loSurahLastAyah = loSurahObj?.ayahs ?? 1;
@@ -295,6 +304,8 @@ export function buildPlanEntries(
 
       const sectionHigh = posFromAbs(hiAbs);
       const sectionLow  = posFromAbs(loAbs);
+
+      prevLoSurahNum = loSurahObj?.n ?? -1;
 
       entries.push({
         dayNumber: day,
@@ -701,8 +712,13 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
   if (req.userRole === "student") {
     const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
     const [targetStudent] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
-    const myName = (me?.name ?? "").trim().toLowerCase();
-    const studentName = (targetStudent?.fullName ?? "").trim().toLowerCase();
+    // تطبيع الأسماء: إزالة التشكيل والمسافات الزائدة وتوحيد الحالة
+    const norm = (s: string) => (s ?? "").trim()
+      .replace(/[\u064B-\u065F\u0670\u0640]/g, "") // إزالة حروف التشكيل والتطويل
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+    const myName = norm(me?.name ?? "");
+    const studentName = norm(targetStudent?.fullName ?? "");
     if (!myName || myName !== studentName) { res.status(403).json({ error: "Forbidden" }); return; }
     if (me?.circleId && me.circleId !== targetStudent?.circleId) { res.status(403).json({ error: "Forbidden" }); return; }
   } else if (req.userRole === "teacher") {
