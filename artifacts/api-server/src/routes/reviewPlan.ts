@@ -63,6 +63,12 @@ const SURAHS = [
   { n: 112, name: "الإخلاص", ayahs: 4 },{ n: 113, name: "الفلق", ayahs: 5 },{ n: 114, name: "الناس", ayahs: 6 },
 ];
 
+function absAyahByNum(surahNum: number, ayah: number): number {
+  let total = 0;
+  for (let i = 0; i < surahNum - 1; i++) total += SURAHS[i].ayahs;
+  return total + ayah;
+}
+
 function absAyah(surahName: string, ayah: number): number {
   const idx = SURAHS.findIndex(s => s.name === surahName);
   if (idx === -1) return 0;
@@ -229,23 +235,73 @@ export function buildPlanEntries(
   const absStart = absAyah(startSurah, startAyah);
   const absEnd = absAyah(endSurah, endAyah);
 
-  // نطاق عكسي: الطالبة حفظت من s1 إلى s2 بترتيب عكسي (مثل: من الناس إلى النبأ)
-  // المحتوى = [absEnd, absStart]، لكن يوم ١ يبدأ من s1 (الناس) وينتهي عند s2 (النبأ)
+  // نطاق عكسي: من الناس إلى النبأ (أو أي نطاق عكسي)
+  // يوم ١ يبدأ من أعلى سورة (الناس)، يوم N ينتهي عند أدنى سورة
+  // نستخدم حدود الأوجه الحقيقية من مصحف المدينة لضمان أن كل مقطع يبدأ من بداية سورتها
   if (absEnd < absStart) {
-    const totalAyahs = Math.max(1, absStart - absEnd + 1);
-    const ayahsPerDay = Math.ceil(totalAyahs / len);
+    // اجمع كل إدخالات MUSHAF_PAGES التي تقع ضمن النطاق [absEnd, absStart]
+    const inRange: Array<{ mushafIdx: number; abs: number }> = [];
+    for (let i = 0; i < MUSHAF_PAGES.length; i++) {
+      const [s, a] = MUSHAF_PAGES[i];
+      const abs = absAyahByNum(s, a);
+      if (abs >= absEnd && abs <= absStart) {
+        inRange.push({ mushafIdx: i, abs });
+      }
+    }
+
     const pagesPerDay = totalPages / len;
+
+    // إذا لم تُوجد إدخالات وجه في النطاق، ارجع للتقسيم بالآيات
+    if (inRange.length === 0) {
+      const totalAyahs = Math.max(1, absStart - absEnd + 1);
+      const ayahsPerDay = Math.ceil(totalAyahs / len);
+      const entries: PlanDayEntry[] = [];
+      for (let day = 1; day <= len; day++) {
+        const chunkHigh = absStart - (day - 1) * ayahsPerDay;
+        const chunkLow  = Math.max(absStart - day * ayahsPerDay + 1, absEnd);
+        const start = posFromAbs(chunkLow);
+        const end   = posFromAbs(chunkHigh);
+        entries.push({
+          dayNumber: day,
+          surahStart: start.surah, ayahStart: start.ayah,
+          surahEnd:   end.surah,   ayahEnd:   end.ayah,
+          pages: Math.round(pagesPerDay * 10) / 10,
+        });
+      }
+      return entries;
+    }
+
+    const totalWajhs = inRange.length;
     const entries: PlanDayEntry[] = [];
+
     for (let day = 1; day <= len; day++) {
-      // يوم ١ → أعلى نطاق (absStart = الناس)، يوم N → أدنى نطاق (absEnd = النبأ)
-      const chunkHigh = absStart - (day - 1) * ayahsPerDay;
-      const chunkLow  = Math.max(absStart - day * ayahsPerDay + 1, absEnd);
-      const start = posFromAbs(chunkLow);
-      const end   = posFromAbs(chunkHigh);
+      // يوم ١ = الأوجه الأعلى (الناس)، يوم len = الأوجه الأدنى (النبأ)
+      const hiIdxExcl = totalWajhs - Math.round((day - 1) * totalWajhs / len);
+      const loIdxIncl = totalWajhs - Math.round(day * totalWajhs / len);
+      const actualHi = Math.min(hiIdxExcl - 1, totalWajhs - 1);
+      const actualLo = Math.max(loIdxIncl, 0);
+
+      // الحد الأعلى: بداية الوجه الأعلى في هذا اليوم (حيث يبدأ الطالب المراجعة)
+      const hiAbs = inRange[actualHi].abs;
+
+      // الحد الأدنى: نهاية الوجه الأدنى = بداية الوجه التالي - ١
+      const loMushafIdx = inRange[actualLo].mushafIdx;
+      let loEndAbs: number;
+      if (loMushafIdx + 1 >= MUSHAF_PAGES.length) {
+        loEndAbs = absAyahByNum(114, SURAHS[113].ayahs);
+      } else {
+        const [ns, na] = MUSHAF_PAGES[loMushafIdx + 1];
+        loEndAbs = absAyahByNum(ns, na) - 1;
+      }
+      loEndAbs = Math.max(loEndAbs, absEnd);
+
+      const sectionHigh = posFromAbs(hiAbs);
+      const sectionLow  = posFromAbs(loEndAbs);
+
       entries.push({
         dayNumber: day,
-        surahStart: start.surah, ayahStart: start.ayah,
-        surahEnd:   end.surah,   ayahEnd:   end.ayah,
+        surahStart: sectionLow.surah,  ayahStart: sectionLow.ayah,
+        surahEnd:   sectionHigh.surah, ayahEnd:   sectionHigh.ayah,
         pages: Math.round(pagesPerDay * 10) / 10,
       });
     }
