@@ -711,14 +711,11 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
 
   if (req.userRole === "student") {
     const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-    // يجب أن يكون للمستخدم حلقة — بدونها لا يمكن التحقق بشكل آمن
-    if (!me?.circleId) { res.status(403).json({ error: "Forbidden" }); return; }
-    // نبحث بالاسم + الحلقة معًا (نفس منطق PATCH وauth/me)
-    const [myStudent] = await db.select().from(studentsTable).where(
-      and(eq(studentsTable.fullName, me.name), eq(studentsTable.circleId, me.circleId))
-    );
-    // إذا لم تُوجد طالبة أو الـ id لا يطابق المطلوب → ممنوع
-    if (!myStudent || myStudent.id !== studentId) { res.status(403).json({ error: "Forbidden" }); return; }
+    const [targetStudent] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
+    // الطالبة تنشئ خطة لنفسها فقط — نتحقق أن الطالبة المطلوبة في نفس حلقة المستخدم
+    if (!me?.circleId || !targetStudent?.circleId || me.circleId !== targetStudent.circleId) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
   } else if (req.userRole === "teacher") {
     const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
     const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
