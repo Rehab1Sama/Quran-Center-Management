@@ -930,8 +930,8 @@ router.delete("/students/:id/review-plan", authenticate, async (req, res): Promi
 
 // ── PATCH /api/students/:id/review-plan — update entries or theme ──────────
 router.patch("/students/:id/review-plan", authenticate, async (req, res): Promise<void> => {
-  // Only teacher and student can edit plans
-  if (!["teacher", "student"].includes(req.userRole!)) {
+  const isAdmin = ["leader", "deputy", "track_supervisor", "supervisor"].includes(req.userRole!);
+  if (!isAdmin && !["teacher", "student"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
   const studentId = parseInt(req.params.id as string);
@@ -954,11 +954,13 @@ router.patch("/students/:id/review-plan", authenticate, async (req, res): Promis
   const [plan] = await db.select().from(reviewPlansTable).where(eq(reviewPlansTable.studentId, studentId));
   if (!plan) { res.status(404).json({ error: "لا توجد خطة" }); return; }
 
-  // Check 48-hour edit window
-  const planTime = plan.updatedAt ? new Date(plan.updatedAt).getTime() : new Date(plan.createdAt).getTime();
-  const LOCK_MS = 48 * 60 * 60 * 1000;
-  if (Date.now() - planTime > LOCK_MS) {
-    res.status(403).json({ error: "انتهت فترة التعديل المسموحة (٤٨ ساعة من إنشاء الخطة)" }); return;
+  // القائدة والمشرفة ومسؤولة المسار لا يخضعن لقيد الـ 48 ساعة
+  if (!isAdmin) {
+    const planTime = plan.updatedAt ? new Date(plan.updatedAt).getTime() : new Date(plan.createdAt).getTime();
+    const LOCK_MS = 48 * 60 * 60 * 1000;
+    if (Date.now() - planTime > LOCK_MS) {
+      res.status(403).json({ error: "انتهت فترة التعديل المسموحة (٤٨ ساعة من إنشاء الخطة)" }); return;
+    }
   }
 
   const { planEntries, planType, theme } = req.body as {
