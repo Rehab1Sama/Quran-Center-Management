@@ -709,14 +709,7 @@ router.get("/students/:id/review-plan", authenticate, async (req, res): Promise<
 router.post("/students/:id/review-plan", authenticate, async (req, res): Promise<void> => {
   const studentId = parseInt(req.params.id as string);
 
-  if (req.userRole === "student") {
-    const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-    const [targetStudent] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
-    // الطالبة تنشئ خطة لنفسها فقط — نتحقق أن الطالبة المطلوبة في نفس حلقة المستخدم
-    if (!me?.circleId || !targetStudent?.circleId || me.circleId !== targetStudent.circleId) {
-      res.status(403).json({ error: "Forbidden" }); return;
-    }
-  } else if (req.userRole === "teacher") {
+  if (req.userRole === "teacher") {
     const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
     const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
     if (!me?.circleId || me.circleId !== student?.circleId) { res.status(403).json({ error: "Forbidden" }); return; }
