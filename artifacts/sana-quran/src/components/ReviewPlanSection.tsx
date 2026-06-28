@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { SURAHS, calculatePages } from "@/lib/quran";
-import { BookOpen, Plus, Trash2, RefreshCw, Loader2, AlertCircle, ChevronRight, ChevronLeft, CalendarDays, CheckCircle2 } from "lucide-react";
+import { BookOpen, Plus, Trash2, RefreshCw, Loader2, AlertCircle, ChevronRight, ChevronLeft, CalendarDays, CheckCircle2, X } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
@@ -97,6 +97,7 @@ export interface ReviewPlan {
   quotaAyahStart?: number;
   quotaSurahEnd?: string;
   quotaAyahEnd?: number;
+  extraRanges?: string | null;
   planMode?: string;
   totalPages?: number;
   quantity?: string;
@@ -107,6 +108,13 @@ export interface ReviewPlan {
   studentName?: string;
   studentId?: number;
   circleId?: number;
+}
+
+interface SurahRange {
+  surahStart: string;
+  ayahStart: number;
+  surahEnd: string;
+  ayahEnd: number;
 }
 
 interface Props {
@@ -211,6 +219,22 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
   );
 }
 
+function buildQuotaLabel(plan: ReviewPlan): string {
+  if (plan.quotaType === "juz") return `${plan.quotaJuz} جزء`;
+  if (plan.quotaType === "surah" && plan.quotaSurahStart) {
+    const first = `${plan.quotaSurahStart}${plan.quotaAyahStart ? ` (${plan.quotaAyahStart})` : ""} ← ${plan.quotaSurahEnd}${plan.quotaAyahEnd ? ` (${plan.quotaAyahEnd})` : ""}`;
+    if (plan.extraRanges) {
+      try {
+        const extra = JSON.parse(plan.extraRanges) as SurahRange[];
+        const extraLabels = extra.map(r => `${r.surahStart}${r.ayahStart ? ` (${r.ayahStart})` : ""} ← ${r.surahEnd}${r.ayahEnd ? ` (${r.ayahEnd})` : ""}`);
+        return [first, ...extraLabels].join(" + ");
+      } catch { return first; }
+    }
+    return first;
+  }
+  return "";
+}
+
 function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDays: number; planMode: "girls" | "fixation" }) {
   const today = getMeccaToday();
   const dates = getDayDates(plan.startDate, totalDays, planMode);
@@ -220,11 +244,7 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
   const isCompleted = today > endDate;
   const notStarted = today < plan.startDate;
 
-  const quotaLabel = plan.quotaType === "juz"
-    ? `${plan.quotaJuz} جزء`
-    : plan.quotaSurahStart
-    ? `${plan.quotaSurahStart} → ${plan.quotaSurahEnd}`
-    : "";
+  const quotaLabel = buildQuotaLabel(plan);
 
   const totalLabel = plan.totalPages != null
     ? `${plan.totalPages} صفحة`
@@ -343,6 +363,185 @@ function ColorPicker({ themeColor, setThemeColor }: { themeColor: string; setThe
   );
 }
 
+// ─── Ayah Select Dropdown ─────────────────────────────────────────────────────
+function AyahSelect({ surahName, value, onChange, placeholder }: {
+  surahName?: string; value?: number; onChange: (v: number | undefined) => void; placeholder: string;
+}) {
+  const surah = SURAHS.find(s => s.name === surahName);
+  const count = surah?.ayahs ?? 0;
+  return (
+    <select
+      className="border rounded p-1 text-xs bg-background w-full"
+      value={value ?? ""}
+      onChange={e => onChange(parseInt(e.target.value) || undefined)}
+      disabled={!surahName || count === 0}
+    >
+      <option value="">{placeholder}</option>
+      {Array.from({ length: count }, (_, i) => i + 1).map(n => (
+        <option key={n} value={n}>{n}</option>
+      ))}
+    </select>
+  );
+}
+
+// ─── Juz Grid (30 checkboxes) ─────────────────────────────────────────────────
+function JuzGrid({ selectedJuz, onChange }: {
+  selectedJuz: Set<number>;
+  onChange: (updated: Set<number>) => void;
+}) {
+  const toggle = (juz: number) => {
+    const next = new Set(selectedJuz);
+    if (next.has(juz)) next.delete(juz);
+    else next.add(juz);
+    onChange(next);
+  };
+
+  const selectAll = () => onChange(new Set(Array.from({ length: 30 }, (_, i) => i + 1)));
+  const clearAll = () => onChange(new Set());
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          {selectedJuz.size > 0
+            ? <><span className="font-bold text-foreground">{selectedJuz.size}</span> جزء محدد = <span className="font-bold text-primary">{selectedJuz.size * 20}</span> صفحة</>
+            : "اختاري الأجزاء المراد مراجعتها"}
+        </p>
+        <div className="flex gap-1.5">
+          <button onClick={selectAll} className="text-[10px] text-primary underline">الكل</button>
+          <span className="text-muted-foreground text-[10px]">|</span>
+          <button onClick={clearAll} className="text-[10px] text-muted-foreground underline">مسح</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-6 gap-1.5">
+        {Array.from({ length: 30 }, (_, i) => i + 1).map(juz => (
+          <button
+            key={juz}
+            onClick={() => toggle(juz)}
+            className={`aspect-square rounded-lg text-sm font-bold transition-all border-2 ${
+              selectedJuz.has(juz)
+                ? "bg-primary text-white border-primary shadow-sm"
+                : "bg-background text-foreground border-border hover:border-primary/40 hover:bg-primary/5"
+            }`}
+          >
+            {juz}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Multi Surah Ranges ────────────────────────────────────────────────────────
+const DEFAULT_RANGE: SurahRange = { surahStart: SURAHS[0].name, ayahStart: 1, surahEnd: SURAHS[0].name, ayahEnd: 7 };
+
+function SurahRangesEditor({ ranges, onChange }: {
+  ranges: SurahRange[];
+  onChange: (r: SurahRange[]) => void;
+}) {
+  const updateRange = (idx: number, field: keyof SurahRange, value: string | number) => {
+    const next = ranges.map((r, i) => i === idx ? { ...r, [field]: value } : r);
+    onChange(next);
+  };
+
+  const addRange = () => onChange([...ranges, { ...DEFAULT_RANGE }]);
+  const removeRange = (idx: number) => onChange(ranges.filter((_, i) => i !== idx));
+
+  const totalPages = ranges.reduce((sum, r) => {
+    const p = calculatePages(r.surahStart, r.ayahStart, r.surahEnd, r.ayahEnd);
+    return sum + (p > 0 ? p : 0);
+  }, 0);
+
+  return (
+    <div className="space-y-3">
+      {ranges.map((range, idx) => {
+        const startSurahObj = SURAHS.find(s => s.name === range.surahStart);
+        const endSurahObj = SURAHS.find(s => s.name === range.surahEnd);
+        const rangePages = calculatePages(range.surahStart, range.ayahStart, range.surahEnd, range.ayahEnd);
+
+        return (
+          <div key={idx} className="bg-muted/30 rounded-xl p-3 space-y-2 relative">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold text-muted-foreground">
+                النطاق {ranges.length > 1 ? idx + 1 : ""}
+                {rangePages > 0 && <span className="text-primary font-bold mr-1">({rangePages} صفحة)</span>}
+              </p>
+              {ranges.length > 1 && (
+                <button onClick={() => removeRange(idx)} className="text-rose-400 hover:text-rose-600 p-0.5">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-[10px] text-muted-foreground">من سورة</Label>
+                <select
+                  className="w-full border rounded-lg p-1.5 text-xs mt-0.5 bg-background"
+                  value={range.surahStart}
+                  onChange={e => {
+                    const s = SURAHS.find(s => s.name === e.target.value);
+                    updateRange(idx, "surahStart", e.target.value);
+                    if (s) updateRange(idx, "ayahStart", 1);
+                  }}
+                >
+                  {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground">من آية</Label>
+                <AyahSelect
+                  surahName={range.surahStart}
+                  value={range.ayahStart}
+                  onChange={v => updateRange(idx, "ayahStart", v ?? 1)}
+                  placeholder="آية البداية"
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground">إلى سورة</Label>
+                <select
+                  className="w-full border rounded-lg p-1.5 text-xs mt-0.5 bg-background"
+                  value={range.surahEnd}
+                  onChange={e => {
+                    const s = SURAHS.find(s => s.name === e.target.value);
+                    updateRange(idx, "surahEnd", e.target.value);
+                    if (s) updateRange(idx, "ayahEnd", s.ayahs);
+                  }}
+                >
+                  {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground">إلى آية</Label>
+                <AyahSelect
+                  surahName={range.surahEnd}
+                  value={range.ayahEnd}
+                  onChange={v => updateRange(idx, "ayahEnd", v ?? (endSurahObj?.ayahs ?? 1))}
+                  placeholder="آية النهاية"
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      <button
+        onClick={addRange}
+        className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium w-full justify-center py-2 border-2 border-dashed border-primary/30 rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-colors"
+      >
+        <Plus className="w-3.5 h-3.5" />
+        إضافة نطاق آخر
+      </button>
+
+      {totalPages > 0 && (
+        <p className="text-sm text-center text-muted-foreground">
+          إجمالي النصاب: <span className="font-bold text-foreground">{totalPages} صفحة</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Wizard ────────────────────────────────────────────────────────────────────
 function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, totalDays, planMode, planTitle }: {
   open: boolean; onClose: () => void; onSaved: () => void;
@@ -359,14 +558,12 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
   const maxSteps = isFixation ? 3 : 4;
 
   const [quotaType, setQuotaType] = useState<"juz" | "surah">("juz");
-  const [quotaJuz, setQuotaJuz] = useState(1);
-  const [quotaSurahStart, setQuotaSurahStart] = useState(SURAHS[0].name);
-  const [quotaAyahStart, setQuotaAyahStart] = useState(1);
-  const [quotaSurahEnd, setQuotaSurahEnd] = useState(SURAHS[0].name);
-  const [quotaAyahEnd, setQuotaAyahEnd] = useState(7);
+  // Juz: set of selected Juz numbers (1-30)
+  const [selectedJuz, setSelectedJuz] = useState<Set<number>>(new Set());
+  // Surah: multiple ranges
+  const [surahRanges, setSurahRanges] = useState<SurahRange[]>([{ ...DEFAULT_RANGE }]);
+
   const [wizardMode, setWizardMode] = useState<"auto" | "manual">("auto");
-  // daysInitMode tracks which mode was used to initialise the days array,
-  // so going back then forward doesn't wipe entered data unless the mode changes.
   const [daysInitMode, setDaysInitMode] = useState<"none" | "auto" | "manual">("none");
   const [quantity, setQuantity] = useState<"full" | "half">("full");
   const [startDate, setStartDate] = useState(today);
@@ -374,10 +571,12 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
   const [days, setDays] = useState<DayEntry[]>([]);
   const [totalPages, setTotalPages] = useState(0);
 
-  const surahStartObj = SURAHS.find(s => s.name === quotaSurahStart);
-  const surahEndObj = SURAHS.find(s => s.name === quotaSurahEnd);
-  const computedPages = quotaType === "juz" ? quotaJuz * 20
-    : (surahStartObj && surahEndObj ? calculatePages(quotaSurahStart, quotaAyahStart, quotaSurahEnd, quotaAyahEnd) : 0);
+  const computedPages = quotaType === "juz"
+    ? selectedJuz.size * 20
+    : surahRanges.reduce((sum, r) => {
+        const p = calculatePages(r.surahStart, r.ayahStart, r.surahEnd, r.ayahEnd);
+        return sum + (p > 0 ? p : 0);
+      }, 0);
 
   useEffect(() => {
     if (!open) {
@@ -387,7 +586,8 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
       setStartDate(today);
       setThemeColor(PLAN_COLORS[1].color);
       setQuotaType("juz");
-      setQuotaJuz(1);
+      setSelectedJuz(new Set());
+      setSurahRanges([{ ...DEFAULT_RANGE }]);
       setWizardMode("auto");
       setQuantity("full");
       setTotalPages(0);
@@ -395,11 +595,11 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
   }, [open]);
 
   const generateAutoDays = useCallback(() => {
-    const total = computedPages || quotaJuz * 20;
+    const total = computedPages;
     setTotalPages(total);
     const dist = distribute(total, totalDays);
     setDays(dist.map((pages, i) => ({ dayNumber: i + 1, pages })));
-  }, [computedPages, quotaJuz, totalDays]);
+  }, [computedPages, totalDays]);
 
   const initManualDays = useCallback(() => {
     setDays(Array.from({ length: totalDays }, (_, i) => ({ dayNumber: i + 1 })));
@@ -408,11 +608,9 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
   const goNext = () => {
     if (!isFixation && step === 2) {
       if (wizardMode === "auto") {
-        // Always regenerate for auto: quota may have changed since last generation
         generateAutoDays();
         setDaysInitMode("auto");
       } else if (days.length === 0 || daysInitMode !== "manual") {
-        // Manual: only initialise empty rows if not yet done (preserve entered data)
         initManualDays();
         setDaysInitMode("manual");
       }
@@ -432,7 +630,10 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
       if (step === 2) return startDate >= today;
       return true;
     }
-    if (step === 1) return quotaType === "juz" ? quotaJuz > 0 : !!(quotaSurahStart && quotaSurahEnd && computedPages > 0);
+    if (step === 1) {
+      if (quotaType === "juz") return selectedJuz.size > 0;
+      return computedPages > 0;
+    }
     if (step === 4) return startDate >= today;
     return true;
   };
@@ -448,12 +649,19 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
         body.quantity = quantity;
       } else {
         body.quotaType = quotaType;
-        if (quotaType === "juz") body.quotaJuz = quotaJuz;
-        else {
-          body.quotaSurahStart = quotaSurahStart;
-          body.quotaAyahStart = quotaAyahStart;
-          body.quotaSurahEnd = quotaSurahEnd;
-          body.quotaAyahEnd = quotaAyahEnd;
+        if (quotaType === "juz") {
+          body.quotaJuz = selectedJuz.size;
+        } else {
+          const firstRange = surahRanges[0];
+          if (firstRange) {
+            body.quotaSurahStart = firstRange.surahStart;
+            body.quotaAyahStart = firstRange.ayahStart;
+            body.quotaSurahEnd = firstRange.surahEnd;
+            body.quotaAyahEnd = firstRange.ayahEnd;
+          }
+          if (surahRanges.length > 1) {
+            body.extraRanges = JSON.stringify(surahRanges.slice(1));
+          }
         }
         body.totalPages = totalPages || computedPages || undefined;
       }
@@ -477,7 +685,6 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
   const renderStep = () => {
     if (isFixation) {
       switch (step) {
-        // Step 1: quantity
         case 1:
           return (
             <div className="space-y-4">
@@ -494,7 +701,6 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
               </div>
             </div>
           );
-        // Step 2: start date + colour
         case 2:
           return (
             <div className="space-y-5">
@@ -512,69 +718,30 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
               <ColorPicker themeColor={themeColor} setThemeColor={setThemeColor} />
             </div>
           );
-        // Step 3: fixation weeks (last step → save on click)
         case 3:
           return (
             <StepFixationWeeks days={days} updateDay={updateDay} quantity={quantity} startDate={startDate} />
           );
       }
     } else {
-      // Girls wizard
       switch (step) {
         // Step 1: quota
         case 1:
           return (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">اختاري نوع النصاب الذي ستراجعينه خلال ٢١ يومًا (يومياً ما عدا الجمعة)</p>
               <div className="grid grid-cols-2 gap-3">
                 {(["juz", "surah"] as const).map(t => (
                   <button key={t} onClick={() => setQuotaType(t)}
                     className={`rounded-xl p-4 border-2 text-center transition-colors ${quotaType === t ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
                     <p className="font-bold text-sm">{t === "juz" ? "أجزاء" : "سور محددة"}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{t === "juz" ? "تحددين عدد الأجزاء" : "تحددين السورة والآية"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{t === "juz" ? "تحددين الأجزاء المراد مراجعتها" : "تحددين نطاق سور بآياتهن"}</p>
                   </button>
                 ))}
               </div>
               {quotaType === "juz" ? (
-                <div className="space-y-2">
-                  <Label className="text-sm">عدد الأجزاء</Label>
-                  <div className="flex items-center gap-3">
-                    <Button variant="outline" size="sm" onClick={() => setQuotaJuz(v => Math.max(1, v - 1))}>−</Button>
-                    <span className="text-2xl font-bold w-10 text-center">{quotaJuz}</span>
-                    <Button variant="outline" size="sm" onClick={() => setQuotaJuz(v => Math.min(30, v + 1))}>+</Button>
-                    <span className="text-sm text-muted-foreground">= {quotaJuz * 20} صفحة</span>
-                  </div>
-                </div>
+                <JuzGrid selectedJuz={selectedJuz} onChange={setSelectedJuz} />
               ) : (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label className="text-xs">من سورة</Label>
-                      <select className="w-full border rounded-lg p-2 text-sm mt-1 bg-background" value={quotaSurahStart} onChange={e => setQuotaSurahStart(e.target.value)}>
-                        {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">من آية</Label>
-                      <Input type="number" min={1} max={surahStartObj?.ayahs ?? 286} value={quotaAyahStart}
-                        onChange={e => setQuotaAyahStart(parseInt(e.target.value) || 1)} className="mt-1" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label className="text-xs">إلى سورة</Label>
-                      <select className="w-full border rounded-lg p-2 text-sm mt-1 bg-background" value={quotaSurahEnd} onChange={e => setQuotaSurahEnd(e.target.value)}>
-                        {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">إلى آية</Label>
-                      <Input type="number" min={1} max={surahEndObj?.ayahs ?? 286} value={quotaAyahEnd}
-                        onChange={e => setQuotaAyahEnd(parseInt(e.target.value) || 1)} className="mt-1" />
-                    </div>
-                  </div>
-                  {computedPages > 0 && <p className="text-sm text-muted-foreground">إجمالي النصاب: <span className="font-bold text-foreground">{computedPages} صفحة</span></p>}
-                </div>
+                <SurahRangesEditor ranges={surahRanges} onChange={setSurahRanges} />
               )}
             </div>
           );
@@ -590,11 +757,21 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
                     <p className="text-xl mb-1">{m === "auto" ? "✨" : "✏️"}</p>
                     <p className="font-bold text-sm">{m === "auto" ? "تلقائية" : "يدوية"}</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {m === "auto" ? "الموقع يقسّم النصاب على ٢١ يوم" : "أنتِ تحددين لكل يوم نصابه"}
+                      {m === "auto" ? "الموقع يوزّع النصاب على ٢١ يوم" : "أنتِ تحددين لكل يوم نصابه"}
                     </p>
                   </button>
                 ))}
               </div>
+              {computedPages > 0 && (
+                <div className="bg-muted/30 rounded-xl p-3 text-sm text-center">
+                  إجمالي النصاب: <span className="font-bold text-primary">{computedPages} صفحة</span>
+                  {wizardMode === "auto" && (
+                    <span className="text-muted-foreground text-xs block mt-0.5">
+                      ≈ {(computedPages / totalDays).toFixed(1)} صفحة / يوم
+                    </span>
+                  )}
+                </div>
+              )}
               {daysInitMode !== "none" && daysInitMode !== wizardMode && (
                 <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-2">
                   ⚠️ تغيير النوع سيعيد توزيع الأيام من جديد
@@ -605,11 +782,16 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
         // Step 3: day distribution
         case 3:
           return (
-            <StepGirlsDays days={days} updateDay={updateDay} isAuto={wizardMode === "auto"}
-              totalPages={totalPages || computedPages} totalDays={totalDays}
-              onRegenerate={() => { generateAutoDays(); setDaysInitMode("auto"); }} />
+            <StepGirlsDays
+              days={days}
+              updateDay={updateDay}
+              isAuto={wizardMode === "auto"}
+              totalPages={totalPages || computedPages}
+              totalDays={totalDays}
+              onRegenerate={() => { generateAutoDays(); setDaysInitMode("auto"); }}
+            />
           );
-        // Step 4: start date + colour (last step → save)
+        // Step 4: start date + colour
         case 4:
           return (
             <div className="space-y-5">
@@ -678,6 +860,7 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
   );
 }
 
+// ─── Girls Days Step ──────────────────────────────────────────────────────────
 function StepGirlsDays({ days, updateDay, isAuto, totalPages, totalDays, onRegenerate }: {
   days: DayEntry[]; updateDay: (i: number, f: keyof DayEntry, v: any) => void;
   isAuto: boolean; totalPages: number; totalDays: number; onRegenerate: () => void;
@@ -687,7 +870,9 @@ function StepGirlsDays({ days, updateDay, isAuto, totalPages, totalDays, onRegen
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold">تقسيم الأنصبة على {totalDays} يوم</p>
+          <p className="text-sm font-semibold">
+            {isAuto ? "التوزيع التلقائي (قابل للتعديل)" : "إدخال الأنصبة يدوياً"}
+          </p>
           {totalPages > 0 && (
             <p className="text-xs text-muted-foreground mt-0.5">
               المُخصص: <span className={`font-bold ${Math.abs(assignedTotal - totalPages) < 0.6 ? "text-emerald-600" : "text-amber-600"}`}>{Math.round(assignedTotal * 2) / 2}</span> / {totalPages} صفحة
@@ -700,22 +885,33 @@ function StepGirlsDays({ days, updateDay, isAuto, totalPages, totalDays, onRegen
           </Button>
         )}
       </div>
+
+      {!isAuto && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-700">
+          الجدول فارغ — أدخلي السورة والآيات وعدد الصفحات لكل يوم
+        </div>
+      )}
+
       <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
         {days.map((day, idx) => (
           <div key={day.dayNumber} className="bg-muted/30 rounded-xl p-2">
             <p className="text-[11px] font-mono text-muted-foreground mb-1.5">يوم {day.dayNumber}</p>
             <div className="grid grid-cols-2 gap-1.5">
-              <select className="border rounded p-1 text-xs bg-background" value={day.surahStart ?? ""}
-                onChange={e => { updateDay(idx, "surahStart", e.target.value || undefined); updateDay(idx, "ayahStart", undefined); }}>
-                <option value="">— سورة البداية —</option>
-                {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
-              </select>
+              <div>
+                <select className="border rounded p-1 text-xs bg-background w-full" value={day.surahStart ?? ""}
+                  onChange={e => { updateDay(idx, "surahStart", e.target.value || undefined); updateDay(idx, "ayahStart", undefined); }}>
+                  <option value="">— سورة البداية —</option>
+                  {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
+                </select>
+              </div>
               <AyahSelect surahName={day.surahStart} value={day.ayahStart} onChange={v => updateDay(idx, "ayahStart", v)} placeholder="آية البداية" />
-              <select className="border rounded p-1 text-xs bg-background" value={day.surahEnd ?? ""}
-                onChange={e => { updateDay(idx, "surahEnd", e.target.value || undefined); updateDay(idx, "ayahEnd", undefined); }}>
-                <option value="">— سورة النهاية —</option>
-                {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
-              </select>
+              <div>
+                <select className="border rounded p-1 text-xs bg-background w-full" value={day.surahEnd ?? ""}
+                  onChange={e => { updateDay(idx, "surahEnd", e.target.value || undefined); updateDay(idx, "ayahEnd", undefined); }}>
+                  <option value="">— سورة النهاية —</option>
+                  {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
+                </select>
+              </div>
               <AyahSelect surahName={day.surahEnd} value={day.ayahEnd} onChange={v => updateDay(idx, "ayahEnd", v)} placeholder="آية النهاية" />
             </div>
             <input type="number" step="0.5" min="0" placeholder="عدد الصفحات" value={day.pages ?? ""}
@@ -728,26 +924,7 @@ function StepGirlsDays({ days, updateDay, isAuto, totalPages, totalDays, onRegen
   );
 }
 
-function AyahSelect({ surahName, value, onChange, placeholder }: {
-  surahName?: string; value?: number; onChange: (v: number | undefined) => void; placeholder: string;
-}) {
-  const surah = SURAHS.find(s => s.name === surahName);
-  const count = surah?.ayahs ?? 0;
-  return (
-    <select
-      className="border rounded p-1 text-xs bg-background"
-      value={value ?? ""}
-      onChange={e => onChange(parseInt(e.target.value) || undefined)}
-      disabled={!surahName || count === 0}
-    >
-      <option value="">{placeholder}</option>
-      {Array.from({ length: count }, (_, i) => i + 1).map(n => (
-        <option key={n} value={n}>{n}</option>
-      ))}
-    </select>
-  );
-}
-
+// ─── Fixation Weeks Step ──────────────────────────────────────────────────────
 function StepFixationWeeks({ days, updateDay, quantity, startDate }: {
   days: DayEntry[]; updateDay: (i: number, f: keyof DayEntry, v: any) => void;
   quantity: "full" | "half"; startDate: string;
@@ -794,17 +971,21 @@ function StepFixationWeeks({ days, updateDay, quantity, startDate }: {
                       {dateStr && <span className="text-[10px] text-muted-foreground">{formatArDate(dateStr)}</span>}
                     </div>
                     <div className="grid grid-cols-2 gap-1.5">
-                      <select className="border rounded p-1 text-xs bg-background" value={day.surahStart ?? ""}
-                        onChange={e => { updateDay(globalIdx, "surahStart", e.target.value || undefined); updateDay(globalIdx, "ayahStart", undefined); }}>
-                        <option value="">— سورة البداية —</option>
-                        {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
-                      </select>
+                      <div>
+                        <select className="border rounded p-1 text-xs bg-background w-full" value={day.surahStart ?? ""}
+                          onChange={e => { updateDay(globalIdx, "surahStart", e.target.value || undefined); updateDay(globalIdx, "ayahStart", undefined); }}>
+                          <option value="">— سورة البداية —</option>
+                          {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
+                        </select>
+                      </div>
                       <AyahSelect surahName={day.surahStart} value={day.ayahStart} onChange={v => updateDay(globalIdx, "ayahStart", v)} placeholder="آية البداية" />
-                      <select className="border rounded p-1 text-xs bg-background" value={day.surahEnd ?? ""}
-                        onChange={e => { updateDay(globalIdx, "surahEnd", e.target.value || undefined); updateDay(globalIdx, "ayahEnd", undefined); }}>
-                        <option value="">— سورة النهاية —</option>
-                        {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
-                      </select>
+                      <div>
+                        <select className="border rounded p-1 text-xs bg-background w-full" value={day.surahEnd ?? ""}
+                          onChange={e => { updateDay(globalIdx, "surahEnd", e.target.value || undefined); updateDay(globalIdx, "ayahEnd", undefined); }}>
+                          <option value="">— سورة النهاية —</option>
+                          {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
+                        </select>
+                      </div>
                       <AyahSelect surahName={day.surahEnd} value={day.ayahEnd} onChange={v => updateDay(globalIdx, "ayahEnd", v)} placeholder="آية النهاية" />
                     </div>
                   </div>

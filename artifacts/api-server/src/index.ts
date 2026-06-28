@@ -29,6 +29,7 @@ async function migrateReviewPlansTable() {
       ALTER COLUMN current_cycle_start DROP NOT NULL,
       ALTER COLUMN start_date DROP NOT NULL`,
     `ALTER TABLE review_plans DROP CONSTRAINT IF EXISTS review_plans_student_id_key`,
+    `ALTER TABLE review_plans ADD COLUMN IF NOT EXISTS extra_ranges text`,
   ];
   let ok = 0;
   for (const step of steps) {

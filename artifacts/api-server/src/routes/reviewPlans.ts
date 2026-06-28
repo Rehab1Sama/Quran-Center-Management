@@ -100,6 +100,7 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       quotaAyahStart,
       quotaSurahEnd,
       quotaAyahEnd,
+      extraRanges,
       planMode,
       totalPages,
       quantity,
@@ -114,6 +115,7 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       quotaAyahStart?: number;
       quotaSurahEnd?: string;
       quotaAyahEnd?: number;
+      extraRanges?: string;
       planMode?: string;
       totalPages?: number;
       quantity?: string;
@@ -162,6 +164,7 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       quotaAyahStart: quotaAyahStart ?? null,
       quotaSurahEnd: quotaSurahEnd ?? null,
       quotaAyahEnd: quotaAyahEnd ?? null,
+      extraRanges: extraRanges ?? null,
       planMode: planMode ?? null,
       totalPages: totalPages ?? null,
       quantity: quantity ?? null,

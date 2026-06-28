@@ -20,6 +20,8 @@ export const reviewPlansTable = pgTable("review_plans", {
 
   quantity: text("quantity"), // 'full' | 'half' (fixation only)
 
+  extraRanges: text("extra_ranges"),
+
   startDate: text("start_date").notNull(),
   themeColor: text("theme_color").notNull().default("#E8D5F5"),
 
