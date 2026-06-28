@@ -195,50 +195,76 @@ export function calculatePages(
   return count * 0.5;
 }
 
-export function computeDayRanges(
-  startSurahName: string,
-  startAyah: number,
-  days: Array<{ pages?: number | null }>
-): Array<{ surahStart: string; ayahStart: number; surahEnd: string; ayahEnd: number } | null> {
-  const startSurahIdx = SURAHS.findIndex(s => s.name === startSurahName);
-  if (startSurahIdx === -1) return days.map(() => null);
-  const startSurahNum = startSurahIdx + 1;
+export interface DayQuotaRange {
+  surahStart: string;
+  ayahStart: number;
+  surahEnd: string;
+  ayahEnd: number;
+}
 
-  let startWajhIdx = 0;
+function _findWajhIdx(surahNum: number, ayahNum: number): number {
+  let result = 0;
   for (let i = 0; i < MUSHAF_PAGES.length; i++) {
     const [s, a] = MUSHAF_PAGES[i]!;
-    if (s < startSurahNum || (s === startSurahNum && a <= startAyah)) startWajhIdx = i;
+    if (s < surahNum || (s === surahNum && a <= ayahNum)) result = i;
     else break;
   }
+  return result;
+}
 
-  let currentIdx = startWajhIdx;
+export function computeDayRanges(
+  quotaRanges: DayQuotaRange[],
+  days: Array<{ pages?: number | null }>
+): Array<{ surahStart: string; ayahStart: number; surahEnd: string; ayahEnd: number } | null> {
+  if (quotaRanges.length === 0) return days.map(() => null);
+
+  // Build an ordered list of all wajh indices that belong to ANY of the quota ranges
+  const allWajhIndices: number[] = [];
+
+  for (const range of quotaRanges) {
+    const startSurahIdx = SURAHS.findIndex(s => s.name === range.surahStart);
+    const endSurahIdx   = SURAHS.findIndex(s => s.name === range.surahEnd);
+    if (startSurahIdx === -1 || endSurahIdx === -1) continue;
+
+    let rawStart = _findWajhIdx(startSurahIdx + 1, range.ayahStart);
+    let rawEnd   = _findWajhIdx(endSurahIdx + 1,   range.ayahEnd);
+    if (rawStart > rawEnd) [rawStart, rawEnd] = [rawEnd, rawStart];
+
+    for (let i = rawStart; i <= rawEnd; i++) allWajhIndices.push(i);
+  }
+
+  if (allWajhIndices.length === 0) return days.map(() => null);
+
+  let pos = 0;
 
   return days.map(day => {
-    if (!day.pages || day.pages <= 0) return null;
+    if (!day.pages || day.pages <= 0 || pos >= allWajhIndices.length) return null;
     const wajhCount = Math.round(day.pages * 2);
     if (wajhCount === 0) return null;
 
-    const dayStartEntry = MUSHAF_PAGES[currentIdx];
-    const dayEndIdx = Math.min(currentIdx + wajhCount - 1, MUSHAF_PAGES.length - 1);
-    currentIdx = dayEndIdx + 1;
+    const dayStartWajhIdx = allWajhIndices[pos]!;
+    const dayEndPos       = Math.min(pos + wajhCount - 1, allWajhIndices.length - 1);
+    const dayEndWajhIdx   = allWajhIndices[dayEndPos]!;
+    pos = dayEndPos + 1;
 
-    if (!dayStartEntry) return null;
-    const startSurah = SURAHS[dayStartEntry[0] - 1];
+    const startEntry = MUSHAF_PAGES[dayStartWajhIdx];
+    if (!startEntry) return null;
+    const startSurah = SURAHS[startEntry[0] - 1];
 
     let endSurahNum: number;
     let endAyahNum: number;
-    if (dayEndIdx + 1 < MUSHAF_PAGES.length) {
-      const nextEntry = MUSHAF_PAGES[dayEndIdx + 1]!;
+    if (dayEndWajhIdx + 1 < MUSHAF_PAGES.length) {
+      const nextEntry = MUSHAF_PAGES[dayEndWajhIdx + 1]!;
       if (nextEntry[1] > 1) {
         endSurahNum = nextEntry[0];
-        endAyahNum = nextEntry[1] - 1;
+        endAyahNum  = nextEntry[1] - 1;
       } else {
         endSurahNum = nextEntry[0] - 1;
-        endAyahNum = AYAH_COUNTS[nextEntry[0] - 2] ?? 1;
+        endAyahNum  = AYAH_COUNTS[nextEntry[0] - 2] ?? 1;
       }
     } else {
       endSurahNum = 114;
-      endAyahNum = 6;
+      endAyahNum  = 6;
     }
 
     const endSurah = SURAHS[endSurahNum - 1];
@@ -246,9 +272,9 @@ export function computeDayRanges(
 
     return {
       surahStart: startSurah.name,
-      ayahStart: dayStartEntry[1],
-      surahEnd: endSurah.name,
-      ayahEnd: endAyahNum,
+      ayahStart:  startEntry[1],
+      surahEnd:   endSurah.name,
+      ayahEnd:    endAyahNum,
     };
   });
 }

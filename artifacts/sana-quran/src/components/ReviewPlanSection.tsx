@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { SURAHS, calculatePages, computeDayRanges } from "@/lib/quran";
+import { SURAHS, calculatePages, computeDayRanges, type DayQuotaRange } from "@/lib/quran";
 import { BookOpen, Plus, Trash2, RefreshCw, Loader2, AlertCircle, ChevronRight, ChevronLeft, CalendarDays, CheckCircle2, X, Lock, Printer } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -288,9 +288,14 @@ function printPlan(plan: ReviewPlan, totalDays: number, planMode: "girls" | "fix
   const endDate = dates[dates.length - 1] ?? plan.startDate;
 
   const hasSurahData = plan.days.some(d => d.surahStart);
-  const computedRanges = (!hasSurahData && plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart)
-    ? computeDayRanges(plan.quotaSurahStart, plan.quotaAyahStart, plan.days)
-    : null;
+  const _quotaRangesPrint: DayQuotaRange[] = [];
+  if (!hasSurahData && plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
+    _quotaRangesPrint.push({ surahStart: plan.quotaSurahStart, ayahStart: plan.quotaAyahStart, surahEnd: plan.quotaSurahEnd, ayahEnd: plan.quotaAyahEnd });
+    if (plan.extraRanges) {
+      try { _quotaRangesPrint.push(...(JSON.parse(plan.extraRanges) as DayQuotaRange[])); } catch {}
+    }
+  }
+  const computedRanges = _quotaRangesPrint.length > 0 ? computeDayRanges(_quotaRangesPrint, plan.days) : null;
 
   const rows = plan.days.map((day, i) => {
     const dateStr = dates[day.dayNumber - 1] ?? "";
@@ -331,9 +336,14 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
     : plan.quantity === "half" ? "نصف وجه/يوم" : plan.quantity === "full" ? "وجه/يوم" : "";
 
   const hasSurahData = plan.days.some(d => d.surahStart);
-  const computedRanges = (!hasSurahData && plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart)
-    ? computeDayRanges(plan.quotaSurahStart, plan.quotaAyahStart, plan.days)
-    : null;
+  const _quotaRanges: DayQuotaRange[] = [];
+  if (!hasSurahData && plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
+    _quotaRanges.push({ surahStart: plan.quotaSurahStart, ayahStart: plan.quotaAyahStart, surahEnd: plan.quotaSurahEnd, ayahEnd: plan.quotaAyahEnd });
+    if (plan.extraRanges) {
+      try { _quotaRanges.push(...(JSON.parse(plan.extraRanges) as DayQuotaRange[])); } catch {}
+    }
+  }
+  const computedRanges = _quotaRanges.length > 0 ? computeDayRanges(_quotaRanges, plan.days) : null;
 
   const [expanded, setExpanded] = useState(false);
   const shownDays = expanded ? plan.days : plan.days.slice(0, 7);
