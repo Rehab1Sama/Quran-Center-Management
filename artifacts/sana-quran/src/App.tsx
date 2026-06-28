@@ -57,6 +57,7 @@ import ArchivedStaffPage from "@/pages/archived-staff";
 import DbSettingsPage from "@/pages/db-settings";
 import RegistrationStudentsPage from "@/pages/registration-students";
 import CirclesStaffingPage from "@/pages/circles-staffing";
+import ReviewPlansOverviewPage from "@/pages/review-plans-overview";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 import { canEnterData, isFeatureEnabled } from "@/lib/schoolConfig";
@@ -268,6 +269,11 @@ function AppRoutes() {
         </Route>
         <Route path="/circles-staffing">
           {isLeaderOrDeputy ? <CirclesStaffingPage /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/review-plans-overview">
+          {(isLeaderOrDeputy || isTrackSupervisor || isTeacher || isSupervisor)
+            ? <ReviewPlansOverviewPage />
+            : <Redirect to="/" />}
         </Route>
 
         <Route path="/students/:id">

@@ -710,6 +710,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
   if (role === "leader") {
     return filterNav([
       { href: "/", label: "الرئيسية", icon: Home },
+      { href: "/review-plans-overview", label: "خطط المراجعة", icon: BookOpen },
       { href: "/data-entry-status", label: "المدخلات", icon: ClipboardList },
       { href: "/accounts", label: "الحسابات", icon: UserCheck },
       { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
@@ -746,6 +747,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
   if (role === "deputy") {
     return filterNav([
       { href: "/", label: "الرئيسية", icon: Home },
+      { href: "/review-plans-overview", label: "خطط المراجعة", icon: BookOpen },
       { href: "/data-entry-status", label: "المدخلات", icon: ClipboardList },
       { href: "/accounts", label: "الحسابات", icon: UserCheck },
       { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
@@ -785,6 +787,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
   if (role === "teacher" || role === "supervisor") {
     return filterNav([
       { href: "/", label: "حلقتي", icon: Users },
+      { href: "/review-plans-overview", label: "خطط المراجعة", icon: BookOpen },
       { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
       { href: "/badges", label: "أوسمتي", icon: Award, feature: "badges" },
       { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
@@ -804,6 +807,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
   if (role === "track_supervisor") {
     return filterNav([
       { href: "/", label: "مساري", icon: Users },
+      { href: "/review-plans-overview", label: "خطط المراجعة", icon: BookOpen },
       { href: "/circles", label: "الحلقات", icon: BookOpen },
       { href: "/accounts", label: "حسابات الطالبات", icon: UserCheck },
       { href: "/track-report", label: "ملخص المسار", icon: BarChart2 },

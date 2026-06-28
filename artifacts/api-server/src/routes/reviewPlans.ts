@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, reviewPlansTable, reviewPlanDaysTable, studentsTable, circlesTable, usersTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
 const router: IRouter = Router();
@@ -240,6 +240,135 @@ router.get("/circles/:circleId/review-plans", authenticate, async (req, res): Pr
       days,
     };
   }));
+
+  res.json(result);
+});
+
+// ─── Overview: all circles with students + plan status ─────────────────────────
+router.get("/review-plans/overview", authenticate, async (req, res): Promise<void> => {
+  const allowed = ["leader", "deputy", "track_supervisor", "teacher", "supervisor"];
+  if (!allowed.includes(req.userRole!)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const role = req.userRole!;
+  const userId = req.userId!;
+
+  // Determine which circles to show based on role
+  let circles: Array<{ id: number; name: string; track: string; trackType: string; trackId: number | null }> = [];
+
+  if (role === "teacher") {
+    circles = await db.select({
+      id: circlesTable.id,
+      name: circlesTable.name,
+      track: circlesTable.track,
+      trackType: circlesTable.trackType,
+      trackId: circlesTable.trackId,
+    }).from(circlesTable)
+      .where(and(eq(circlesTable.teacherId, userId), eq(circlesTable.isArchived, false)));
+  } else if (role === "supervisor") {
+    circles = await db.select({
+      id: circlesTable.id,
+      name: circlesTable.name,
+      track: circlesTable.track,
+      trackType: circlesTable.trackType,
+      trackId: circlesTable.trackId,
+    }).from(circlesTable)
+      .where(and(eq(circlesTable.supervisorId, userId), eq(circlesTable.isArchived, false)));
+  } else if (role === "track_supervisor") {
+    const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    if (!currentUser?.track) { res.json([]); return; }
+    circles = await db.select({
+      id: circlesTable.id,
+      name: circlesTable.name,
+      track: circlesTable.track,
+      trackType: circlesTable.trackType,
+      trackId: circlesTable.trackId,
+    }).from(circlesTable)
+      .where(and(eq(circlesTable.track, currentUser.track), eq(circlesTable.isArchived, false)));
+  } else {
+    // leader or deputy: all circles
+    circles = await db.select({
+      id: circlesTable.id,
+      name: circlesTable.name,
+      track: circlesTable.track,
+      trackType: circlesTable.trackType,
+      trackId: circlesTable.trackId,
+    }).from(circlesTable)
+      .where(eq(circlesTable.isArchived, false))
+      .orderBy(circlesTable.track, circlesTable.name);
+  }
+
+  if (!circles.length) { res.json([]); return; }
+
+  const circleIds = circles.map(c => c.id);
+
+  // Get all active non-archived students in these circles
+  const allStudents = await db.select({
+    id: studentsTable.id,
+    fullName: studentsTable.fullName,
+    circleId: studentsTable.circleId,
+  }).from(studentsTable)
+    .where(and(
+      inArray(studentsTable.circleId, circleIds),
+      eq(studentsTable.isArchived, false)
+    ))
+    .orderBy(studentsTable.fullName);
+
+  // Get all active plans for students in these circles
+  const activePlans = await db.select({
+    id: reviewPlansTable.id,
+    studentId: reviewPlansTable.studentId,
+    circleId: reviewPlansTable.circleId,
+    planType: reviewPlansTable.planType,
+    startDate: reviewPlansTable.startDate,
+    themeColor: reviewPlansTable.themeColor,
+    totalPages: reviewPlansTable.totalPages,
+    quotaType: reviewPlansTable.quotaType,
+    quotaJuz: reviewPlansTable.quotaJuz,
+    quotaSurahStart: reviewPlansTable.quotaSurahStart,
+    quotaSurahEnd: reviewPlansTable.quotaSurahEnd,
+    createdAt: reviewPlansTable.createdAt,
+  }).from(reviewPlansTable)
+    .where(and(
+      inArray(reviewPlansTable.circleId, circleIds),
+      eq(reviewPlansTable.status, "active")
+    ));
+
+  // Build a map: studentId -> plan
+  const planByStudent = new Map<number, typeof activePlans[0]>();
+  for (const plan of activePlans) {
+    planByStudent.set(plan.studentId, plan);
+  }
+
+  // Build result grouped by circle
+  const result = circles.map(circle => {
+    const students = allStudents.filter(s => s.circleId === circle.id);
+    return {
+      circleId: circle.id,
+      circleName: circle.name,
+      trackName: circle.track,
+      trackType: circle.trackType,
+      students: students.map(s => {
+        const plan = planByStudent.get(s.id);
+        return {
+          studentId: s.id,
+          studentName: s.fullName,
+          hasPlan: !!plan,
+          plan: plan ? {
+            id: plan.id,
+            planType: plan.planType,
+            startDate: plan.startDate,
+            themeColor: plan.themeColor,
+            totalPages: plan.totalPages,
+            quotaType: plan.quotaType,
+            quotaJuz: plan.quotaJuz,
+            quotaSurahStart: plan.quotaSurahStart,
+            quotaSurahEnd: plan.quotaSurahEnd,
+            createdAt: plan.createdAt.toISOString(),
+          } : null,
+        };
+      }),
+    };
+  });
 
   res.json(result);
 });
