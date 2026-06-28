@@ -36,6 +36,7 @@ import firstSetupRouter from "./firstSetup";
 import adminRouter from "./admin";
 import registrationStudentsRouter from "./registrationStudents";
 import reviewPlansRouter from "./reviewPlans";
+import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
@@ -76,5 +77,6 @@ router.use(firstSetupRouter);
 router.use(adminRouter);
 router.use(registrationStudentsRouter);
 router.use(reviewPlansRouter);
+router.use(settingsRouter);
 
 export default router;

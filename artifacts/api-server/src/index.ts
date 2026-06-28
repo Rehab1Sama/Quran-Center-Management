@@ -6,6 +6,21 @@ import { hashPassword } from "./lib/auth";
 import cron from "node-cron";
 import { runWeeklyBackup } from "./lib/backup";
 
+async function migrateGlobalSettings() {
+  try {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS global_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+    logger.info("global_settings migration complete");
+  } catch (err: any) {
+    logger.warn({ msg: err?.message?.slice(0, 120) }, "global_settings migration skipped");
+  }
+}
+
 async function migrateReviewPlansTable() {
   const steps = [
     `ALTER TABLE review_plans
@@ -187,6 +202,7 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  void migrateGlobalSettings();
   void migrateReviewPlansTable();
   void seedLeader();
   void normalizeEmails();
