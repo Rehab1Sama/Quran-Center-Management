@@ -286,5 +286,38 @@ CREATE TABLE IF NOT EXISTS "exam_teacher_assignments" (
   "teacher_id" integer NOT NULL,
   "original_circle_id" integer NOT NULL,
   "exam_circle_id" integer NOT NULL,
-  "created_at" timestamptz NOT NULL DEFAULT now(هل أحتاج أسوي عملية نشر عشان يحفظ آخر تعديلات سويناها قبل ما أقولك حننتقل؟)
+  "created_at" timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS "review_plans" (
+  "id" serial PRIMARY KEY,
+  "student_id" integer NOT NULL,
+  "circle_id" integer NOT NULL,
+  "plan_type" text NOT NULL,
+  "status" text NOT NULL DEFAULT 'active',
+  "quota_type" text,
+  "quota_juz" integer,
+  "quota_surah_start" text,
+  "quota_ayah_start" integer,
+  "quota_surah_end" text,
+  "quota_ayah_end" integer,
+  "plan_mode" text,
+  "total_pages" real,
+  "quantity" text,
+  "start_date" text NOT NULL,
+  "theme_color" text NOT NULL DEFAULT '#E8D5F5',
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at" timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS "review_plan_days" (
+  "id" serial PRIMARY KEY,
+  "plan_id" integer NOT NULL,
+  "day_number" integer NOT NULL,
+  "surah_start" text,
+  "ayah_start" integer,
+  "surah_end" text,
+  "ayah_end" integer,
+  "pages" real,
+  "created_at" timestamptz NOT NULL DEFAULT now()
 );

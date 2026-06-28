@@ -24,7 +24,7 @@ function authHdr(): Record<string, string> {
   return h;
 }
 
-type Tab = "progress" | "audio" | "circle";
+type Tab = "progress" | "plan" | "audio" | "circle";
 
 export default function MyProgressPage() {
   const [tab, setTab] = useState<Tab>("progress");
@@ -155,8 +155,10 @@ export default function MyProgressPage() {
     };
   }).reverse();
 
+  const hasPlanTab = myTrackType === "girls" || myTrackType === "fixation";
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "progress", label: "تقدمي", icon: <TrendingUp className="w-4 h-4" /> },
+    ...(hasPlanTab ? [{ id: "plan" as Tab, label: myTrackType === "fixation" ? "التثبيت" : "خطتي", icon: <BookOpen className="w-4 h-4" /> }] : []),
     { id: "audio",    label: "السماع",  icon: <Volume2 className="w-4 h-4" /> },
     { id: "circle",  label: "حلقتي",   icon: <Users className="w-4 h-4" /> },
   ];
@@ -202,19 +204,27 @@ export default function MyProgressPage() {
         ))}
       </div>
 
-      {/* ─── Tab 1: تقدمي ─── */}
-      {tab === "progress" && (
+      {/* ─── Tab: خطتي / التثبيت ─── */}
+      {tab === "plan" && (
         <div className="space-y-5">
-          {/* Review Plan — only for girls/fixation circles */}
-          {studentId && circleId && (myTrackType === "girls" || myTrackType === "fixation") && (
+          {studentId && circleId ? (
             <ReviewPlanSection
               studentId={studentId}
               circleId={circleId}
               trackType={myTrackType}
               canCreate={true}
             />
+          ) : (
+            <div className="text-center py-12 text-muted-foreground text-sm">
+              لا يمكن تحميل بيانات الخطة
+            </div>
           )}
+        </div>
+      )}
 
+      {/* ─── Tab 1: تقدمي ─── */}
+      {tab === "progress" && (
+        <div className="space-y-5">
           {/* Progress bar */}
           <Card className="border-0 shadow-sm" data-testid="card-progress-bar">
             <CardHeader className="pb-2">
