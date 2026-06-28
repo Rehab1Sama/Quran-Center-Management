@@ -14,6 +14,7 @@ import { formatPages } from "@/lib/quran";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import AudioContent from "@/pages/audio";
 import { useToast } from "@/hooks/use-toast";
+import ReviewPlanSection from "@/components/ReviewPlanSection";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function authHdr(): Record<string, string> {
@@ -38,6 +39,7 @@ export default function MyProgressPage() {
 
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const studentId: number | undefined = (user as any)?.studentId ?? undefined;
+
 
   const { data: myGoals = [] } = useListStudentGoals(studentId!, {
     query: { queryKey: ["studentGoals", studentId], enabled: !!studentId },
@@ -95,7 +97,7 @@ export default function MyProgressPage() {
 
   const circleId = (user as any)?.circleId as number | undefined;
   const myCircle = allCircles.find((c: any) => c.id === circleId);
-  const myTrackType: string = (myCircle as any)?.trackType ?? "girls";
+  const myTrackType: string = (myCircle as any)?.trackType ?? "";
   const circleMembers = (allStudents as any[]).filter((s: any) => s.circleId === circleId && s.fullName !== user?.name);
   const circleTeacher = (allUsers as any[]).find((u: any) => u.role === "teacher" && u.circleId === circleId);
   const circleSupervisor = (allUsers as any[]).find((u: any) => u.role === "supervisor" && u.circleId === circleId);
@@ -203,6 +205,16 @@ export default function MyProgressPage() {
       {/* ─── Tab 1: تقدمي ─── */}
       {tab === "progress" && (
         <div className="space-y-5">
+          {/* Review Plan — only for girls/fixation circles */}
+          {studentId && circleId && (myTrackType === "girls" || myTrackType === "fixation") && (
+            <ReviewPlanSection
+              studentId={studentId}
+              circleId={circleId}
+              trackType={myTrackType}
+              canCreate={false}
+            />
+          )}
+
           {/* Progress bar */}
           <Card className="border-0 shadow-sm" data-testid="card-progress-bar">
             <CardHeader className="pb-2">
