@@ -6,6 +6,42 @@ import { hashPassword } from "./lib/auth";
 import cron from "node-cron";
 import { runWeeklyBackup } from "./lib/backup";
 
+async function migrateReviewPlansTable() {
+  const steps = [
+    `ALTER TABLE review_plans
+      ADD COLUMN IF NOT EXISTS circle_id integer,
+      ADD COLUMN IF NOT EXISTS quota_type text,
+      ADD COLUMN IF NOT EXISTS quota_juz integer,
+      ADD COLUMN IF NOT EXISTS quota_surah_start text,
+      ADD COLUMN IF NOT EXISTS quota_ayah_start integer,
+      ADD COLUMN IF NOT EXISTS quota_surah_end text,
+      ADD COLUMN IF NOT EXISTS quota_ayah_end integer,
+      ADD COLUMN IF NOT EXISTS plan_mode text,
+      ADD COLUMN IF NOT EXISTS quantity text,
+      ADD COLUMN IF NOT EXISTS theme_color text NOT NULL DEFAULT '#E8D5F5'`,
+    `ALTER TABLE review_plans
+      ALTER COLUMN track_type DROP NOT NULL,
+      ALTER COLUMN plan_entries DROP NOT NULL,
+      ALTER COLUMN theme DROP NOT NULL,
+      ALTER COLUMN cycle_count DROP NOT NULL,
+      ALTER COLUMN cycle_length DROP NOT NULL,
+      ALTER COLUMN total_pages DROP NOT NULL,
+      ALTER COLUMN current_cycle_start DROP NOT NULL,
+      ALTER COLUMN start_date DROP NOT NULL`,
+    `ALTER TABLE review_plans DROP CONSTRAINT IF EXISTS review_plans_student_id_key`,
+  ];
+  let ok = 0;
+  for (const step of steps) {
+    try {
+      await db.execute(sql.raw(step));
+      ok++;
+    } catch (err: any) {
+      logger.warn({ msg: err?.message?.slice(0, 120) }, "review_plans migration step skipped");
+    }
+  }
+  logger.info({ steps: ok }, "review_plans migration complete");
+}
+
 if (!process.env.SESSION_SECRET) {
   logger.warn("[SECURITY] SESSION_SECRET is not set — using insecure fallback. Set it before going to production!");
 }
@@ -150,6 +186,7 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  void migrateReviewPlansTable();
   void seedLeader();
   void normalizeEmails();
   void repairMissingEnrollments();

@@ -14,6 +14,24 @@ function getPlanTypeForTrack(trackType: string): "girls_review" | "fixation" | n
   return null;
 }
 
+function getPlanEndDate(startDate: string, planType: "girls_review" | "fixation"): string {
+  const totalDays = planType === "fixation" ? 24 : 21;
+  const dates: string[] = [];
+  const cur = new Date(startDate + "T12:00:00Z");
+  const firstDow = cur.getUTCDay();
+  const isValid = (dow: number) => planType === "fixation" ? dow <= 3 : dow !== 5;
+  if (isValid(firstDow)) dates.push(cur.toISOString().slice(0, 10));
+  while (dates.length < totalDays) {
+    cur.setDate(cur.getDate() + 1);
+    if (isValid(cur.getUTCDay())) dates.push(cur.toISOString().slice(0, 10));
+  }
+  return dates[dates.length - 1] ?? startDate;
+}
+
+function getTodayMecca(): string {
+  return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 router.get("/students/:id/review-plan", authenticate, async (req, res): Promise<void> => {
   const allowed = ["leader", "track_supervisor", "teacher", "supervisor", "student"];
   if (!allowed.includes(req.userRole!)) { res.status(403).json({ error: "Forbidden" }); return; }
@@ -113,6 +131,21 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
 
     const planType = getPlanTypeForTrack(circle[0].trackType);
     if (!planType) { res.status(400).json({ error: "هذا المسار لا يدعم خطط المراجعة" }); return; }
+
+    // الطالبة فقط تُمنع من إنشاء خطة جديدة إذا كان عندها خطة نشطة لم تنتهِ بعد
+    if (req.userRole === "student") {
+      const [activePlan] = await db.select()
+        .from(reviewPlansTable)
+        .where(and(eq(reviewPlansTable.studentId, studentId), eq(reviewPlansTable.circleId, circleId), eq(reviewPlansTable.status, "active")))
+        .limit(1);
+      if (activePlan && activePlan.startDate) {
+        const endDate = getPlanEndDate(activePlan.startDate, activePlan.planType as "girls_review" | "fixation");
+        const today = getTodayMecca();
+        if (today <= endDate) {
+          res.status(403).json({ error: `لا يمكنك إنشاء خطة جديدة قبل انتهاء خطتك الحالية (تنتهي ${endDate})` }); return;
+        }
+      }
+    }
 
     await db.update(reviewPlansTable)
       .set({ status: "cancelled" })
