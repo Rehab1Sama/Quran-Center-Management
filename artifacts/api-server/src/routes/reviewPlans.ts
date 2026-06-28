@@ -386,15 +386,11 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       }
     }
 
-    // ── Girls: use global cycle start date ────────────────────────────────────
+    // ── Girls: use global cycle start date, fall back to provided date ────────
     let startDate: string;
     if (planType === "girls_review") {
       const cycleStart = await getGlobalCycleStartDate();
-      if (!cycleStart) {
-        res.status(400).json({ error: "لم يتم تحديد تاريخ الدور. يرجى تحديده من لوحة الإعدادات." });
-        return;
-      }
-      startDate = cycleStart;
+      startDate = cycleStart ?? req.body?.startDate ?? getTodayMecca();
     } else {
       startDate = req.body?.startDate ?? getTodayMecca();
     }
