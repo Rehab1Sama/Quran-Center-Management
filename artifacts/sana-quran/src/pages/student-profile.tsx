@@ -749,7 +749,8 @@ export default function StudentProfilePage({ id }: { id: number }) {
       {/* Review Plan Sections — per girls/fixation circle */}
       {(() => {
         const enrollments: Array<{ circleId: number; circleName: string; circleTrack: string; circleTrackType?: string; isArchived: boolean }> = (profile as any).enrollments ?? [];
-        const canCreatePlan = ["leader", "track_supervisor", "teacher", "supervisor", "student"].includes(user?.role ?? "");
+        const canCreatePlan = ["leader", "deputy", "track_supervisor", "teacher", "supervisor", "student"].includes(user?.role ?? "");
+        const canForceDeletePlan = ["leader", "deputy", "track_supervisor"].includes(user?.role ?? "");
         const planEnrollments = enrollments.filter(en => !en.isArchived && (en.circleTrackType === "girls" || en.circleTrackType === "fixation"));
         if (planEnrollments.length === 0) {
           const primaryTrack = (profile.circle as any)?.trackType ?? "";
@@ -760,6 +761,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
                 circleId={(profile.circle as any).id}
                 trackType={primaryTrack}
                 canCreate={canCreatePlan}
+                canForceDelete={canForceDeletePlan}
               />
             );
           }
@@ -772,6 +774,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
             circleId={en.circleId}
             trackType={en.circleTrackType!}
             canCreate={canCreatePlan}
+            canForceDelete={canForceDeletePlan}
           />
         ));
       })()}

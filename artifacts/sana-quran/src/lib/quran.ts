@@ -195,6 +195,64 @@ export function calculatePages(
   return count * 0.5;
 }
 
+export function computeDayRanges(
+  startSurahName: string,
+  startAyah: number,
+  days: Array<{ pages?: number | null }>
+): Array<{ surahStart: string; ayahStart: number; surahEnd: string; ayahEnd: number } | null> {
+  const startSurahIdx = SURAHS.findIndex(s => s.name === startSurahName);
+  if (startSurahIdx === -1) return days.map(() => null);
+  const startSurahNum = startSurahIdx + 1;
+
+  let startWajhIdx = 0;
+  for (let i = 0; i < MUSHAF_PAGES.length; i++) {
+    const [s, a] = MUSHAF_PAGES[i]!;
+    if (s < startSurahNum || (s === startSurahNum && a <= startAyah)) startWajhIdx = i;
+    else break;
+  }
+
+  let currentIdx = startWajhIdx;
+
+  return days.map(day => {
+    if (!day.pages || day.pages <= 0) return null;
+    const wajhCount = Math.round(day.pages * 2);
+    if (wajhCount === 0) return null;
+
+    const dayStartEntry = MUSHAF_PAGES[currentIdx];
+    const dayEndIdx = Math.min(currentIdx + wajhCount - 1, MUSHAF_PAGES.length - 1);
+    currentIdx = dayEndIdx + 1;
+
+    if (!dayStartEntry) return null;
+    const startSurah = SURAHS[dayStartEntry[0] - 1];
+
+    let endSurahNum: number;
+    let endAyahNum: number;
+    if (dayEndIdx + 1 < MUSHAF_PAGES.length) {
+      const nextEntry = MUSHAF_PAGES[dayEndIdx + 1]!;
+      if (nextEntry[1] > 1) {
+        endSurahNum = nextEntry[0];
+        endAyahNum = nextEntry[1] - 1;
+      } else {
+        endSurahNum = nextEntry[0] - 1;
+        endAyahNum = AYAH_COUNTS[nextEntry[0] - 2] ?? 1;
+      }
+    } else {
+      endSurahNum = 114;
+      endAyahNum = 6;
+    }
+
+    const endSurah = SURAHS[endSurahNum - 1];
+    if (!startSurah || !endSurah) return null;
+
+    return {
+      surahStart: startSurah.name,
+      ayahStart: dayStartEntry[1],
+      surahEnd: endSurah.name,
+      ayahEnd: endAyahNum,
+    };
+  });
+}
+
 export function formatPages(pages: number | null | undefined): string {
   if (!pages && pages !== 0) return "-";
   // Use Arabic comma for decimal

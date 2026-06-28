@@ -465,7 +465,8 @@ router.delete("/students/:id/review-plan/:planId", authenticate, async (req, res
     .where(and(eq(reviewPlansTable.id, planId), eq(reviewPlansTable.studentId, studentId)))
     .limit(1);
 
-  if (planToDelete?.planType === "girls_review" && planToDelete.startDate) {
+  const adminRoles = ["leader", "deputy", "track_supervisor"];
+  if (!adminRoles.includes(req.userRole!) && planToDelete?.planType === "girls_review" && planToDelete.startDate) {
     const endDate = getPlanEndDate(planToDelete.startDate, "girls_review");
     const today = getTodayMecca();
     if (today <= endDate) {

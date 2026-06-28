@@ -5,8 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { SURAHS, calculatePages } from "@/lib/quran";
-import { BookOpen, Plus, Trash2, RefreshCw, Loader2, AlertCircle, ChevronRight, ChevronLeft, CalendarDays, CheckCircle2, X, Lock } from "lucide-react";
+import { SURAHS, calculatePages, computeDayRanges } from "@/lib/quran";
+import { BookOpen, Plus, Trash2, RefreshCw, Loader2, AlertCircle, ChevronRight, ChevronLeft, CalendarDays, CheckCircle2, X, Lock, Printer } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
@@ -129,9 +129,10 @@ interface Props {
   circleId: number;
   trackType: string;
   canCreate: boolean;
+  canForceDelete?: boolean;
 }
 
-export default function ReviewPlanSection({ studentId, circleId, trackType, canCreate }: Props) {
+export default function ReviewPlanSection({ studentId, circleId, trackType, canCreate, canForceDelete }: Props) {
   const [plan, setPlan] = useState<ReviewPlan | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -193,13 +194,20 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
             </CardTitle>
             <div className="flex gap-2 items-center">
               {isLocked ? (
-                <div className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
-                  <Lock className="w-3 h-3" />
-                  <span>مقفلة حتى {plan!.cycleInfo!.cycleEndDate}</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
+                    <Lock className="w-3 h-3" />
+                    <span>مقفلة حتى {plan!.cycleInfo!.cycleEndDate}</span>
+                  </div>
+                  {canForceDelete && (
+                    <Button variant="ghost" size="sm" className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 gap-1" onClick={handleCancel}>
+                      <Trash2 className="w-3.5 h-3.5" />حذف
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <>
-                  {plan && canCreate && (
+                  {plan && (canCreate || canForceDelete) && (
                     <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1" onClick={handleCancel}>
                       <Trash2 className="w-3.5 h-3.5" />إلغاء
                     </Button>
@@ -273,6 +281,40 @@ function formatDayRange(day: DayEntry): string {
   return result;
 }
 
+function printPlan(plan: ReviewPlan, totalDays: number, planMode: "girls" | "fixation") {
+  const dates = getDayDates(plan.startDate, totalDays, planMode);
+  const currentDay = getCurrentPlanDay(plan.startDate, totalDays, planMode);
+  const quotaLabel = buildQuotaLabel(plan);
+  const endDate = dates[dates.length - 1] ?? plan.startDate;
+
+  const hasSurahData = plan.days.some(d => d.surahStart);
+  const computedRanges = (!hasSurahData && plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart)
+    ? computeDayRanges(plan.quotaSurahStart, plan.quotaAyahStart, plan.days)
+    : null;
+
+  const rows = plan.days.map((day, i) => {
+    const dateStr = dates[day.dayNumber - 1] ?? "";
+    const isToday = day.dayNumber === currentDay;
+    const isPast = day.dayNumber < currentDay;
+    let rangeStr: string;
+    if (day.surahStart) {
+      rangeStr = formatDayRange(day);
+    } else if (computedRanges?.[i]) {
+      const r = computedRanges[i]!;
+      rangeStr = `${r.surahStart} آية ${r.ayahStart} ← ${r.surahEnd} آية ${r.ayahEnd}`;
+    } else {
+      rangeStr = "—";
+    }
+    const style = isToday ? 'background:#f3e8ff;font-weight:bold;' : isPast ? 'opacity:0.5;' : '';
+    return `<tr style="${style}"><td>${day.dayNumber}</td><td>${dateStr ? formatArDate(dateStr) : "—"}</td><td>${rangeStr}</td><td style="text-align:center">${day.pages ?? "—"}</td></tr>`;
+  }).join("");
+
+  const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>خطة المراجعة</title><style>body{font-family:'Segoe UI',Tahoma,sans-serif;direction:rtl;padding:20px;font-size:12px;color:#333}h2{font-size:18px;margin-bottom:4px;color:#4c1d95}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0 14px}.meta-item{background:#f8f5ff;padding:8px 10px;border-radius:6px;border:1px solid #e9d5ff}.meta-label{font-size:10px;color:#7c3aed;margin-bottom:2px}.meta-value{font-weight:bold;font-size:12px}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#f5f3ff;padding:7px 8px;text-align:right;font-weight:bold;border:1px solid #e9d5ff;color:#4c1d95}td{padding:5px 8px;border:1px solid #e9e7ef;text-align:right}@media print{button{display:none}}</style></head><body><h2>خطة المراجعة</h2><p style="color:#666;margin-top:0;font-size:11px">الطالبة: ${plan.studentName ?? ""}</p><div class="meta"><div class="meta-item"><div class="meta-label">بداية الخطة</div><div class="meta-value">${formatArDate(plan.startDate)}</div></div><div class="meta-item"><div class="meta-label">نهاية الخطة</div><div class="meta-value">${formatArDate(endDate)}</div></div>${quotaLabel ? `<div class="meta-item"><div class="meta-label">النصاب</div><div class="meta-value">${quotaLabel}</div></div>` : ""}${plan.totalPages ? `<div class="meta-item"><div class="meta-label">الكمية</div><div class="meta-value">${plan.totalPages} صفحة</div></div>` : ""}</div><table><thead><tr><th>اليوم</th><th>التاريخ</th><th>النطاق</th><th>صفحات</th></tr></thead><tbody>${rows}</tbody></table><button onclick="window.print()" style="margin-top:14px;padding:8px 16px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px">طباعة</button></body></html>`;
+
+  const w = window.open('', '_blank', 'width=800,height=700');
+  if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400); }
+}
+
 function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDays: number; planMode: "girls" | "fixation" }) {
   const today = getMeccaToday();
   const dates = getDayDates(plan.startDate, totalDays, planMode);
@@ -287,6 +329,11 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
   const totalLabel = plan.totalPages != null
     ? `${plan.totalPages} صفحة`
     : plan.quantity === "half" ? "نصف وجه/يوم" : plan.quantity === "full" ? "وجه/يوم" : "";
+
+  const hasSurahData = plan.days.some(d => d.surahStart);
+  const computedRanges = (!hasSurahData && plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart)
+    ? computeDayRanges(plan.quotaSurahStart, plan.quotaAyahStart, plan.days)
+    : null;
 
   const [expanded, setExpanded] = useState(false);
   const shownDays = expanded ? plan.days : plan.days.slice(0, 7);
@@ -338,6 +385,15 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
 
       {plan.days.length > 0 && (
         <div>
+          <div className="flex justify-end mb-1.5">
+            <button
+              onClick={() => printPlan(plan, totalDays, planMode)}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              طباعة / PDF
+            </button>
+          </div>
           <div className="overflow-x-auto rounded-xl border border-border/40">
             <table className="w-full text-xs min-w-[280px]">
               <thead className="bg-muted/50">
@@ -349,17 +405,23 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
                 </tr>
               </thead>
               <tbody>
-                {shownDays.map(day => {
+                {shownDays.map((day) => {
+                  const dayIdx = plan.days.indexOf(day);
                   const dateStr = dates[day.dayNumber - 1];
                   const isToday = day.dayNumber === currentDay;
                   const isPast = day.dayNumber < currentDay;
+                  const cr = computedRanges?.[dayIdx];
                   return (
                     <tr key={day.dayNumber} className={`border-t border-border/20 ${isToday ? "font-semibold" : ""}`}
                       style={isToday ? { background: plan.themeColor + "70" } : isPast ? { opacity: 0.45 } : {}}>
                       <td className="py-1.5 px-2 text-center text-muted-foreground font-mono">{day.dayNumber}</td>
                       <td className="py-1.5 px-2 text-muted-foreground text-[11px]">{dateStr ? formatArDate(dateStr) : "—"}</td>
                       <td className="py-1.5 px-2 text-[11px]">
-                        {formatDayRange(day)}
+                        {day.surahStart
+                          ? formatDayRange(day)
+                          : cr
+                            ? `${cr.surahStart} آية ${cr.ayahStart} ← ${cr.surahEnd} آية ${cr.ayahEnd}`
+                            : "—"}
                       </td>
                       <td className="py-1.5 px-2 text-center">{day.pages ?? "—"}</td>
                     </tr>
