@@ -272,7 +272,7 @@ function AppRoutes() {
         </Route>
         <Route path="/review-plans-overview">
           {(isLeaderOrDeputy || isTrackSupervisor || isTeacher || isSupervisor)
-            ? <ReviewPlansOverviewPage />
+            ? <ReviewPlansOverviewPage userRole={user.role} />
             : <Redirect to="/" />}
         </Route>
 

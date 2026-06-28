@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { SURAHS, calculatePages } from "@/lib/quran";
-import { BookOpen, Plus, Trash2, RefreshCw, Loader2, AlertCircle, ChevronRight, ChevronLeft, CalendarDays, CheckCircle2, X } from "lucide-react";
+import { BookOpen, Plus, Trash2, RefreshCw, Loader2, AlertCircle, ChevronRight, ChevronLeft, CalendarDays, CheckCircle2, X, Lock } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
@@ -108,6 +108,13 @@ export interface ReviewPlan {
   studentName?: string;
   studentId?: number;
   circleId?: number;
+  cycleInfo?: {
+    cycleStartDate: string;
+    cycleEndDate: string;
+    currentDay: number;
+    isCompleted: boolean;
+    isLocked: boolean;
+  };
 }
 
 interface SurahRange {
@@ -151,7 +158,12 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
 
   const handleCancel = async () => {
     if (!plan || !confirm("هل تريدين إلغاء الخطة الحالية؟")) return;
-    await fetch(`${BASE}/api/students/${studentId}/review-plan/${plan.id}`, { method: "DELETE", headers: authHeader() });
+    const res = await fetch(`${BASE}/api/students/${studentId}/review-plan/${plan.id}`, { method: "DELETE", headers: authHeader() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast({ title: "لا يمكن الإلغاء", description: err?.error ?? "الخطة مقفلة حتى انتهاء الـ٢١ يوم", variant: "destructive" });
+      return;
+    }
     fetchPlan();
     toast({ title: "تم إلغاء الخطة" });
   };
@@ -168,6 +180,8 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
     );
   }
 
+  const isLocked = plan?.planType === "girls_review" && (plan?.cycleInfo?.isLocked ?? false);
+
   return (
     <>
       <Card className="border-0 shadow-sm overflow-hidden" style={plan ? { borderTop: `4px solid ${plan.themeColor}` } : {}}>
@@ -177,16 +191,25 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
               <BookOpen className="w-4 h-4 text-primary" />
               {planTitle}
             </CardTitle>
-            <div className="flex gap-2">
-              {plan && canCreate && (
-                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1" onClick={handleCancel}>
-                  <Trash2 className="w-3.5 h-3.5" />إلغاء
-                </Button>
-              )}
-              {canCreate && (
-                <Button size="sm" variant={plan ? "outline" : "default"} className="text-xs gap-1" onClick={() => setWizardOpen(true)}>
-                  {plan ? <><RefreshCw className="w-3.5 h-3.5" />تجديد</> : <><Plus className="w-3.5 h-3.5" />إنشاء خطة</>}
-                </Button>
+            <div className="flex gap-2 items-center">
+              {isLocked ? (
+                <div className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
+                  <Lock className="w-3 h-3" />
+                  <span>مقفلة حتى {plan!.cycleInfo!.cycleEndDate}</span>
+                </div>
+              ) : (
+                <>
+                  {plan && canCreate && (
+                    <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1" onClick={handleCancel}>
+                      <Trash2 className="w-3.5 h-3.5" />إلغاء
+                    </Button>
+                  )}
+                  {canCreate && (
+                    <Button size="sm" variant={plan ? "outline" : "default"} className="text-xs gap-1" onClick={() => setWizardOpen(true)}>
+                      {plan ? <><RefreshCw className="w-3.5 h-3.5" />تجديد</> : <><Plus className="w-3.5 h-3.5" />إنشاء خطة</>}
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -222,17 +245,32 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
 function buildQuotaLabel(plan: ReviewPlan): string {
   if (plan.quotaType === "juz") return `${plan.quotaJuz} جزء`;
   if (plan.quotaType === "surah" && plan.quotaSurahStart) {
-    const first = `${plan.quotaSurahStart}${plan.quotaAyahStart ? ` (${plan.quotaAyahStart})` : ""} ← ${plan.quotaSurahEnd}${plan.quotaAyahEnd ? ` (${plan.quotaAyahEnd})` : ""}`;
+    const fmtRange = (s: string, as_: number | undefined, e: string | undefined, ae: number | undefined) =>
+      `من ${s}${as_ ? ` آية ${as_}` : ""} إلى ${e ?? s}${ae ? ` آية ${ae}` : ""}`;
+    const first = fmtRange(plan.quotaSurahStart, plan.quotaAyahStart, plan.quotaSurahEnd, plan.quotaAyahEnd);
     if (plan.extraRanges) {
       try {
         const extra = JSON.parse(plan.extraRanges) as SurahRange[];
-        const extraLabels = extra.map(r => `${r.surahStart}${r.ayahStart ? ` (${r.ayahStart})` : ""} ← ${r.surahEnd}${r.ayahEnd ? ` (${r.ayahEnd})` : ""}`);
+        const extraLabels = extra.map(r => fmtRange(r.surahStart, r.ayahStart, r.surahEnd, r.ayahEnd));
         return [first, ...extraLabels].join(" + ");
       } catch { return first; }
     }
     return first;
   }
   return "";
+}
+
+function formatDayRange(day: DayEntry): string {
+  if (!day.surahStart) return "—";
+  let result = day.surahStart;
+  if (day.ayahStart) result += ` آية ${day.ayahStart}`;
+  if (day.surahEnd && day.surahEnd !== day.surahStart) {
+    result += ` ← ${day.surahEnd}`;
+    if (day.ayahEnd) result += ` آية ${day.ayahEnd}`;
+  } else if (day.ayahEnd && day.ayahEnd !== day.ayahStart) {
+    result += ` → آية ${day.ayahEnd}`;
+  }
+  return result;
 }
 
 function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDays: number; planMode: "girls" | "fixation" }) {
@@ -321,9 +359,7 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
                       <td className="py-1.5 px-2 text-center text-muted-foreground font-mono">{day.dayNumber}</td>
                       <td className="py-1.5 px-2 text-muted-foreground text-[11px]">{dateStr ? formatArDate(dateStr) : "—"}</td>
                       <td className="py-1.5 px-2 text-[11px]">
-                        {day.surahStart
-                          ? `${day.surahStart}${day.ayahStart ? ` (${day.ayahStart}` : ""}${day.surahEnd && day.surahEnd !== day.surahStart ? ` ← ${day.surahEnd}` : ""}${day.ayahEnd ? ` ${day.ayahEnd})` : ""}`
-                          : "—"}
+                        {formatDayRange(day)}
                       </td>
                       <td className="py-1.5 px-2 text-center">{day.pages ?? "—"}</td>
                     </tr>

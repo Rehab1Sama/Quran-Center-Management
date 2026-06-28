@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, CheckCircle2, XCircle, ChevronDown, ChevronUp, Users, Loader2, RefreshCw } from "lucide-react";
-import { getCurrentPlanDay, getDayDates } from "@/components/ReviewPlanSection";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { BookOpen, CheckCircle2, XCircle, ChevronDown, ChevronUp, Users, Loader2, RefreshCw, CalendarDays, RotateCcw, Clock } from "lucide-react";
+import { getCurrentPlanDay, getDayDates, formatArDate } from "@/components/ReviewPlanSection";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
@@ -11,6 +14,16 @@ const authHeader = () => {
   const t = getToken();
   if (t) h["Authorization"] = `Bearer ${t}`;
   return h;
+};
+
+type DayEntry = {
+  id: number;
+  dayNumber: number;
+  surahStart: string | null;
+  ayahStart: number | null;
+  surahEnd: string | null;
+  ayahEnd: number | null;
+  pages: number | null;
 };
 
 type PlanSummary = {
@@ -22,13 +35,19 @@ type PlanSummary = {
   quotaType: string | null;
   quotaJuz: number | null;
   quotaSurahStart: string | null;
+  quotaAyahStart: number | null;
   quotaSurahEnd: string | null;
+  quotaAyahEnd: number | null;
+  extraRanges: string | null;
+  planMode: string | null;
   createdAt: string;
+  days: DayEntry[];
 };
 
 type StudentRow = {
   studentId: number;
   studentName: string;
+  isNewcomer: boolean;
   hasPlan: boolean;
   plan: PlanSummary | null;
 };
@@ -40,6 +59,21 @@ type CircleOverview = {
   trackType: string;
   students: StudentRow[];
 };
+
+type CycleInfo = {
+  cycleStartDate: string;
+  cycleEndDate: string;
+  currentDay: number;
+  isCompleted: boolean;
+};
+
+interface Props {
+  userRole?: string;
+}
+
+function getMeccaToday(): string {
+  return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
 
 function getPlanMode(trackType: string): "girls" | "fixation" {
   return trackType === "fixation" ? "fixation" : "girls";
@@ -55,15 +89,36 @@ function getPlanTypeLabel(planType: string) {
   return planType;
 }
 
+function formatDayRange(day: DayEntry): string {
+  if (!day.surahStart) return "—";
+  let result = day.surahStart;
+  if (day.ayahStart) result += ` آية ${day.ayahStart}`;
+  if (day.surahEnd && day.surahEnd !== day.surahStart) {
+    result += ` ← ${day.surahEnd}`;
+    if (day.ayahEnd) result += ` آية ${day.ayahEnd}`;
+  } else if (day.ayahEnd && day.ayahEnd !== day.ayahStart) {
+    result += ` → آية ${day.ayahEnd}`;
+  }
+  return result;
+}
+
+function buildQuotaLabel(plan: PlanSummary): string {
+  if (plan.quotaType === "juz") return `${plan.quotaJuz} جزء`;
+  if (plan.quotaType === "surah" && plan.quotaSurahStart) {
+    return `من ${plan.quotaSurahStart}${plan.quotaAyahStart ? ` آية ${plan.quotaAyahStart}` : ""} إلى ${plan.quotaSurahEnd ?? ""}${plan.quotaAyahEnd ? ` آية ${plan.quotaAyahEnd}` : ""}`;
+  }
+  return "";
+}
+
 function getPlanProgress(plan: PlanSummary, trackType: string) {
   const totalDays = getTotalDays(trackType);
   const mode = getPlanMode(trackType);
   const dates = getDayDates(plan.startDate, totalDays, mode);
   const endDate = dates[dates.length - 1] ?? plan.startDate;
-  const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const today = getMeccaToday();
   const currentDay = getCurrentPlanDay(plan.startDate, totalDays, mode);
   const isCompleted = today > endDate;
-  const notStarted = today < dates[0];
+  const notStarted = today < dates[0]!;
   return { currentDay, totalDays, endDate, isCompleted, notStarted };
 }
 
@@ -90,36 +145,112 @@ function PlanBadge({ plan, trackType }: { plan: PlanSummary; trackType: string }
   );
 }
 
-function StudentPlanRow({ student, trackType }: { student: StudentRow; trackType: string }) {
+function FullPlanTable({ plan, trackType }: { plan: PlanSummary; trackType: string }) {
+  const totalDays = getTotalDays(trackType);
+  const mode = getPlanMode(trackType);
+  const dates = getDayDates(plan.startDate, totalDays, mode);
+  const today = getMeccaToday();
+  const currentDay = getCurrentPlanDay(plan.startDate, totalDays, mode);
+
+  if (!plan.days || plan.days.length === 0) {
+    return (
+      <div className="px-4 pb-2 text-xs text-muted-foreground italic">لا يوجد تفصيل أيام مُدخل</div>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border/30 last:border-0 hover:bg-muted/20 transition-colors">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">{student.studentName}</p>
-        {student.hasPlan && student.plan && (
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {getPlanTypeLabel(student.plan.planType)}
-            {student.plan.quotaJuz ? ` · ${student.plan.quotaJuz} جزء` : ""}
-            {student.plan.quotaSurahStart && student.plan.quotaSurahEnd
-              ? ` · ${student.plan.quotaSurahStart} → ${student.plan.quotaSurahEnd}`
-              : ""}
-          </p>
-        )}
+    <div className="px-3 pb-3">
+      <div className="overflow-x-auto rounded-lg border border-border/40">
+        <table className="w-full text-xs min-w-[280px]">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="py-1.5 px-2 text-right font-semibold text-muted-foreground w-8">يوم</th>
+              <th className="py-1.5 px-2 text-right font-semibold text-muted-foreground">التاريخ</th>
+              <th className="py-1.5 px-2 text-right font-semibold text-muted-foreground">النطاق</th>
+              <th className="py-1.5 px-2 text-center font-semibold text-muted-foreground w-12">صفحات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {plan.days.map(day => {
+              const dateStr = dates[day.dayNumber - 1];
+              const isToday = day.dayNumber === currentDay;
+              const isPast = day.dayNumber < currentDay;
+              return (
+                <tr
+                  key={day.dayNumber}
+                  className={`border-t border-border/20 ${isToday ? "font-semibold" : ""}`}
+                  style={
+                    isToday
+                      ? { background: plan.themeColor + "70" }
+                      : isPast
+                      ? { opacity: 0.4 }
+                      : {}
+                  }
+                >
+                  <td className="py-1 px-2 text-center text-muted-foreground font-mono">{day.dayNumber}</td>
+                  <td className="py-1 px-2 text-muted-foreground text-[10px]">
+                    {dateStr ? formatArDate(dateStr) : "—"}
+                  </td>
+                  <td className="py-1 px-2 text-[10px]">{formatDayRange(day)}</td>
+                  <td className="py-1 px-2 text-center">{day.pages ?? "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {student.hasPlan && student.plan ? (
-          <>
-            <span
-              className="w-3 h-3 rounded-full border border-border/30 shrink-0"
-              style={{ background: student.plan.themeColor }}
-            />
-            <PlanBadge plan={student.plan} trackType={trackType} />
-          </>
-        ) : (
-          <span className="text-[10px] bg-rose-100 text-rose-600 rounded-full px-2 py-0.5 flex items-center gap-1 whitespace-nowrap">
-            <XCircle className="w-3 h-3" /> بدون خطة
-          </span>
-        )}
+    </div>
+  );
+}
+
+function StudentPlanRow({ student, trackType }: { student: StudentRow; trackType: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const quotaLabel = student.plan ? buildQuotaLabel(student.plan) : "";
+
+  return (
+    <div className="border-b border-border/30 last:border-0">
+      <div
+        className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors cursor-pointer"
+        onClick={() => student.hasPlan && setExpanded(e => !e)}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-foreground truncate">{student.studentName}</p>
+            {student.isNewcomer && (
+              <span className="text-[9px] bg-blue-100 text-blue-600 rounded-full px-1.5 py-0.5 whitespace-nowrap shrink-0">جديدة</span>
+            )}
+          </div>
+          {student.hasPlan && student.plan && quotaLabel && (
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">{quotaLabel}</p>
+          )}
+          {student.hasPlan && student.plan && !quotaLabel && student.plan.totalPages && (
+            <p className="text-xs text-muted-foreground mt-0.5">{student.plan.totalPages} صفحة</p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {student.hasPlan && student.plan ? (
+            <>
+              <span
+                className="w-3 h-3 rounded-full border border-border/30 shrink-0"
+                style={{ background: student.plan.themeColor }}
+              />
+              <PlanBadge plan={student.plan} trackType={trackType} />
+              {student.plan.days?.length > 0 && (
+                expanded
+                  ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                  : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
+            </>
+          ) : (
+            <span className="text-[10px] bg-rose-100 text-rose-600 rounded-full px-2 py-0.5 flex items-center gap-1 whitespace-nowrap">
+              <XCircle className="w-3 h-3" /> بدون خطة
+            </span>
+          )}
+        </div>
       </div>
+      {expanded && student.plan && (
+        <FullPlanTable plan={student.plan} trackType={trackType} />
+      )}
     </div>
   );
 }
@@ -127,9 +258,7 @@ function StudentPlanRow({ student, trackType }: { student: StudentRow; trackType
 function CircleCard({ circle }: { circle: CircleOverview }) {
   const [expanded, setExpanded] = useState(true);
   const withPlan = circle.students.filter(s => s.hasPlan);
-  const withoutPlan = circle.students.filter(s => !s.hasPlan);
   const total = circle.students.length;
-
   const percentage = total > 0 ? Math.round((withPlan.length / total) * 100) : 0;
 
   return (
@@ -156,11 +285,7 @@ function CircleCard({ circle }: { circle: CircleOverview }) {
                 className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${percentage}%`,
-                  background: percentage === 100
-                    ? "#10b981"
-                    : percentage > 50
-                    ? "#8b5cf6"
-                    : "#f43f5e",
+                  background: percentage === 100 ? "#10b981" : percentage > 50 ? "#8b5cf6" : "#f43f5e",
                 }}
               />
             </div>
@@ -176,9 +301,7 @@ function CircleCard({ circle }: { circle: CircleOverview }) {
       {expanded && (
         <CardContent className="p-0 pb-1">
           {total === 0 ? (
-            <div className="px-4 py-4 text-center text-sm text-muted-foreground">
-              لا توجد طالبات في هذه الحلقة
-            </div>
+            <div className="px-4 py-4 text-center text-sm text-muted-foreground">لا توجد طالبات في هذه الحلقة</div>
           ) : (
             <div>
               {circle.students.map(s => (
@@ -192,8 +315,169 @@ function CircleCard({ circle }: { circle: CircleOverview }) {
   );
 }
 
-export default function ReviewPlansOverviewPage() {
-  const [data, setData] = useState<CircleOverview[]>([]);
+function CycleBanner({
+  cycleInfo,
+  userRole,
+  onRenewSuccess,
+}: {
+  cycleInfo: CycleInfo;
+  userRole?: string;
+  onRenewSuccess: () => void;
+}) {
+  const [renewOpen, setRenewOpen] = useState(false);
+  const [newDate, setNewDate] = useState(getMeccaToday());
+  const [renewing, setRenewing] = useState(false);
+  const [renewResult, setRenewResult] = useState<{ renewed: number; skipped: number } | null>(null);
+  const canRenew = userRole === "leader" || userRole === "deputy";
+
+  const today = getMeccaToday();
+  const daysLeft = cycleInfo.isCompleted
+    ? 0
+    : cycleInfo.currentDay > 0
+    ? 21 - cycleInfo.currentDay
+    : 21;
+
+  const handleRenew = async () => {
+    setRenewing(true);
+    try {
+      const res = await fetch(`${BASE}/api/review-plans/renew-all`, {
+        method: "POST",
+        headers: authHeader(),
+        body: JSON.stringify({ newCycleStart: newDate }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "خطأ");
+      setRenewResult({ renewed: data.renewed, skipped: data.skipped });
+      onRenewSuccess();
+    } catch (e: any) {
+      alert("خطأ: " + e.message);
+    } finally {
+      setRenewing(false);
+    }
+  };
+
+  return (
+    <>
+      <Card className={`border-0 shadow-sm ${cycleInfo.isCompleted ? "bg-emerald-50 border-emerald-200" : "bg-violet-50 border-violet-200"}`}>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${cycleInfo.isCompleted ? "bg-emerald-100" : "bg-violet-100"}`}>
+                {cycleInfo.isCompleted
+                  ? <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  : <Clock className="w-5 h-5 text-violet-600" />
+                }
+              </div>
+              <div>
+                <p className="text-sm font-bold text-foreground">
+                  {cycleInfo.isCompleted
+                    ? "انتهى الدور الحالي"
+                    : `الدور الحالي · اليوم ${cycleInfo.currentDay} من ٢١`}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {cycleInfo.isCompleted
+                    ? `انتهى في ${formatArDate(cycleInfo.cycleEndDate)}`
+                    : daysLeft > 0
+                    ? `متبقٍ ${daysLeft} يوم · ينتهي ${formatArDate(cycleInfo.cycleEndDate)}`
+                    : `ينتهي ${formatArDate(cycleInfo.cycleEndDate)}`}
+                </p>
+              </div>
+            </div>
+            {canRenew && (
+              <Button
+                size="sm"
+                className="gap-1.5 text-xs"
+                variant={cycleInfo.isCompleted ? "default" : "outline"}
+                onClick={() => { setRenewResult(null); setNewDate(today); setRenewOpen(true); }}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                تجديد الخطط
+              </Button>
+            )}
+          </div>
+
+          {/* Progress bar */}
+          {!cycleInfo.isCompleted && cycleInfo.currentDay > 0 && (
+            <div className="mt-3">
+              <div className="w-full h-2 bg-violet-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-violet-500 rounded-full transition-all"
+                  style={{ width: `${Math.min(100, (cycleInfo.currentDay / 21) * 100)}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                <span>{formatArDate(cycleInfo.cycleStartDate)}</span>
+                <span>{formatArDate(cycleInfo.cycleEndDate)}</span>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Renew dialog */}
+      <Dialog open={renewOpen} onOpenChange={v => { if (!v && !renewing) setRenewOpen(false); }}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-right">
+              <RotateCcw className="w-4 h-4 text-primary" />
+              تجديد خطط المراجعة
+            </DialogTitle>
+          </DialogHeader>
+
+          {renewResult ? (
+            <div className="space-y-3 py-2">
+              <div className="bg-emerald-50 rounded-xl p-4 text-center space-y-1">
+                <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
+                <p className="font-bold text-emerald-700">تم التجديد بنجاح!</p>
+                <p className="text-sm text-muted-foreground">جُدِّدت <span className="font-bold text-foreground">{renewResult.renewed}</span> خطة</p>
+                {renewResult.skipped > 0 && (
+                  <p className="text-xs text-muted-foreground">{renewResult.skipped} خطة لم تحتج للتجديد</p>
+                )}
+              </div>
+              <Button className="w-full" onClick={() => setRenewOpen(false)}>إغلاق</Button>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-4 py-2">
+                <p className="text-sm text-muted-foreground">
+                  سيتم تجديد جميع خطط مراجعة الفتيات تلقائياً بناءً على نصاب كل طالبة + ما حفظته خلال الـ٢١ يوم الماضية.
+                </p>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold">تاريخ بداية الدور الجديد</label>
+                  <Input
+                    type="date"
+                    value={newDate}
+                    onChange={e => setNewDate(e.target.value)}
+                    className="text-right"
+                  />
+                  {newDate && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      {formatArDate(newDate)}
+                    </p>
+                  )}
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                  ⚠️ تأكدي أن اليوم الـ٢١ قد انتهى فعلاً قبل التجديد. الخطط الجارية لن تُجدَّد.
+                </div>
+              </div>
+              <DialogFooter className="flex-row-reverse gap-2">
+                <Button onClick={handleRenew} disabled={renewing || !newDate} className="gap-1.5">
+                  {renewing ? <><Loader2 className="w-4 h-4 animate-spin" />جاري التجديد...</> : <><RotateCcw className="w-4 h-4" />تجديد الآن</>}
+                </Button>
+                <Button variant="ghost" onClick={() => setRenewOpen(false)} disabled={renewing}>إلغاء</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+export default function ReviewPlansOverviewPage({ userRole }: Props) {
+  const [circles, setCircles] = useState<CircleOverview[]>([]);
+  const [cycleInfo, setCycleInfo] = useState<CycleInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "with" | "without">("all");
@@ -205,8 +489,14 @@ export default function ReviewPlansOverviewPage() {
     try {
       const res = await fetch(`${BASE}/api/review-plans/overview`, { headers: authHeader() });
       if (!res.ok) throw new Error("فشل تحميل البيانات");
-      const json: CircleOverview[] = await res.json();
-      setData(json);
+      const json = await res.json();
+      // API returns { circles: [...], cycleInfo: {...} }
+      if (Array.isArray(json)) {
+        setCircles(json);
+      } else {
+        setCircles(json.circles ?? []);
+        setCycleInfo(json.cycleInfo ?? null);
+      }
     } catch {
       setError("تعذّر تحميل خطط المراجعة");
     } finally {
@@ -216,20 +506,24 @@ export default function ReviewPlansOverviewPage() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // Only girls circles matter for the cycle banner
+  const girlsCircles = circles.filter(c => c.trackType === "girls");
+  const hasCycleData = cycleInfo && girlsCircles.length > 0;
+
   // Group by track
   const trackGroups: Record<string, CircleOverview[]> = {};
-  for (const circle of data) {
+  for (const circle of circles) {
     if (!trackGroups[circle.trackName]) trackGroups[circle.trackName] = [];
     trackGroups[circle.trackName].push(circle);
   }
 
   // Summary stats
-  const allStudents = data.flatMap(c => c.students);
+  const allStudents = circles.flatMap(c => c.students);
   const withPlanCount = allStudents.filter(s => s.hasPlan).length;
   const withoutPlanCount = allStudents.filter(s => !s.hasPlan).length;
   const totalCount = allStudents.length;
 
-  // Filter circles based on filter + search
+  // Filter circles
   function filterCircle(circle: CircleOverview): CircleOverview {
     let students = circle.students;
     if (filter === "with") students = students.filter(s => s.hasPlan);
@@ -241,12 +535,10 @@ export default function ReviewPlansOverviewPage() {
     return { ...circle, students };
   }
 
-  const filteredTracks = Object.entries(trackGroups).map(([track, circles]) => ({
+  const filteredTracks = Object.entries(trackGroups).map(([track, circs]) => ({
     track,
-    circles: circles.map(filterCircle).filter(c =>
-      filter === "all" && !searchQuery.trim()
-        ? true
-        : c.students.length > 0
+    circles: circs.map(filterCircle).filter(c =>
+      filter === "all" && !searchQuery.trim() ? true : c.students.length > 0
     ),
   })).filter(t => t.circles.length > 0);
 
@@ -272,6 +564,15 @@ export default function ReviewPlansOverviewPage() {
           تحديث
         </button>
       </div>
+
+      {/* Cycle management banner — girls only */}
+      {!loading && !error && hasCycleData && (
+        <CycleBanner
+          cycleInfo={cycleInfo!}
+          userRole={userRole}
+          onRenewSuccess={fetchData}
+        />
+      )}
 
       {/* Summary cards */}
       {!loading && !error && (
@@ -306,9 +607,7 @@ export default function ReviewPlansOverviewPage() {
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  filter === f
-                    ? "bg-primary text-white"
-                    : "text-muted-foreground hover:bg-muted"
+                  filter === f ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted"
                 }`}
               >
                 {f === "all" ? "الكل" : f === "with" ? "لديهن خطة" : "بدون خطة"}
@@ -336,9 +635,7 @@ export default function ReviewPlansOverviewPage() {
       {/* Error */}
       {error && (
         <Card className="border-0 shadow-sm">
-          <CardContent className="p-6 text-center text-rose-500 text-sm">
-            {error}
-          </CardContent>
+          <CardContent className="p-6 text-center text-rose-500 text-sm">{error}</CardContent>
         </Card>
       )}
 
@@ -356,20 +653,17 @@ export default function ReviewPlansOverviewPage() {
         </Card>
       )}
 
-      {!loading && !error && filteredTracks.map(({ track, circles }) => (
+      {!loading && !error && filteredTracks.map(({ track, circles: trackCircles }) => (
         <div key={track} className="space-y-3">
-          {/* Track header — only show if multiple tracks */}
           {filteredTracks.length > 1 && (
             <div className="flex items-center gap-2">
               <div className="h-px flex-1 bg-border" />
-              <span className="text-xs font-bold text-muted-foreground px-2 shrink-0">
-                مسار {track}
-              </span>
+              <span className="text-xs font-bold text-muted-foreground px-2 shrink-0">مسار {track}</span>
               <div className="h-px flex-1 bg-border" />
             </div>
           )}
           <div className="space-y-3">
-            {circles.map(circle => (
+            {trackCircles.map(circle => (
               <CircleCard key={circle.circleId} circle={circle} />
             ))}
           </div>

@@ -516,6 +516,69 @@ router.get("/circles/:circleId/review-plans", authenticate, async (req, res): Pr
   res.json(result);
 });
 
+// ─── POST: bulk renew all girls plans (leader/deputy only) ────────────────────
+router.post("/review-plans/renew-all", authenticate, async (req, res): Promise<void> => {
+  const allowed = ["leader", "deputy"];
+  if (!allowed.includes(req.userRole!)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { newCycleStart } = req.body ?? {};
+  if (!newCycleStart || !/^\d{4}-\d{2}-\d{2}$/.test(newCycleStart)) {
+    res.status(400).json({ error: "newCycleStart مطلوب بصيغة YYYY-MM-DD" }); return;
+  }
+
+  // 1. Update global cycle start date
+  const existing = await db.select({ key: globalSettingsTable.key })
+    .from(globalSettingsTable)
+    .where(eq(globalSettingsTable.key, "girls_cycle_start_date"))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await db.update(globalSettingsTable)
+      .set({ value: newCycleStart })
+      .where(eq(globalSettingsTable.key, "girls_cycle_start_date"));
+  } else {
+    await db.insert(globalSettingsTable).values({ key: "girls_cycle_start_date", value: newCycleStart });
+  }
+
+  // 2. Find all girls circles (not fixation)
+  const girlsCircles = await db.select({ id: circlesTable.id })
+    .from(circlesTable)
+    .where(and(eq(circlesTable.trackType, "girls"), eq(circlesTable.isArchived, false)));
+
+  if (!girlsCircles.length) {
+    res.json({ renewed: 0, skipped: 0, newCycleStart }); return;
+  }
+
+  const circleIds = girlsCircles.map(c => c.id);
+
+  // 3. Find all active girls_review plans
+  const activePlans = await db.select()
+    .from(reviewPlansTable)
+    .where(and(
+      inArray(reviewPlansTable.circleId, circleIds),
+      eq(reviewPlansTable.planType, "girls_review"),
+      eq(reviewPlansTable.status, "active")
+    ));
+
+  let renewed = 0;
+  let skipped = 0;
+
+  for (const plan of activePlans) {
+    const endDate = getPlanEndDate(plan.startDate, "girls_review");
+    const today = getTodayMecca();
+    // Only renew completed plans that haven't been moved to new cycle yet
+    if (today > endDate && plan.startDate !== newCycleStart) {
+      const result = await autoRenewGirlsPlan(plan, plan.studentId, plan.circleId, newCycleStart);
+      if (result) renewed++;
+      else skipped++;
+    } else {
+      skipped++;
+    }
+  }
+
+  res.json({ renewed, skipped, newCycleStart });
+});
+
 // ─── GET: global cycle info ────────────────────────────────────────────────────
 router.get("/review-plans/cycle-info", authenticate, async (req, res): Promise<void> => {
   const allowed = ["leader", "deputy", "track_supervisor", "teacher", "supervisor", "student"];
