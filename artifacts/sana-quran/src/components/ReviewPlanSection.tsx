@@ -627,24 +627,50 @@ function StepGirlsDays({ days, updateDay, isAuto, totalPages, totalDays, onRegen
           </Button>
         )}
       </div>
-      <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
+      <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
         {days.map((day, idx) => (
-          <div key={day.dayNumber} className="grid grid-cols-[2rem_1fr_1fr_1fr_1fr_4rem] gap-1.5 items-center text-xs">
-            <span className="text-center text-muted-foreground font-mono text-[11px]">{day.dayNumber}</span>
-            <select className="border rounded p-1 text-xs bg-background col-span-2" value={day.surahStart ?? ""} onChange={e => updateDay(idx, "surahStart", e.target.value || undefined)}>
-              <option value="">— سورة البداية —</option>
-              {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
-            </select>
-            <select className="border rounded p-1 text-xs bg-background" value={day.surahEnd ?? ""} onChange={e => updateDay(idx, "surahEnd", e.target.value || undefined)}>
-              <option value="">— سورة النهاية —</option>
-              {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
-            </select>
-            <input type="number" step="0.5" min="0" placeholder="صفحات" value={day.pages ?? ""} onChange={e => updateDay(idx, "pages", parseFloat(e.target.value) || undefined)}
-              className="border rounded p-1 text-xs w-full text-center bg-background" />
+          <div key={day.dayNumber} className="bg-muted/30 rounded-xl p-2">
+            <p className="text-[11px] font-mono text-muted-foreground mb-1.5">يوم {day.dayNumber}</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              <select className="border rounded p-1 text-xs bg-background" value={day.surahStart ?? ""}
+                onChange={e => { updateDay(idx, "surahStart", e.target.value || undefined); updateDay(idx, "ayahStart", undefined); }}>
+                <option value="">— سورة البداية —</option>
+                {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
+              </select>
+              <AyahSelect surahName={day.surahStart} value={day.ayahStart} onChange={v => updateDay(idx, "ayahStart", v)} placeholder="آية البداية" />
+              <select className="border rounded p-1 text-xs bg-background" value={day.surahEnd ?? ""}
+                onChange={e => { updateDay(idx, "surahEnd", e.target.value || undefined); updateDay(idx, "ayahEnd", undefined); }}>
+                <option value="">— سورة النهاية —</option>
+                {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
+              </select>
+              <AyahSelect surahName={day.surahEnd} value={day.ayahEnd} onChange={v => updateDay(idx, "ayahEnd", v)} placeholder="آية النهاية" />
+            </div>
+            <input type="number" step="0.5" min="0" placeholder="عدد الصفحات" value={day.pages ?? ""} onChange={e => updateDay(idx, "pages", parseFloat(e.target.value) || undefined)}
+              className="border rounded p-1 text-xs w-full text-center bg-background mt-1.5" />
           </div>
         ))}
       </div>
     </div>
+  );
+}
+
+function AyahSelect({ surahName, value, onChange, placeholder }: {
+  surahName?: string; value?: number; onChange: (v: number | undefined) => void; placeholder: string;
+}) {
+  const surah = SURAHS.find(s => s.name === surahName);
+  const count = surah?.ayahs ?? 0;
+  return (
+    <select
+      className="border rounded p-1 text-xs bg-background"
+      value={value ?? ""}
+      onChange={e => onChange(parseInt(e.target.value) || undefined)}
+      disabled={!surahName || count === 0}
+    >
+      <option value="">{placeholder}</option>
+      {Array.from({ length: count }, (_, i) => i + 1).map(n => (
+        <option key={n} value={n}>{n}</option>
+      ))}
+    </select>
   );
 }
 
@@ -694,18 +720,18 @@ function StepFixationWeeks({ days, updateDay, quantity, startDate }: {
                       {dateStr && <span className="text-[10px] text-muted-foreground">{formatArDate(dateStr)}</span>}
                     </div>
                     <div className="grid grid-cols-2 gap-1.5">
-                      <select className="border rounded p-1 text-xs bg-background" value={day.surahStart ?? ""} onChange={e => updateDay(globalIdx, "surahStart", e.target.value || undefined)}>
+                      <select className="border rounded p-1 text-xs bg-background" value={day.surahStart ?? ""}
+                        onChange={e => { updateDay(globalIdx, "surahStart", e.target.value || undefined); updateDay(globalIdx, "ayahStart", undefined); }}>
                         <option value="">— سورة البداية —</option>
                         {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
                       </select>
-                      <Input type="number" min={1} placeholder="آية البداية" value={day.ayahStart ?? ""}
-                        onChange={e => updateDay(globalIdx, "ayahStart", parseInt(e.target.value) || undefined)} className="h-7 text-xs text-right" />
-                      <select className="border rounded p-1 text-xs bg-background" value={day.surahEnd ?? ""} onChange={e => updateDay(globalIdx, "surahEnd", e.target.value || undefined)}>
+                      <AyahSelect surahName={day.surahStart} value={day.ayahStart} onChange={v => updateDay(globalIdx, "ayahStart", v)} placeholder="آية البداية" />
+                      <select className="border rounded p-1 text-xs bg-background" value={day.surahEnd ?? ""}
+                        onChange={e => { updateDay(globalIdx, "surahEnd", e.target.value || undefined); updateDay(globalIdx, "ayahEnd", undefined); }}>
                         <option value="">— سورة النهاية —</option>
                         {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
                       </select>
-                      <Input type="number" min={1} placeholder="آية النهاية" value={day.ayahEnd ?? ""}
-                        onChange={e => updateDay(globalIdx, "ayahEnd", parseInt(e.target.value) || undefined)} className="h-7 text-xs text-right" />
+                      <AyahSelect surahName={day.surahEnd} value={day.ayahEnd} onChange={v => updateDay(globalIdx, "ayahEnd", v)} placeholder="آية النهاية" />
                     </div>
                   </div>
                 );
