@@ -97,7 +97,7 @@ export default function MyProgressPage() {
 
   const circleId = (user as any)?.circleId as number | undefined;
   const myCircle = allCircles.find((c: any) => c.id === circleId);
-  const myTrackType: string = (myCircle as any)?.trackType ?? "";
+  const myTrackType: string = (user as any)?.circleTrackType ?? (myCircle as any)?.trackType ?? "";
   const circleMembers = (allStudents as any[]).filter((s: any) => s.circleId === circleId && s.fullName !== user?.name);
   const circleTeacher = (allUsers as any[]).find((u: any) => u.role === "teacher" && u.circleId === circleId);
   const circleSupervisor = (allUsers as any[]).find((u: any) => u.role === "supervisor" && u.circleId === circleId);
@@ -211,7 +211,7 @@ export default function MyProgressPage() {
               studentId={studentId}
               circleId={circleId}
               trackType={myTrackType}
-              canCreate={false}
+              canCreate={true}
             />
           )}
 

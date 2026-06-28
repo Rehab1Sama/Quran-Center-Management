@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, reviewPlansTable, reviewPlanDaysTable, studentsTable, circlesTable } from "@workspace/db";
+import { db, reviewPlansTable, reviewPlanDaysTable, studentsTable, circlesTable, usersTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
@@ -50,6 +50,28 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
   if (!allowed.includes(req.userRole!)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const studentId = parseInt(req.params.id as string);
+
+  // الطالبة لا يحق لها إنشاء خطة إلا لنفسها
+  if (req.userRole === "student") {
+    const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+    if (!currentUser) { res.status(403).json({ error: "غير مسموح" }); return; }
+    const bodyCircleId = req.body?.circleId ? parseInt(req.body.circleId) : null;
+    const searchCircleId = bodyCircleId ?? currentUser.circleId;
+    let ownStudentId: number | null = null;
+    if (searchCircleId) {
+      const [byCircle] = await db.select({ id: studentsTable.id }).from(studentsTable)
+        .where(and(eq(studentsTable.fullName, currentUser.name), eq(studentsTable.circleId, searchCircleId))).limit(1);
+      ownStudentId = byCircle?.id ?? null;
+    }
+    if (!ownStudentId) {
+      const [byName] = await db.select({ id: studentsTable.id }).from(studentsTable)
+        .where(eq(studentsTable.fullName, currentUser.name)).limit(1);
+      ownStudentId = byName?.id ?? null;
+    }
+    if (ownStudentId !== studentId) {
+      res.status(403).json({ error: "لا يمكنك إنشاء خطة لطالبة أخرى" }); return;
+    }
+  }
   const {
     circleId,
     quotaType,
