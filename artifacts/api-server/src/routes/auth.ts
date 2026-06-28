@@ -337,12 +337,14 @@ router.get("/auth/me", authenticate, async (req, res): Promise<void> => {
   }
 
   let circleDataEntryType: string | null = null;
+  let circleTrackType: string | null = null;
   if (user.circleId) {
     const [circle] = await db
-      .select({ trackId: circlesTable.trackId })
+      .select({ trackId: circlesTable.trackId, trackType: circlesTable.trackType })
       .from(circlesTable)
       .where(eq(circlesTable.id, user.circleId))
       .limit(1);
+    circleTrackType = circle?.trackType ?? null;
     if (circle?.trackId) {
       const [track] = await db
         .select({ dataEntryType: tracksTable.dataEntryType })
@@ -353,7 +355,7 @@ router.get("/auth/me", authenticate, async (req, res): Promise<void> => {
     }
   }
 
-  res.json({ ...safeUser, studentId, circleDataEntryType });
+  res.json({ ...safeUser, studentId, circleDataEntryType, circleTrackType });
 });
 
 export default router;
