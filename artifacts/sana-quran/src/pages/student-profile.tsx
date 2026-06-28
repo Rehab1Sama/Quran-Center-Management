@@ -749,7 +749,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
       {/* Review Plan Sections — per girls/fixation circle */}
       {(() => {
         const enrollments: Array<{ circleId: number; circleName: string; circleTrack: string; circleTrackType?: string; isArchived: boolean }> = (profile as any).enrollments ?? [];
-        const canCreatePlan = ["leader", "track_supervisor", "student"].includes(user?.role ?? "");
+        const canCreatePlan = ["leader", "track_supervisor", "teacher", "supervisor", "student"].includes(user?.role ?? "");
         const planEnrollments = enrollments.filter(en => !en.isArchived && (en.circleTrackType === "girls" || en.circleTrackType === "fixation"));
         if (planEnrollments.length === 0) {
           const primaryTrack = (profile.circle as any)?.trackType ?? "";

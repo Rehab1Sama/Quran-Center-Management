@@ -68,7 +68,6 @@ export function formatArDate(dateStr: string): string {
 }
 
 function distribute(total: number, parts: number): number[] {
-  const base = Math.floor(total);
   const perDay = total / parts;
   const arr: number[] = [];
   let accumulated = 0;
@@ -324,6 +323,27 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
   );
 }
 
+// ─── Mini colour picker ────────────────────────────────────────────────────────
+function ColorPicker({ themeColor, setThemeColor }: { themeColor: string; setThemeColor: (v: string) => void }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">لون الخطة</p>
+      <div className="flex gap-2 flex-wrap">
+        {PLAN_COLORS.map(c => (
+          <button
+            key={c.color}
+            onClick={() => setThemeColor(c.color)}
+            title={c.name}
+            className={`w-7 h-7 rounded-full border-2 transition-all ${themeColor === c.color ? "border-gray-800 scale-110 shadow" : "border-transparent"}`}
+            style={{ background: c.color }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Wizard ────────────────────────────────────────────────────────────────────
 function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, totalDays, planMode, planTitle }: {
   open: boolean; onClose: () => void; onSaved: () => void;
   studentId: number; circleId: number; isFixation: boolean;
@@ -332,8 +352,11 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
-  const maxSteps = isFixation ? 4 : 5;
   const today = getMeccaToday();
+
+  // Girls: 4 steps (quota → mode → days → date+color)
+  // Fixation: 3 steps (quantity → date+color → weeks)
+  const maxSteps = isFixation ? 3 : 4;
 
   const [quotaType, setQuotaType] = useState<"juz" | "surah">("juz");
   const [quotaJuz, setQuotaJuz] = useState(1);
@@ -342,6 +365,9 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
   const [quotaSurahEnd, setQuotaSurahEnd] = useState(SURAHS[0].name);
   const [quotaAyahEnd, setQuotaAyahEnd] = useState(7);
   const [wizardMode, setWizardMode] = useState<"auto" | "manual">("auto");
+  // daysInitMode tracks which mode was used to initialise the days array,
+  // so going back then forward doesn't wipe entered data unless the mode changes.
+  const [daysInitMode, setDaysInitMode] = useState<"none" | "auto" | "manual">("none");
   const [quantity, setQuantity] = useState<"full" | "half">("full");
   const [startDate, setStartDate] = useState(today);
   const [themeColor, setThemeColor] = useState(PLAN_COLORS[1].color);
@@ -353,7 +379,20 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
   const computedPages = quotaType === "juz" ? quotaJuz * 20
     : (surahStartObj && surahEndObj ? calculatePages(quotaSurahStart, quotaAyahStart, quotaSurahEnd, quotaAyahEnd) : 0);
 
-  useEffect(() => { if (!open) setStep(1); }, [open]);
+  useEffect(() => {
+    if (!open) {
+      setStep(1);
+      setDays([]);
+      setDaysInitMode("none");
+      setStartDate(today);
+      setThemeColor(PLAN_COLORS[1].color);
+      setQuotaType("juz");
+      setQuotaJuz(1);
+      setWizardMode("auto");
+      setQuantity("full");
+      setTotalPages(0);
+    }
+  }, [open]);
 
   const generateAutoDays = useCallback(() => {
     const total = computedPages || quotaJuz * 20;
@@ -368,9 +407,19 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
 
   const goNext = () => {
     if (!isFixation && step === 2) {
-      wizardMode === "auto" ? generateAutoDays() : initManualDays();
+      if (wizardMode === "auto") {
+        // Always regenerate for auto: quota may have changed since last generation
+        generateAutoDays();
+        setDaysInitMode("auto");
+      } else if (days.length === 0 || daysInitMode !== "manual") {
+        // Manual: only initialise empty rows if not yet done (preserve entered data)
+        initManualDays();
+        setDaysInitMode("manual");
+      }
     }
-    if (isFixation && step === 1) initManualDays();
+    if (isFixation && step === 1 && days.length === 0) {
+      initManualDays();
+    }
     setStep(s => s + 1);
   };
 
@@ -378,7 +427,7 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
     setDays(prev => prev.map((d, i) => i === idx ? { ...d, [field]: value } : d));
   };
 
-  const canGoNext = () => {
+  const canGoNext = (): boolean => {
     if (isFixation) {
       if (step === 2) return startDate >= today;
       return true;
@@ -400,131 +449,190 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
       } else {
         body.quotaType = quotaType;
         if (quotaType === "juz") body.quotaJuz = quotaJuz;
-        else { body.quotaSurahStart = quotaSurahStart; body.quotaAyahStart = quotaAyahStart; body.quotaSurahEnd = quotaSurahEnd; body.quotaAyahEnd = quotaAyahEnd; }
+        else {
+          body.quotaSurahStart = quotaSurahStart;
+          body.quotaAyahStart = quotaAyahStart;
+          body.quotaSurahEnd = quotaSurahEnd;
+          body.quotaAyahEnd = quotaAyahEnd;
+        }
         body.totalPages = totalPages || computedPages || undefined;
       }
       const res = await fetch(`${BASE}/api/students/${studentId}/review-plan`, {
         method: "POST", headers: authHeader(), body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(await res.text());
-      toast({ title: "✓ تم حفظ الخطة بنجاح!" });
+      toast({ title: "✓ تم حفظ الخطة!" });
       onSaved();
     } catch (e: any) {
       toast({ title: "خطأ في حفظ الخطة", description: e.message, variant: "destructive" });
     } finally { setSaving(false); }
   };
 
+  // ─── Step labels ──────────────────────────────────────────────────────────
   const stepLabels = isFixation
-    ? ["الكمية", "تاريخ البداية", "جداول الأسابيع", "الثيم"]
-    : ["النصاب", "نوع الخطة", "الأنصبة", "تاريخ البداية", "الثيم"];
+    ? ["الكمية", "تاريخ البداية", "جدول الأسابيع"]
+    : ["النصاب", "نوع الخطة", "الأنصبة", "تاريخ البداية"];
 
+  // ─── Step renderers ───────────────────────────────────────────────────────
   const renderStep = () => {
     if (isFixation) {
       switch (step) {
-        case 1: return (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">اختاري الكمية اليومية لخطة التثبيت (٦ أسابيع × ٤ أيام)</p>
-            <div className="grid grid-cols-2 gap-3">
-              {(["full", "half"] as const).map(q => (
-                <button key={q} onClick={() => setQuantity(q)}
-                  className={`rounded-xl p-5 border-2 text-center transition-colors ${quantity === q ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
-                  <p className="text-2xl font-bold mb-1">{q === "full" ? "1" : "½"}</p>
-                  <p className="font-bold text-sm">{q === "full" ? "وجه كامل" : "نصف وجه"}</p>
-                  <p className="text-xs text-muted-foreground mt-1">يومياً لكل يوم تثبيت</p>
-                </button>
-              ))}
+        // Step 1: quantity
+        case 1:
+          return (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">اختاري الكمية اليومية لخطة التثبيت (٦ أسابيع × ٤ أيام)</p>
+              <div className="grid grid-cols-2 gap-3">
+                {(["full", "half"] as const).map(q => (
+                  <button key={q} onClick={() => setQuantity(q)}
+                    className={`rounded-xl p-5 border-2 text-center transition-colors ${quantity === q ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
+                    <p className="text-2xl font-bold mb-1">{q === "full" ? "1" : "½"}</p>
+                    <p className="font-bold text-sm">{q === "full" ? "وجه كامل" : "نصف وجه"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">يومياً لكل يوم تثبيت</p>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        );
-        case 2: return <StepStartDate startDate={startDate} setStartDate={setStartDate} today={today} />;
-        case 3: return <StepFixationWeeks days={days} updateDay={updateDay} quantity={quantity} startDate={startDate} />;
-        case 4: return <StepTheme themeColor={themeColor} setThemeColor={setThemeColor} />;
+          );
+        // Step 2: start date + colour
+        case 2:
+          return (
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">اختاري تاريخ بداية الخطة</p>
+                <Label className="text-sm">تاريخ البداية</Label>
+                <Input type="date" value={startDate} min={today} onChange={e => setStartDate(e.target.value)} className="mt-1 text-right" />
+                {startDate >= today && (
+                  <div className="bg-muted/40 rounded-xl p-3 text-sm mt-2">
+                    <p className="text-muted-foreground text-xs mb-0.5">التاريخ المختار</p>
+                    <p className="font-semibold">{formatArDate(startDate)}</p>
+                  </div>
+                )}
+              </div>
+              <ColorPicker themeColor={themeColor} setThemeColor={setThemeColor} />
+            </div>
+          );
+        // Step 3: fixation weeks (last step → save on click)
+        case 3:
+          return (
+            <StepFixationWeeks days={days} updateDay={updateDay} quantity={quantity} startDate={startDate} />
+          );
       }
     } else {
+      // Girls wizard
       switch (step) {
-        case 1: return (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">اختاري نوع النصاب الذي ستراجعينه خلال ٢١ يومًا (يومياً ما عدا الجمعة)</p>
-            <div className="grid grid-cols-2 gap-3">
-              {(["juz", "surah"] as const).map(t => (
-                <button key={t} onClick={() => setQuotaType(t)}
-                  className={`rounded-xl p-4 border-2 text-center transition-colors ${quotaType === t ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
-                  <p className="font-bold text-sm">{t === "juz" ? "أجزاء" : "سور محددة"}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{t === "juz" ? "تحددين عدد الأجزاء" : "تحددين السورة والآية"}</p>
-                </button>
-              ))}
+        // Step 1: quota
+        case 1:
+          return (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">اختاري نوع النصاب الذي ستراجعينه خلال ٢١ يومًا (يومياً ما عدا الجمعة)</p>
+              <div className="grid grid-cols-2 gap-3">
+                {(["juz", "surah"] as const).map(t => (
+                  <button key={t} onClick={() => setQuotaType(t)}
+                    className={`rounded-xl p-4 border-2 text-center transition-colors ${quotaType === t ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
+                    <p className="font-bold text-sm">{t === "juz" ? "أجزاء" : "سور محددة"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{t === "juz" ? "تحددين عدد الأجزاء" : "تحددين السورة والآية"}</p>
+                  </button>
+                ))}
+              </div>
+              {quotaType === "juz" ? (
+                <div className="space-y-2">
+                  <Label className="text-sm">عدد الأجزاء</Label>
+                  <div className="flex items-center gap-3">
+                    <Button variant="outline" size="sm" onClick={() => setQuotaJuz(v => Math.max(1, v - 1))}>−</Button>
+                    <span className="text-2xl font-bold w-10 text-center">{quotaJuz}</span>
+                    <Button variant="outline" size="sm" onClick={() => setQuotaJuz(v => Math.min(30, v + 1))}>+</Button>
+                    <span className="text-sm text-muted-foreground">= {quotaJuz * 20} صفحة</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">من سورة</Label>
+                      <select className="w-full border rounded-lg p-2 text-sm mt-1 bg-background" value={quotaSurahStart} onChange={e => setQuotaSurahStart(e.target.value)}>
+                        {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">من آية</Label>
+                      <Input type="number" min={1} max={surahStartObj?.ayahs ?? 286} value={quotaAyahStart}
+                        onChange={e => setQuotaAyahStart(parseInt(e.target.value) || 1)} className="mt-1" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">إلى سورة</Label>
+                      <select className="w-full border rounded-lg p-2 text-sm mt-1 bg-background" value={quotaSurahEnd} onChange={e => setQuotaSurahEnd(e.target.value)}>
+                        {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">إلى آية</Label>
+                      <Input type="number" min={1} max={surahEndObj?.ayahs ?? 286} value={quotaAyahEnd}
+                        onChange={e => setQuotaAyahEnd(parseInt(e.target.value) || 1)} className="mt-1" />
+                    </div>
+                  </div>
+                  {computedPages > 0 && <p className="text-sm text-muted-foreground">إجمالي النصاب: <span className="font-bold text-foreground">{computedPages} صفحة</span></p>}
+                </div>
+              )}
             </div>
-            {quotaType === "juz" ? (
+          );
+        // Step 2: auto or manual
+        case 2:
+          return (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">هل تريدين أن يقسّم الموقع الخطة تلقائياً أم تريدين التقسيم يدوياً؟</p>
+              <div className="grid grid-cols-2 gap-3">
+                {(["auto", "manual"] as const).map(m => (
+                  <button key={m} onClick={() => setWizardMode(m)}
+                    className={`rounded-xl p-4 border-2 text-center transition-colors ${wizardMode === m ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
+                    <p className="text-xl mb-1">{m === "auto" ? "✨" : "✏️"}</p>
+                    <p className="font-bold text-sm">{m === "auto" ? "تلقائية" : "يدوية"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {m === "auto" ? "الموقع يقسّم النصاب على ٢١ يوم" : "أنتِ تحددين لكل يوم نصابه"}
+                    </p>
+                  </button>
+                ))}
+              </div>
+              {daysInitMode !== "none" && daysInitMode !== wizardMode && (
+                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-2">
+                  ⚠️ تغيير النوع سيعيد توزيع الأيام من جديد
+                </p>
+              )}
+            </div>
+          );
+        // Step 3: day distribution
+        case 3:
+          return (
+            <StepGirlsDays days={days} updateDay={updateDay} isAuto={wizardMode === "auto"}
+              totalPages={totalPages || computedPages} totalDays={totalDays}
+              onRegenerate={() => { generateAutoDays(); setDaysInitMode("auto"); }} />
+          );
+        // Step 4: start date + colour (last step → save)
+        case 4:
+          return (
+            <div className="space-y-5">
               <div className="space-y-2">
-                <Label className="text-sm">عدد الأجزاء</Label>
-                <div className="flex items-center gap-3">
-                  <Button variant="outline" size="sm" onClick={() => setQuotaJuz(v => Math.max(1, v - 1))}>−</Button>
-                  <span className="text-2xl font-bold w-10 text-center">{quotaJuz}</span>
-                  <Button variant="outline" size="sm" onClick={() => setQuotaJuz(v => Math.min(30, v + 1))}>+</Button>
-                  <span className="text-sm text-muted-foreground">= {quotaJuz * 20} صفحة</span>
-                </div>
+                <p className="text-sm text-muted-foreground">اختاري تاريخ بداية الخطة</p>
+                <Label className="text-sm">تاريخ البداية</Label>
+                <Input type="date" value={startDate} min={today} onChange={e => setStartDate(e.target.value)} className="mt-1 text-right" />
+                {startDate >= today && (
+                  <div className="bg-muted/40 rounded-xl p-3 text-sm mt-2">
+                    <p className="text-muted-foreground text-xs mb-0.5">التاريخ المختار</p>
+                    <p className="font-semibold">{formatArDate(startDate)}</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs">من سورة</Label>
-                    <select className="w-full border rounded-lg p-2 text-sm mt-1 bg-background" value={quotaSurahStart} onChange={e => setQuotaSurahStart(e.target.value)}>
-                      {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <Label className="text-xs">من آية</Label>
-                    <Input type="number" min={1} max={surahStartObj?.ayahs ?? 286} value={quotaAyahStart}
-                      onChange={e => setQuotaAyahStart(parseInt(e.target.value) || 1)} className="mt-1" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs">إلى سورة</Label>
-                    <select className="w-full border rounded-lg p-2 text-sm mt-1 bg-background" value={quotaSurahEnd} onChange={e => setQuotaSurahEnd(e.target.value)}>
-                      {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <Label className="text-xs">إلى آية</Label>
-                    <Input type="number" min={1} max={surahEndObj?.ayahs ?? 286} value={quotaAyahEnd}
-                      onChange={e => setQuotaAyahEnd(parseInt(e.target.value) || 1)} className="mt-1" />
-                  </div>
-                </div>
-                {computedPages > 0 && <p className="text-sm text-muted-foreground">إجمالي النصاب: <span className="font-bold text-foreground">{computedPages} صفحة</span></p>}
-              </div>
-            )}
-          </div>
-        );
-        case 2: return (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">هل تريدين أن يقسّم الموقع الخطة تلقائياً أم تريدين التقسيم يدوياً؟</p>
-            <div className="grid grid-cols-2 gap-3">
-              {(["auto", "manual"] as const).map(m => (
-                <button key={m} onClick={() => setWizardMode(m)}
-                  className={`rounded-xl p-4 border-2 text-center transition-colors ${wizardMode === m ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
-                  <p className="text-xl mb-1">{m === "auto" ? "✨" : "✏️"}</p>
-                  <p className="font-bold text-sm">{m === "auto" ? "تلقائية" : "يدوية"}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {m === "auto" ? "الموقع يقسّم النصاب على ٢١ يوم" : "أنتِ تحددين لكل يوم نصابه"}
-                  </p>
-                </button>
-              ))}
+              <ColorPicker themeColor={themeColor} setThemeColor={setThemeColor} />
             </div>
-          </div>
-        );
-        case 3: return (
-          <StepGirlsDays days={days} updateDay={updateDay} isAuto={wizardMode === "auto"}
-            totalPages={totalPages || computedPages} totalDays={totalDays}
-            onRegenerate={generateAutoDays} />
-        );
-        case 4: return <StepStartDate startDate={startDate} setStartDate={setStartDate} today={today} />;
-        case 5: return <StepTheme themeColor={themeColor} setThemeColor={setThemeColor} />;
+          );
       }
     }
     return null;
   };
+
+  const isLastStep = step === maxSteps;
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
@@ -539,7 +647,9 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
               <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i < step ? "bg-primary" : "bg-muted"}`} />
             ))}
           </div>
-          <p className="text-xs text-muted-foreground text-right mt-1">الخطوة {step} / {maxSteps}: {stepLabels[step - 1]}</p>
+          <p className="text-xs text-muted-foreground text-right mt-1">
+            الخطوة {step} / {maxSteps}: {stepLabels[step - 1]}
+          </p>
         </DialogHeader>
 
         <div className="py-2 min-h-[220px]">{renderStep()}</div>
@@ -550,58 +660,21 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
               <ChevronRight className="w-4 h-4 ml-1" />السابق
             </Button>
           )}
-          {step < maxSteps ? (
+          {!isLastStep ? (
             <Button onClick={goNext} disabled={!canGoNext()}>
               التالي<ChevronLeft className="w-4 h-4 mr-1" />
             </Button>
           ) : (
             <Button onClick={handleSave} disabled={saving || !canGoNext()}>
-              {saving ? <><Loader2 className="w-4 h-4 animate-spin ml-1" />جاري الحفظ...</> : "حفظ الخطة"}
+              {saving
+                ? <><Loader2 className="w-4 h-4 animate-spin ml-1" />جاري الحفظ...</>
+                : "✓ حفظ وإنهاء"}
             </Button>
           )}
           <Button variant="ghost" onClick={onClose} disabled={saving}>إلغاء</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function StepStartDate({ startDate, setStartDate, today }: { startDate: string; setStartDate: (v: string) => void; today: string }) {
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">اختاري تاريخ البداية (اليوم أو مستقبلاً)</p>
-      <div>
-        <Label className="text-sm">تاريخ بداية الخطة</Label>
-        <Input type="date" value={startDate} min={today} onChange={e => setStartDate(e.target.value)} className="mt-2 text-right" />
-      </div>
-      {startDate && startDate >= today && (
-        <div className="bg-muted/40 rounded-xl p-3 text-sm">
-          <p className="text-muted-foreground text-xs mb-0.5">التاريخ المختار</p>
-          <p className="font-semibold">{formatArDate(startDate)}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StepTheme({ themeColor, setThemeColor }: { themeColor: string; setThemeColor: (v: string) => void }) {
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">اختاري لون الثيم لخطتك</p>
-      <div className="grid grid-cols-5 gap-3">
-        {PLAN_COLORS.map(c => (
-          <button key={c.color} onClick={() => setThemeColor(c.color)}
-            className={`rounded-xl p-3 flex flex-col items-center gap-1.5 border-2 transition-all ${themeColor === c.color ? "border-gray-800 scale-105" : "border-transparent"}`}
-            style={{ background: c.color }}>
-            <div className="w-6 h-6 rounded-full" style={{ background: c.color, border: "2px solid rgba(0,0,0,0.15)" }} />
-            <span className="text-[10px] font-medium text-gray-700">{c.name}</span>
-          </button>
-        ))}
-      </div>
-      <div className="rounded-xl p-3 text-sm font-semibold text-center" style={{ background: themeColor + "99" }}>
-        معاينة الثيم المختار
-      </div>
-    </div>
   );
 }
 
@@ -617,7 +690,7 @@ function StepGirlsDays({ days, updateDay, isAuto, totalPages, totalDays, onRegen
           <p className="text-sm font-semibold">تقسيم الأنصبة على {totalDays} يوم</p>
           {totalPages > 0 && (
             <p className="text-xs text-muted-foreground mt-0.5">
-              الإجمالي المُخصص: <span className={`font-bold ${Math.abs(assignedTotal - totalPages) < 0.6 ? "text-emerald-600" : "text-amber-600"}`}>{Math.round(assignedTotal * 2) / 2}</span> / {totalPages} صفحة
+              المُخصص: <span className={`font-bold ${Math.abs(assignedTotal - totalPages) < 0.6 ? "text-emerald-600" : "text-amber-600"}`}>{Math.round(assignedTotal * 2) / 2}</span> / {totalPages} صفحة
             </p>
           )}
         </div>
@@ -645,7 +718,8 @@ function StepGirlsDays({ days, updateDay, isAuto, totalPages, totalDays, onRegen
               </select>
               <AyahSelect surahName={day.surahEnd} value={day.ayahEnd} onChange={v => updateDay(idx, "ayahEnd", v)} placeholder="آية النهاية" />
             </div>
-            <input type="number" step="0.5" min="0" placeholder="عدد الصفحات" value={day.pages ?? ""} onChange={e => updateDay(idx, "pages", parseFloat(e.target.value) || undefined)}
+            <input type="number" step="0.5" min="0" placeholder="عدد الصفحات" value={day.pages ?? ""}
+              onChange={e => updateDay(idx, "pages", parseFloat(e.target.value) || undefined)}
               className="border rounded p-1 text-xs w-full text-center bg-background mt-1.5" />
           </div>
         ))}

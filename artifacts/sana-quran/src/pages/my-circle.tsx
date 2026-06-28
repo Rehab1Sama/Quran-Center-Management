@@ -3,11 +3,11 @@ import { useListStudents, useGetCurrentUser, useListRecords } from "@workspace/a
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Users, Archive, Loader2, MessageCircle, BookOpen } from "lucide-react";
+import { Users, Archive, Loader2, MessageCircle, BookOpen, CalendarDays, CheckCircle2 } from "lucide-react";
 import { makeWhatsAppLink } from "@/lib/utils";
 import { formatPages } from "@/lib/quran";
 import MessagesSection from "@/components/MessagesSection";
-import { getCurrentPlanDay } from "@/components/ReviewPlanSection";
+import { getCurrentPlanDay, getDayDates, formatArDate, type ReviewPlan } from "@/components/ReviewPlanSection";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -25,6 +25,112 @@ function authHeader(): Record<string, string> {
   return h;
 }
 
+// ─── Circle Plans Card ─────────────────────────────────────────────────────────
+function CirclePlansCard({ circlePlans, trackType }: { circlePlans: ReviewPlan[]; trackType: string }) {
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const isFixation = trackType === "fixation";
+  const totalDays = isFixation ? 24 : 21;
+  const planMode: "girls" | "fixation" = isFixation ? "fixation" : "girls";
+  const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-bold flex items-center gap-2">
+          <BookOpen className="w-4 h-4 text-primary" />
+          خطط الحلقة النشطة
+          <span className="text-xs font-normal text-muted-foreground bg-muted rounded-full px-2 py-0.5">{circlePlans.length}</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0 pb-2">
+        <div className="divide-y divide-border/40">
+          {circlePlans.map(plan => {
+            const dates = getDayDates(plan.startDate, totalDays, planMode);
+            const endDate = dates[dates.length - 1] ?? plan.startDate;
+            const currentDay = getCurrentPlanDay(plan.startDate, totalDays, planMode);
+            const isCompleted = today > endDate;
+            const isOpen = expanded === plan.id;
+
+            let statusBadge: React.ReactNode;
+            if (isCompleted) {
+              statusBadge = (
+                <span className="flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5">
+                  <CheckCircle2 className="w-3 h-3" />اكتملت
+                </span>
+              );
+            } else if (currentDay === 0) {
+              statusBadge = (
+                <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-2 py-0.5 flex items-center gap-1">
+                  <CalendarDays className="w-3 h-3" />لم تبدأ
+                </span>
+              );
+            } else {
+              statusBadge = (
+                <span className="text-[10px] bg-violet-100 text-violet-700 rounded-full px-2 py-0.5">
+                  يوم {currentDay} / {totalDays}
+                </span>
+              );
+            }
+
+            return (
+              <div key={plan.id} style={{ borderRight: `3px solid ${plan.themeColor}` }}>
+                <button
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors text-right"
+                  onClick={() => setExpanded(isOpen ? null : plan.id)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm">{plan.studentName ?? "—"}</span>
+                    {statusBadge}
+                  </div>
+                  <span className="text-xs text-muted-foreground">{formatArDate(plan.startDate)} ← {formatArDate(endDate)}</span>
+                </button>
+                {isOpen && (
+                  <div className="px-4 pb-4">
+                    <div className="overflow-x-auto rounded-xl border border-border/40 mt-1">
+                      <table className="w-full text-xs min-w-[260px]">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="py-2 px-2 text-right font-semibold text-muted-foreground w-8">يوم</th>
+                            <th className="py-2 px-2 text-right font-semibold text-muted-foreground">التاريخ</th>
+                            <th className="py-2 px-2 text-right font-semibold text-muted-foreground">النطاق</th>
+                            <th className="py-2 px-2 text-center font-semibold text-muted-foreground w-12">صفحات</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(plan.days ?? []).map((day: any) => {
+                            const dateStr = dates[day.dayNumber - 1];
+                            const isToday = day.dayNumber === currentDay;
+                            const isPast = day.dayNumber < currentDay;
+                            return (
+                              <tr key={day.dayNumber}
+                                className={`border-t border-border/20 ${isToday ? "font-semibold" : ""}`}
+                                style={isToday ? { background: plan.themeColor + "70" } : isPast ? { opacity: 0.45 } : {}}>
+                                <td className="py-1.5 px-2 text-center text-muted-foreground font-mono">{day.dayNumber}</td>
+                                <td className="py-1.5 px-2 text-muted-foreground text-[11px]">{dateStr ? formatArDate(dateStr) : "—"}</td>
+                                <td className="py-1.5 px-2 text-[11px]">
+                                  {day.surahStart
+                                    ? `${day.surahStart}${day.ayahStart ? ` (${day.ayahStart}` : ""}${day.surahEnd && day.surahEnd !== day.surahStart ? ` ← ${day.surahEnd}` : ""}${day.ayahEnd ? ` ${day.ayahEnd})` : ""}`
+                                    : "—"}
+                                </td>
+                                <td className="py-1.5 px-2 text-center">{day.pages ?? "—"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Main page ─────────────────────────────────────────────────────────────────
 export default function MyCirclePage() {
   const [showArchived, setShowArchived] = useState(false);
   const [circlePlans, setCirclePlans] = useState<any[]>([]);
@@ -215,6 +321,11 @@ export default function MyCirclePage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Plans section — girls / fixation tracks */}
+      {(trackType === "girls" || trackType === "fixation") && circlePlans.length > 0 && (
+        <CirclePlansCard circlePlans={circlePlans} trackType={trackType} />
+      )}
 
       {/* Archived Students */}
       {showArchived && (archivedStudents?.length ?? 0) > 0 && (user?.role === "leader" || user?.role === "track_supervisor") && (
