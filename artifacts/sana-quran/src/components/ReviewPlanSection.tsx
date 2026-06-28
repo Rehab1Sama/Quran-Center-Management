@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { SURAHS, calculatePages, computeDayRanges, type DayQuotaRange } from "@/lib/quran";
+import { SURAHS, calculatePages, computeDayRanges, type DayQuotaRange, type DayRangeSegment } from "@/lib/quran";
 import { BookOpen, Plus, Trash2, RefreshCw, Loader2, AlertCircle, ChevronRight, ChevronLeft, CalendarDays, CheckCircle2, X, Lock, Printer } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -304,11 +304,11 @@ function printPlan(plan: ReviewPlan, totalDays: number, planMode: "girls" | "fix
     let rangeStr: string;
     if (day.surahStart) {
       rangeStr = formatDayRange(day);
-    } else if (computedRanges?.[i]) {
-      const r = computedRanges[i]!;
-      rangeStr = `${r.surahStart} آية ${r.ayahStart} ← ${r.surahEnd} آية ${r.ayahEnd}`;
     } else {
-      rangeStr = "—";
+      const segs = computedRanges?.[i];
+      rangeStr = (segs && segs.length > 0)
+        ? segs.map((r: DayRangeSegment) => `${r.surahStart} آية ${r.ayahStart} ← ${r.surahEnd} آية ${r.ayahEnd}`).join(' + ')
+        : "—";
     }
     const style = isToday ? 'background:#f3e8ff;font-weight:bold;' : isPast ? 'opacity:0.5;' : '';
     return `<tr style="${style}"><td>${day.dayNumber}</td><td>${dateStr ? formatArDate(dateStr) : "—"}</td><td>${rangeStr}</td><td style="text-align:center">${day.pages ?? "—"}</td></tr>`;
@@ -429,8 +429,8 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
                       <td className="py-1.5 px-2 text-[11px]">
                         {day.surahStart
                           ? formatDayRange(day)
-                          : cr
-                            ? `${cr.surahStart} آية ${cr.ayahStart} ← ${cr.surahEnd} آية ${cr.ayahEnd}`
+                          : (cr && cr.length > 0)
+                            ? cr.map((seg: DayRangeSegment) => `${seg.surahStart} آية ${seg.ayahStart} ← ${seg.surahEnd} آية ${seg.ayahEnd}`).join(' + ')
                             : "—"}
                       </td>
                       <td className="py-1.5 px-2 text-center">{day.pages ?? "—"}</td>
