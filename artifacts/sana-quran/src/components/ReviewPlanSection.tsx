@@ -439,9 +439,9 @@ function SurahRangesEditor({ ranges, onChange }: {
   ranges: SurahRange[];
   onChange: (r: SurahRange[]) => void;
 }) {
-  const updateRange = (idx: number, field: keyof SurahRange, value: string | number) => {
-    const next = ranges.map((r, i) => i === idx ? { ...r, [field]: value } : r);
-    onChange(next);
+  // دمج أكثر من حقل في تحديث واحد لتجنب مشكلة الـ stale closure
+  const updateRange = (idx: number, patch: Partial<SurahRange>) => {
+    onChange(ranges.map((r, i) => i === idx ? { ...r, ...patch } : r));
   };
 
   const addRange = () => onChange([...ranges, { ...DEFAULT_RANGE }]);
@@ -455,7 +455,6 @@ function SurahRangesEditor({ ranges, onChange }: {
   return (
     <div className="space-y-3">
       {ranges.map((range, idx) => {
-        const startSurahObj = SURAHS.find(s => s.name === range.surahStart);
         const endSurahObj = SURAHS.find(s => s.name === range.surahEnd);
         const rangePages = calculatePages(range.surahStart, range.ayahStart, range.surahEnd, range.ayahEnd);
 
@@ -479,11 +478,7 @@ function SurahRangesEditor({ ranges, onChange }: {
                 <select
                   className="w-full border rounded-lg p-1.5 text-xs mt-0.5 bg-background"
                   value={range.surahStart}
-                  onChange={e => {
-                    const s = SURAHS.find(s => s.name === e.target.value);
-                    updateRange(idx, "surahStart", e.target.value);
-                    if (s) updateRange(idx, "ayahStart", 1);
-                  }}
+                  onChange={e => updateRange(idx, { surahStart: e.target.value, ayahStart: 1 })}
                 >
                   {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
                 </select>
@@ -493,7 +488,7 @@ function SurahRangesEditor({ ranges, onChange }: {
                 <AyahSelect
                   surahName={range.surahStart}
                   value={range.ayahStart}
-                  onChange={v => updateRange(idx, "ayahStart", v ?? 1)}
+                  onChange={v => updateRange(idx, { ayahStart: v ?? 1 })}
                   placeholder="آية البداية"
                 />
               </div>
@@ -504,8 +499,7 @@ function SurahRangesEditor({ ranges, onChange }: {
                   value={range.surahEnd}
                   onChange={e => {
                     const s = SURAHS.find(s => s.name === e.target.value);
-                    updateRange(idx, "surahEnd", e.target.value);
-                    if (s) updateRange(idx, "ayahEnd", s.ayahs);
+                    updateRange(idx, { surahEnd: e.target.value, ayahEnd: s?.ayahs ?? 1 });
                   }}
                 >
                   {SURAH_OPTIONS.map(s => <option key={s.number} value={s.value}>{s.label}</option>)}
@@ -516,7 +510,7 @@ function SurahRangesEditor({ ranges, onChange }: {
                 <AyahSelect
                   surahName={range.surahEnd}
                   value={range.ayahEnd}
-                  onChange={v => updateRange(idx, "ayahEnd", v ?? (endSurahObj?.ayahs ?? 1))}
+                  onChange={v => updateRange(idx, { ayahEnd: v ?? (endSurahObj?.ayahs ?? 1) })}
                   placeholder="آية النهاية"
                 />
               </div>
@@ -865,32 +859,72 @@ function StepGirlsDays({ days, updateDay, isAuto, totalPages, totalDays, onRegen
   days: DayEntry[]; updateDay: (i: number, f: keyof DayEntry, v: any) => void;
   isAuto: boolean; totalPages: number; totalDays: number; onRegenerate: () => void;
 }) {
+  const perDay = totalPages > 0 ? Math.round((totalPages / totalDays) * 2) / 2 : 0;
+
+  // ─── Auto mode: show read-only summary ────────────────────────────────────
+  if (isAuto) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 text-center space-y-1">
+          <p className="text-xs text-muted-foreground">إجمالي النصاب</p>
+          <p className="text-3xl font-bold text-primary">{totalPages}</p>
+          <p className="text-xs text-muted-foreground">صفحة على {totalDays} يوم</p>
+          {perDay > 0 && (
+            <p className="text-sm font-semibold mt-1">
+              ≈ <span className="text-primary">{perDay}</span> صفحة في اليوم
+            </p>
+          )}
+        </div>
+
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-700 flex items-start gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>سيتم توزيع الصفحات تلقائياً على أيام الخطة. يمكنك تعديل التوزيع لاحقاً بعد الحفظ.</span>
+        </div>
+
+        <div className="max-h-52 overflow-y-auto rounded-xl border border-border/40">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/50 sticky top-0">
+              <tr>
+                <th className="py-1.5 px-3 text-right text-muted-foreground font-medium">اليوم</th>
+                <th className="py-1.5 px-3 text-center text-muted-foreground font-medium">الصفحات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {days.map(day => (
+                <tr key={day.dayNumber} className="border-t border-border/20">
+                  <td className="py-1 px-3 text-muted-foreground">يوم {day.dayNumber}</td>
+                  <td className="py-1 px-3 text-center font-semibold">{day.pages ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <Button variant="outline" size="sm" className="text-xs gap-1 w-full" onClick={onRegenerate}>
+          <RefreshCw className="w-3.5 h-3.5" />إعادة حساب التوزيع
+        </Button>
+      </div>
+    );
+  }
+
+  // ─── Manual mode: full editable table ─────────────────────────────────────
   const assignedTotal = days.reduce((s, d) => s + (d.pages ?? 0), 0);
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold">
-            {isAuto ? "التوزيع التلقائي (قابل للتعديل)" : "إدخال الأنصبة يدوياً"}
-          </p>
+          <p className="text-sm font-semibold">إدخال الأنصبة يدوياً</p>
           {totalPages > 0 && (
             <p className="text-xs text-muted-foreground mt-0.5">
               المُخصص: <span className={`font-bold ${Math.abs(assignedTotal - totalPages) < 0.6 ? "text-emerald-600" : "text-amber-600"}`}>{Math.round(assignedTotal * 2) / 2}</span> / {totalPages} صفحة
             </p>
           )}
         </div>
-        {isAuto && (
-          <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onRegenerate}>
-            <RefreshCw className="w-3.5 h-3.5" />إعادة التوزيع
-          </Button>
-        )}
       </div>
 
-      {!isAuto && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-700">
-          الجدول فارغ — أدخلي السورة والآيات وعدد الصفحات لكل يوم
-        </div>
-      )}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-700">
+        أدخلي السورة والآيات وعدد الصفحات لكل يوم
+      </div>
 
       <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
         {days.map((day, idx) => (
