@@ -105,7 +105,17 @@ function formatDayRange(day: DayEntry): string {
 function buildQuotaLabel(plan: PlanSummary): string {
   if (plan.quotaType === "juz") return `${plan.quotaJuz} جزء`;
   if (plan.quotaType === "surah" && plan.quotaSurahStart) {
-    return `من ${plan.quotaSurahStart}${plan.quotaAyahStart ? ` آية ${plan.quotaAyahStart}` : ""} إلى ${plan.quotaSurahEnd ?? ""}${plan.quotaAyahEnd ? ` آية ${plan.quotaAyahEnd}` : ""}`;
+    const fmtRange = (s: string, as_: number | null, e: string | null, ae: number | null) =>
+      `من ${s}${as_ ? ` آية ${as_}` : ""} إلى ${e ?? s}${ae ? ` آية ${ae}` : ""}`;
+    const first = fmtRange(plan.quotaSurahStart, plan.quotaAyahStart, plan.quotaSurahEnd, plan.quotaAyahEnd);
+    if (plan.extraRanges) {
+      try {
+        const extra = JSON.parse(plan.extraRanges) as Array<{ surahStart: string; ayahStart: number; surahEnd: string; ayahEnd: number }>;
+        const extraLabels = extra.map(r => fmtRange(r.surahStart, r.ayahStart, r.surahEnd, r.ayahEnd));
+        return [first, ...extraLabels].join(" + ");
+      } catch { return first; }
+    }
+    return first;
   }
   return "";
 }

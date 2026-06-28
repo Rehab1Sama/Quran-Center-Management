@@ -264,7 +264,11 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       if (searchCircleId) {
         const [s] = await db.select({ id: studentsTable.id })
           .from(studentsTable)
-          .where(and(eq(studentsTable.circleId, searchCircleId), eq(studentsTable.isArchived, false)))
+          .where(and(
+            eq(studentsTable.circleId, searchCircleId),
+            eq(studentsTable.isArchived, false),
+            eq(studentsTable.fullName, currentUser.name)
+          ))
           .limit(1);
         ownStudentId = s?.id ?? null;
       }
