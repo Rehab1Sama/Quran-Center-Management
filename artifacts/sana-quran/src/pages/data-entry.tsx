@@ -979,6 +979,31 @@ export default function DataEntryPage() {
 
   const isFixationEntry = resolveTrackType(selectedCircle?.dataEntryType) === "fixation";
 
+  // Circles progress for selected date
+  const circlesProgress = useMemo(() => {
+    if (!missingData) return { done: 0, total: 0 };
+    const all = (missingData as any[]);
+    const byCircle: Record<number, any[]> = {};
+    for (const s of all) {
+      const cid = Number(s.circleId);
+      if (!byCircle[cid]) byCircle[cid] = [];
+      byCircle[cid].push(s);
+    }
+    const total = Object.keys(byCircle).length;
+    let done = 0;
+    for (const students of Object.values(byCircle)) {
+      if (students.length > 0 && students.every((s: any) => s.hasRecord || s.onLeave)) done++;
+    }
+    return { done, total };
+  }, [missingData]);
+
+  // Students progress for selected circle
+  const studentsProgress = useMemo(() => {
+    const total = studentsInCircle.length;
+    const done = enteredStudents.length + onLeaveStudents.length;
+    return { done, remaining: pendingStudents.length, total };
+  }, [studentsInCircle, enteredStudents, onLeaveStudents, pendingStudents]);
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
@@ -1011,6 +1036,36 @@ export default function DataEntryPage() {
           </select>
         </CardContent>
       </Card>
+
+      {/* Circles progress bar */}
+      {circlesProgress.total > 0 && (
+        <Card className="border-0 shadow-sm bg-gradient-to-l from-primary/5 to-transparent">
+          <CardContent className="py-3 px-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-semibold text-foreground">
+                تقدم الحلقات ليوم {availableDays.find((d) => d.value === selectedDate)?.label?.replace(" ✓", "") ?? selectedDate}
+              </span>
+              <span className="text-xs font-bold text-primary">
+                {circlesProgress.done} / {circlesProgress.total}
+              </span>
+            </div>
+            <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${circlesProgress.total > 0 ? (circlesProgress.done / circlesProgress.total) * 100 : 0}%`,
+                  backgroundColor: circlesProgress.done === circlesProgress.total ? "#22c55e" : "hsl(var(--primary))",
+                }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {circlesProgress.done === circlesProgress.total
+                ? "✅ اكتمل إدخال جميع الحلقات"
+                : `${circlesProgress.total - circlesProgress.done} حلقة لم يكتمل إدخالها`}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Step 2 — Circle */}
       <Card className="border-0 shadow-sm">
@@ -1121,16 +1176,6 @@ export default function DataEntryPage() {
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <Users className="w-4 h-4 text-primary" />
                 طالبات الحلقة
-                {studentsInCircle.length > 0 && (
-                  <Badge className="bg-primary/10 text-primary border-0 text-xs">
-                    {studentsInCircle.length}
-                  </Badge>
-                )}
-                {pendingStudents.length > 0 && (
-                  <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">
-                    {pendingStudents.length} لم تُدخل
-                  </Badge>
-                )}
               </CardTitle>
               <Button
                 size="sm"
@@ -1143,6 +1188,31 @@ export default function DataEntryPage() {
                 المعلمة غائبة
               </Button>
             </div>
+            {studentsProgress.total > 0 && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex gap-3 text-xs">
+                    <span className="text-green-600 font-semibold">✓ {studentsProgress.done} أُنجزت</span>
+                    {studentsProgress.remaining > 0 && (
+                      <span className="text-amber-600 font-semibold">⏳ {studentsProgress.remaining} متبقية</span>
+                    )}
+                    {studentsProgress.remaining === 0 && (
+                      <span className="text-green-600 font-semibold">اكتملت الحلقة ✅</span>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">{studentsProgress.done}/{studentsProgress.total}</span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${studentsProgress.total > 0 ? (studentsProgress.done / studentsProgress.total) * 100 : 0}%`,
+                      backgroundColor: studentsProgress.remaining === 0 ? "#22c55e" : "#f59e0b",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             {studentsInCircle.length === 0 ? (
