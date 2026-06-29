@@ -658,12 +658,6 @@ export default function DataEntryPage() {
       .then((r) => (r.ok ? r.json() : []))
       .then((days: string[]) => {
         setSubmittedDays(days);
-        setSelectedDate((prev) => {
-          if (days.includes(prev)) {
-            return getCurrentWeekWorkingDays().map((d) => d.value).find((d) => !days.includes(d)) ?? prev;
-          }
-          return prev;
-        });
       })
       .catch(() => setSubmittedDays([]));
   }, [selectedCircleId]);
@@ -763,11 +757,15 @@ export default function DataEntryPage() {
     }
   }, [studentRecords, dialogOpen, autoFilled]);
 
-  // Available days (hide submitted days when circle is selected)
+  // All working days — never hide days; mark submitted ones with ✓
   const availableDays = useMemo(() => {
     const all = getCurrentWeekWorkingDays();
     if (!selectedCircleId || submittedDays.length === 0) return all;
-    return all.filter((d) => !submittedDays.includes(d.value));
+    return all.map((d) =>
+      submittedDays.includes(d.value)
+        ? { ...d, label: `${d.label} ✓` }
+        : d,
+    );
   }, [submittedDays, selectedCircleId]);
 
   // Circles shown in UI
