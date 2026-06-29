@@ -634,6 +634,9 @@ export default function DataEntryPage() {
     if ((user as any)?.track && !selectedTrack) setSelectedTrack((user as any).track);
   }, [(user as any)?.track]);
 
+  const { data: circles } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
+  const { data: tracks } = useListTracks({ query: { queryKey: ["tracks"] } });
+
   // Fetch circle review plans for color comparison
   useEffect(() => {
     if (!selectedCircleId) { setCirclePlans([]); return; }
@@ -664,9 +667,6 @@ export default function DataEntryPage() {
       })
       .catch(() => setSubmittedDays([]));
   }, [selectedCircleId]);
-
-  const { data: circles } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
-  const { data: tracks } = useListTracks({ query: { queryKey: ["tracks"] } });
 
   const { data: missingData } = useGetMissingDataEntry(
     { date: selectedDate },
