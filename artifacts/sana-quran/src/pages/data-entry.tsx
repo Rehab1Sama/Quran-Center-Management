@@ -613,6 +613,7 @@ export default function DataEntryPage() {
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
   const [confirmAbsenceOpen, setConfirmAbsenceOpen] = useState(false);
   const [submittedDays, setSubmittedDays] = useState<string[]>([]);
+  const [submittedDaysVersion, setSubmittedDaysVersion] = useState(0);
   const [circlePlans, setCirclePlans] = useState<any[]>([]);
 
   // Assigned circles for data_entry users
@@ -660,11 +661,11 @@ export default function DataEntryPage() {
         setSubmittedDays(days);
       })
       .catch(() => setSubmittedDays([]));
-  }, [selectedCircleId]);
+  }, [selectedCircleId, submittedDaysVersion]);
 
   const { data: missingData } = useGetMissingDataEntry(
     { date: selectedDate },
-    { query: { queryKey: ["missingData", selectedDate] } },
+    { query: { queryKey: ["missingData", selectedDate], staleTime: 0, refetchOnWindowFocus: true } },
   );
 
   const { data: studentRecords } = useListRecords(
@@ -861,6 +862,7 @@ export default function DataEntryPage() {
   const invalidateQueries = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["missingData", selectedDate] });
     queryClient.invalidateQueries({ queryKey: ["circleRecords", selectedCircleId, selectedDate] });
+    setSubmittedDaysVersion((v) => v + 1);
   }, [queryClient, selectedDate, selectedCircleId]);
 
   const handleSave = () => {
@@ -978,6 +980,25 @@ export default function DataEntryPage() {
   const hasPages = memPages > 0 || revNearPages > 0 || revFarPages > 0 || revPages > 0 || recPages > 0;
 
   const isFixationEntry = resolveTrackType(selectedCircle?.dataEntryType) === "fixation";
+
+  // Set of circle IDs fully done for the selected date
+  const doneCircleIds = useMemo(() => {
+    if (!missingData) return new Set<number>();
+    const all = (missingData as any[]);
+    const byCircle: Record<number, any[]> = {};
+    for (const s of all) {
+      const cid = Number(s.circleId);
+      if (!byCircle[cid]) byCircle[cid] = [];
+      byCircle[cid].push(s);
+    }
+    const done = new Set<number>();
+    for (const [cid, students] of Object.entries(byCircle)) {
+      if (students.length > 0 && students.every((s: any) => s.hasRecord || s.onLeave)) {
+        done.add(Number(cid));
+      }
+    }
+    return done;
+  }, [missingData]);
 
   // Circles progress for selected date
   const circlesProgress = useMemo(() => {
@@ -1100,6 +1121,7 @@ export default function DataEntryPage() {
             <div className="space-y-2">
               {visibleCircles.map((c: any) => {
                 const isSelected = selectedCircleId === c.id;
+                const isDone = doneCircleIds.has(c.id);
                 return (
                   <button
                     key={c.id}
@@ -1107,17 +1129,26 @@ export default function DataEntryPage() {
                     className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-right ${
                       isSelected
                         ? "border-primary bg-primary/10 shadow-sm"
+                        : isDone
+                        ? "border-green-200 bg-green-50 hover:border-green-300"
                         : "border-border hover:border-primary/40 hover:bg-muted/30"
                     }`}
                   >
-                    <span className={`font-semibold text-sm ${isSelected ? "text-primary" : ""}`}>
+                    <span className={`font-semibold text-sm ${isSelected ? "text-primary" : isDone ? "text-green-700" : ""}`}>
                       {c.name}
                     </span>
-                    {c.track && (
-                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                        {c.track}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {isDone && (
+                        <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+                          ✓ مكتملة
+                        </span>
+                      )}
+                      {c.track && (
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                          {c.track}
+                        </span>
+                      )}
+                    </div>
                   </button>
                 );
               })}
