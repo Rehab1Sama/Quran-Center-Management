@@ -82,11 +82,11 @@ function getCurrentWeekWorkingDays(): { label: string; value: string }[] {
 
 function resolveTrackType(
   dataEntryType?: string | null,
-): "girls" | "girls_near" | "girls_far" | "girls_no_review" | "simple" | "mishkah" | "fixation" {
+): "girls" | "girls_near" | "girls_far" | "girls_no_review" | "simple" | "mishkah" | "fixation" | "mothers" {
   if (dataEntryType === "recitation") return "mishkah";
   if (dataEntryType === "simple_review") return "simple";
   if (dataEntryType === "children") return "simple";
-  if (dataEntryType === "mothers") return "girls";
+  if (dataEntryType === "mothers") return "mothers";
   if (dataEntryType === "fixation") return "fixation";
   if (dataEntryType === "girls_near") return "girls_near";
   if (dataEntryType === "girls_far") return "girls_far";
@@ -107,8 +107,16 @@ function getInputFields(dataEntryType?: string | null): string[] {
   if (trackType === "simple") return ["memorize", "review"];
   if (trackType === "mishkah") return ["recitation", "listen"];
   if (trackType === "fixation") return ["memorize", "repetitions", "review", "listen"];
+  if (trackType === "mothers") return ["memorize"];
   return ["memorize", "review_near", "review_far", "listen"];
 }
+
+function isThursdayDate(dateStr: string): boolean {
+  if (!dateStr) return false;
+  return new Date(dateStr + "T12:00:00Z").getUTCDay() === 4;
+}
+
+const THURSDAY_QUOTA_EXCLUDED_TYPES = ["recitation", "children", "mothers"];
 
 function nextPosition(surahName: string, ayah: number): { surah: string; ayah: string } {
   const idx = SURAHS.findIndex((s) => s.name === surahName);
@@ -462,6 +470,8 @@ interface FormState {
   noReviewNear: boolean;
   noReviewFar: boolean;
   noReview: boolean;
+  memorizeMode: "range" | "manual";
+  manualPages: string;
 }
 
 const emptySection = (): SectionState => ({
@@ -483,6 +493,8 @@ const emptyForm = (): FormState => ({
   noReviewNear: false,
   noReviewFar: false,
   noReview: false,
+  memorizeMode: "range",
+  manualPages: "",
 });
 
 function calcPages(s: SectionState) {
@@ -795,6 +807,59 @@ export default function DataEntryPage() {
   const selectedCircle = (circles ?? []).find((c: any) => c.id === selectedCircleId) as any;
   const inputFields = getInputFields(selectedCircle?.dataEntryType);
 
+  const isMothersEntry = selectedCircle?.dataEntryType === "mothers";
+  const isThursdaySelected = isThursdayDate(selectedDate);
+  const isThursdayQuotaCircle =
+    isThursdaySelected && !!selectedCircle && !THURSDAY_QUOTA_EXCLUDED_TYPES.includes(selectedCircle.dataEntryType);
+  const mothersLocked = isMothersEntry && !isThursdayDate(getMeccaToday());
+
+  // Force selectedDate to today for mothers-track circles (weekly entry, end of week only)
+  useEffect(() => {
+    if (isMothersEntry) {
+      const todayStr = getMeccaToday();
+      if (selectedDate !== todayStr) setSelectedDate(todayStr);
+    }
+  }, [isMothersEntry]);
+
+  // Last-10-days memorization records for Thursday quota review
+  const quotaDateFrom = useMemo(() => {
+    if (!selectedDate) return "";
+    const d = new Date(selectedDate + "T12:00:00Z");
+    d.setUTCDate(d.getUTCDate() - 10);
+    return d.toISOString().slice(0, 10);
+  }, [selectedDate]);
+  const quotaDateTo = useMemo(() => {
+    if (!selectedDate) return "";
+    const d = new Date(selectedDate + "T12:00:00Z");
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }, [selectedDate]);
+
+  const { data: quotaRecordsRaw } = useListRecords(
+    selectedCircleId && isThursdayQuotaCircle
+      ? { circleId: selectedCircleId, dateFrom: quotaDateFrom, dateTo: quotaDateTo }
+      : undefined,
+    {
+      query: {
+        queryKey: ["thursdayQuotaRecords", selectedCircleId, quotaDateFrom, quotaDateTo],
+        enabled: !!selectedCircleId && isThursdayQuotaCircle,
+      },
+    },
+  );
+
+  const quotaByStudent = useMemo(() => {
+    const map: Record<number, { totalPages: number; firstRec: any; lastRec: any }> = {};
+    const recs = (((quotaRecordsRaw as any[]) ?? []))
+      .filter((r: any) => !r.isAbsent && r.memorizeSurahStart && (r.memorizePages ?? 0) > 0)
+      .sort((a: any, b: any) => a.date.localeCompare(b.date));
+    for (const r of recs) {
+      if (!map[r.studentId]) map[r.studentId] = { totalPages: 0, firstRec: r, lastRec: r };
+      map[r.studentId].totalPages += r.memorizePages ?? 0;
+      map[r.studentId].lastRec = r;
+    }
+    return map;
+  }, [quotaRecordsRaw]);
+
   // ── Handlers ────────────────────────────────────────────────────────────────
 
   const openEntry = (student: any) => {
@@ -850,6 +915,8 @@ export default function DataEntryPage() {
       noReviewNear: !record.reviewNearSurahStart,
       noReviewFar: !record.reviewFarSurahStart,
       noReview: !record.reviewSurahStart,
+      memorizeMode: !record.memorizeSurahStart && (record.memorizePages ?? 0) > 0 ? "manual" : "range",
+      manualPages: !record.memorizeSurahStart && (record.memorizePages ?? 0) > 0 ? record.memorizePages.toString() : "",
     });
     setAutoFilled(true);
     setDialogOpen(true);
@@ -865,6 +932,40 @@ export default function DataEntryPage() {
     setSubmittedDaysVersion((v) => v + 1);
   }, [queryClient, selectedDate, selectedCircleId]);
 
+  const handleThursdayDecision = (student: any, passed: boolean) => {
+    const summary = quotaByStudent[student.studentId];
+    const payload: any = {
+      studentId: student.studentId,
+      circleId: student.circleId,
+      date: selectedDate,
+      isAbsent: !passed,
+      memorizePages: 0,
+      reviewNearPages: 0,
+      reviewFarPages: 0,
+      reviewPages: 0,
+      recitationPages: 0,
+    };
+    if (passed && summary) {
+      payload.reviewSurahStart = summary.firstRec.memorizeSurahStart;
+      payload.reviewAyahStart = summary.firstRec.memorizeAyahStart;
+      payload.reviewSurahEnd = summary.lastRec.memorizeSurahEnd;
+      payload.reviewAyahEnd = summary.lastRec.memorizeAyahEnd;
+      payload.reviewPages = summary.totalPages;
+    }
+    const existing = (circleRecords as any[]).find((r: any) => r.studentId === student.studentId);
+    const onDone = () => {
+      toast({ title: passed ? "تم تسجيل نصاب المراجعة ✓" : "تم تسجيل الغياب" });
+      invalidateQueries();
+    };
+    const onErr = (err: any) =>
+      toast({ title: "خطأ", description: err?.data?.error ?? err?.message, variant: "destructive" });
+    if (existing) {
+      updateRecord.mutate({ id: existing.id, data: payload }, { onSuccess: onDone, onError: onErr });
+    } else {
+      createRecord.mutate({ data: payload }, { onSuccess: onDone, onError: onErr });
+    }
+  };
+
   const handleSave = () => {
     const payload: any = {
       studentId: selectedStudent.studentId,
@@ -879,7 +980,11 @@ export default function DataEntryPage() {
     };
 
     if (!form.isAbsent) {
-      if (inputFields.includes("memorize") && form.memorize.surahStart && form.memorize.surahEnd) {
+      if (inputFields.includes("memorize") && isMothersEntry && form.memorizeMode === "manual") {
+        if (form.manualPages && Number(form.manualPages) > 0) {
+          payload.memorizePages = Number(form.manualPages);
+        }
+      } else if (inputFields.includes("memorize") && form.memorize.surahStart && form.memorize.surahEnd) {
         payload.memorizeSurahStart = form.memorize.surahStart;
         payload.memorizeAyahStart = Number(form.memorize.ayahStart) || 1;
         payload.memorizeSurahEnd = form.memorize.surahEnd;
@@ -972,7 +1077,7 @@ export default function DataEntryPage() {
   };
 
   // ── Pages summary ────────────────────────────────────────────────────────────
-  const memPages = calcPages(form.memorize);
+  const memPages = isMothersEntry && form.memorizeMode === "manual" ? Number(form.manualPages) || 0 : calcPages(form.memorize);
   const revNearPages = calcPages(form.reviewNear);
   const revFarPages = calcPages(form.reviewFar);
   const revPages = calcPages(form.review);
@@ -1046,15 +1151,27 @@ export default function DataEntryPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <select
-            className="w-full border border-input rounded-xl px-3 py-2.5 text-sm bg-background text-right font-medium"
-            value={selectedDate}
-            onChange={(e) => { setSelectedDate(e.target.value); setSelectedCircleId(null); }}
-          >
-            {availableDays.map((d) => (
-              <option key={d.value} value={d.value}>{d.label}</option>
-            ))}
-          </select>
+          {isMothersEntry ? (
+            isThursdayDate(getMeccaToday()) ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700 text-center">
+                نهاية الأسبوع (الخميس) — {getMeccaToday()}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-700 text-center">
+                الإدخال لمسار الأمهات يكون نهاية الأسبوع (يوم الخميس) فقط
+              </div>
+            )
+          ) : (
+            <select
+              className="w-full border border-input rounded-xl px-3 py-2.5 text-sm bg-background text-right font-medium"
+              value={selectedDate}
+              onChange={(e) => { setSelectedDate(e.target.value); setSelectedCircleId(null); }}
+            >
+              {availableDays.map((d) => (
+                <option key={d.value} value={d.value}>{d.label}</option>
+              ))}
+            </select>
+          )}
         </CardContent>
       </Card>
 
@@ -1199,8 +1316,114 @@ export default function DataEntryPage() {
         </Card>
       )}
 
+      {/* Step 3 — Mothers locked notice */}
+      {selectedCircleId && !isTeacherAbsent && mothersLocked && (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-8 text-center">
+            <CalendarDays className="w-10 h-10 mx-auto mb-2 text-amber-400" />
+            <p className="text-sm font-semibold text-amber-700">
+              الإدخال لمسار الأمهات يكون نهاية الأسبوع (يوم الخميس) فقط
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 3 — Thursday quota review (صح/خطأ) */}
+      {selectedCircleId && !isTeacherAbsent && isThursdayQuotaCircle && (
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-primary" />
+              نصاب مراجعة آخر ١٠ أيام — الخميس
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              اختاري "صح" إذا سمّعت الطالبة نصاب آخر عشرة أيام بنجاح (تُحسب أوجه حفظها تلقائيًا وتُسجَّل حاضرة)، أو "خطأ" لتسجيل غياب
+            </p>
+          </CardHeader>
+          <CardContent>
+            {studentsInCircle.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">لا يوجد طالبات في هذه الحلقة</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {studentsInCircle.map((student: any) => {
+                  const hasRecord = !!student.hasRecord;
+                  const isOnLeave = !!student.onLeave;
+                  const recordForEdit = hasRecord
+                    ? (circleRecords as any[]).find((r: any) => r.studentId === student.studentId)
+                    : null;
+                  const summary = quotaByStudent[student.studentId];
+                  return (
+                    <div
+                      key={`${student.studentId}-${student.circleId}`}
+                      className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-colors ${
+                        hasRecord
+                          ? recordForEdit?.isAbsent
+                            ? "border-rose-200 bg-rose-50/40"
+                            : "border-emerald-200 bg-emerald-50/40"
+                          : isOnLeave
+                          ? "border-slate-200 bg-slate-50/40 opacity-60"
+                          : "border-border hover:bg-muted/20"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-semibold text-sm">{student.studentName}</p>
+                          {hasRecord && (
+                            recordForEdit?.isAbsent ? (
+                              <Badge className="bg-rose-100 text-rose-700 border-0 text-[10px] px-1.5 py-0">غائبة</Badge>
+                            ) : (
+                              <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px] px-1.5 py-0">
+                                ✓ {formatPages(recordForEdit?.reviewPages ?? 0)} وجه
+                              </Badge>
+                            )
+                          )}
+                          {isOnLeave && !hasRecord && (
+                            <Badge className="bg-slate-100 text-slate-500 border-0 text-[10px] px-1.5 py-0">إجازة</Badge>
+                          )}
+                        </div>
+                        {!hasRecord && !isOnLeave && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            محفوظ آخر ١٠ أيام: {summary ? `${formatPages(summary.totalPages)} وجه` : "لا يوجد"}
+                          </p>
+                        )}
+                      </div>
+                      {!hasRecord && !isOnLeave && (
+                        <div className="flex gap-1.5 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1 text-rose-600 border-rose-200 hover:bg-rose-50 h-8 px-3"
+                            onClick={() => handleThursdayDecision(student, false)}
+                            disabled={createRecord.isPending || updateRecord.isPending}
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            خطأ
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="gap-1 h-8 px-3 bg-emerald-600 hover:bg-emerald-700"
+                            onClick={() => handleThursdayDecision(student, true)}
+                            disabled={createRecord.isPending || updateRecord.isPending}
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            صح
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Step 3 — Students list */}
-      {selectedCircleId && !isTeacherAbsent && (
+      {selectedCircleId && !isTeacherAbsent && !isThursdayQuotaCircle && !mothersLocked && (
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2">
@@ -1479,17 +1702,54 @@ export default function DataEntryPage() {
               <>
                 {inputFields.includes("memorize") && (
                   <div className="space-y-1.5">
-                    <SurahSection
-                      title={isFixationEntry ? "التثبيت الجديد" : "الحفظ"}
-                      color="border-teal-200 bg-teal-50/40"
-                      section={form.memorize}
-                      onChange={(f, v) => updateSection("memorize", f, v)}
-                      autoSuggested={autoFilled && !!form.memorize.surahStart}
-                      onVoiceFill={(ss, as, se, ae) =>
-                        setForm((f) => ({ ...f, memorize: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae } }))
-                      }
-                    />
-
+                    {isMothersEntry && (
+                      <div className="flex gap-2 p-1 bg-muted rounded-lg">
+                        <button
+                          type="button"
+                          onClick={() => setForm((f) => ({ ...f, memorizeMode: "range" }))}
+                          className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                            form.memorizeMode !== "manual" ? "bg-white shadow-sm text-primary" : "text-muted-foreground"
+                          }`}
+                        >
+                          بالنطاق (من - إلى)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setForm((f) => ({ ...f, memorizeMode: "manual" }))}
+                          className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                            form.memorizeMode === "manual" ? "bg-white shadow-sm text-primary" : "text-muted-foreground"
+                          }`}
+                        >
+                          عدد الأوجه مباشرة
+                        </button>
+                      </div>
+                    )}
+                    {isMothersEntry && form.memorizeMode === "manual" ? (
+                      <div className="border border-teal-200 bg-teal-50/40 rounded-xl p-4 space-y-2">
+                        <Label className="text-xs text-muted-foreground">عدد الأوجه المحفوظة هذا الأسبوع</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={form.manualPages}
+                          onChange={(e) => setForm((f) => ({ ...f, manualPages: e.target.value }))}
+                          placeholder="مثال: 4"
+                          className="text-right"
+                          dir="rtl"
+                        />
+                      </div>
+                    ) : (
+                      <SurahSection
+                        title={isFixationEntry ? "التثبيت الجديد" : "الحفظ"}
+                        color="border-teal-200 bg-teal-50/40"
+                        section={form.memorize}
+                        onChange={(f, v) => updateSection("memorize", f, v)}
+                        autoSuggested={autoFilled && !!form.memorize.surahStart}
+                        onVoiceFill={(ss, as, se, ae) =>
+                          setForm((f) => ({ ...f, memorize: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae } }))
+                        }
+                      />
+                    )}
                   </div>
                 )}
 
