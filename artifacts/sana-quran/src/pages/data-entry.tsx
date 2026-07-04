@@ -107,7 +107,7 @@ function getInputFields(dataEntryType?: string | null): string[] {
   if (trackType === "simple") return ["memorize", "review"];
   if (trackType === "mishkah") return ["recitation", "listen"];
   if (trackType === "fixation") return ["memorize", "repetitions", "review", "listen"];
-  if (trackType === "mothers") return ["memorize"];
+  if (trackType === "mothers") return ["memorize", "review"];
   return ["memorize", "review_near", "review_far", "listen"];
 }
 
@@ -472,6 +472,8 @@ interface FormState {
   noReview: boolean;
   memorizeMode: "range" | "manual";
   manualPages: string;
+  reviewMode: "range" | "manual";
+  manualReviewPages: string;
 }
 
 const emptySection = (): SectionState => ({
@@ -495,6 +497,8 @@ const emptyForm = (): FormState => ({
   noReview: false,
   memorizeMode: "range",
   manualPages: "",
+  reviewMode: "range",
+  manualReviewPages: "",
 });
 
 function calcPages(s: SectionState) {
@@ -917,6 +921,8 @@ export default function DataEntryPage() {
       noReview: !record.reviewSurahStart,
       memorizeMode: !record.memorizeSurahStart && (record.memorizePages ?? 0) > 0 ? "manual" : "range",
       manualPages: !record.memorizeSurahStart && (record.memorizePages ?? 0) > 0 ? record.memorizePages.toString() : "",
+      reviewMode: !record.reviewSurahStart && (record.reviewPages ?? 0) > 0 ? "manual" : "range",
+      manualReviewPages: !record.reviewSurahStart && (record.reviewPages ?? 0) > 0 ? record.reviewPages.toString() : "",
     });
     setAutoFilled(true);
     setDialogOpen(true);
@@ -1005,7 +1011,11 @@ export default function DataEntryPage() {
         payload.reviewFarAyahEnd = Number(form.reviewFar.ayahEnd) || 1;
         payload.reviewFarPages = calcPages(form.reviewFar);
       }
-      if (inputFields.includes("review") && !form.noReview && form.review.surahStart && form.review.surahEnd) {
+      if (inputFields.includes("review") && isMothersEntry && form.reviewMode === "manual") {
+        if (form.manualReviewPages && Number(form.manualReviewPages) > 0) {
+          payload.reviewPages = Number(form.manualReviewPages);
+        }
+      } else if (inputFields.includes("review") && !form.noReview && form.review.surahStart && form.review.surahEnd) {
         payload.reviewSurahStart = form.review.surahStart;
         payload.reviewAyahStart = Number(form.review.ayahStart) || 1;
         payload.reviewSurahEnd = form.review.surahEnd;
@@ -1080,7 +1090,7 @@ export default function DataEntryPage() {
   const memPages = isMothersEntry && form.memorizeMode === "manual" ? Number(form.manualPages) || 0 : calcPages(form.memorize);
   const revNearPages = calcPages(form.reviewNear);
   const revFarPages = calcPages(form.reviewFar);
-  const revPages = calcPages(form.review);
+  const revPages = isMothersEntry && form.reviewMode === "manual" ? Number(form.manualReviewPages) || 0 : calcPages(form.review);
   const recPages = calcPages(form.recitation);
   const hasPages = memPages > 0 || revNearPages > 0 || revFarPages > 0 || revPages > 0 || recPages > 0;
 
@@ -1806,7 +1816,61 @@ export default function DataEntryPage() {
                   </div>
                 )}
 
-                {inputFields.includes("review") && (
+                {inputFields.includes("review") && isMothersEntry && (
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2 p-1 bg-muted rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, reviewMode: "range" }))}
+                        className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                          form.reviewMode !== "manual" ? "bg-white shadow-sm text-primary" : "text-muted-foreground"
+                        }`}
+                      >
+                        بالنطاق (من - إلى)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, reviewMode: "manual" }))}
+                        className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                          form.reviewMode === "manual" ? "bg-white shadow-sm text-primary" : "text-muted-foreground"
+                        }`}
+                      >
+                        عدد الأوجه مباشرة
+                      </button>
+                    </div>
+                    {form.reviewMode === "manual" ? (
+                      <div className="border border-blue-200 bg-blue-50/40 rounded-xl p-4 space-y-2">
+                        <Label className="text-xs text-muted-foreground">عدد أوجه المراجعة هذا الأسبوع</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={form.manualReviewPages}
+                          onChange={(e) => setForm((f) => ({ ...f, manualReviewPages: e.target.value }))}
+                          placeholder="مثال: 4"
+                          className="text-right"
+                          dir="rtl"
+                        />
+                      </div>
+                    ) : (
+                      <SurahSection
+                        title="المراجعة"
+                        color="border-blue-200 bg-blue-50/40"
+                        section={form.review}
+                        onChange={(f, v) => updateSection("review", f, v)}
+                        autoSuggested={autoFilled && !!form.review.surahStart}
+                        onVoiceFill={(ss, as, se, ae) =>
+                          setForm((f) => ({
+                            ...f,
+                            review: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae },
+                          }))
+                        }
+                      />
+                    )}
+                  </div>
+                )}
+
+                {inputFields.includes("review") && !isMothersEntry && (
                   <SurahSection
                     title="المراجعة"
                     color="border-blue-200 bg-blue-50/40"
