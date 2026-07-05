@@ -549,7 +549,7 @@ export default function ReviewPlansOverviewPage({ userRole }: Props) {
         <div>
           <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-primary" />
-            نصيبي
+            الخطط
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">خطة المراجعة الخاصة بك</p>
         </div>
