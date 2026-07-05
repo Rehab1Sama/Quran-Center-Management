@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../lib/auth";
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, usersTable, studentsTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 
 declare global {
   namespace Express {
@@ -10,6 +10,7 @@ declare global {
       userRole?: string;
       userTrack?: string | null;
       userCircleId?: number | null;
+      userStudentId?: number | null;
     }
   }
 }
@@ -38,6 +39,23 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   req.userRole = user.role;
   req.userTrack = user.track;
   req.userCircleId = user.circleId;
+
+  // حل studentId للطالبات — نفس منطق /auth/me
+  if (user.role === "student") {
+    let studentId: number | null = null;
+    if (user.circleId) {
+      const [byCircle] = await db.select({ id: studentsTable.id }).from(studentsTable)
+        .where(and(eq(studentsTable.fullName, user.name), eq(studentsTable.circleId, user.circleId))).limit(1);
+      studentId = byCircle?.id ?? null;
+    }
+    if (!studentId) {
+      const [byName] = await db.select({ id: studentsTable.id }).from(studentsTable)
+        .where(eq(studentsTable.fullName, user.name)).limit(1);
+      studentId = byName?.id ?? null;
+    }
+    req.userStudentId = studentId;
+  }
+
   next();
 }
 

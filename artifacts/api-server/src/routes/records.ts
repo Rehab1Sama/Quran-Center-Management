@@ -12,32 +12,16 @@ router.get("/records", authenticate, async (req, res): Promise<void> => {
 
   // الطالبات: يُسمح لهن برؤية سجلاتهن الخاصة فقط
   if (req.userRole === "student") {
-    // جلب اسم المستخدمة لربطها بسجل الطالبة
-    const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, req.userId!));
-    if (!user) { res.status(403).json({ error: "غير مصرح" }); return; }
-
-    // ربط الطالبة بحسابها عبر الاسم + الحلقة (نفس منطق /auth/me الأساسي)
-    // لا نستخدم البحث بالاسم وحده تجنباً لتعارض الأسماء المتكررة
-    let linkedStudentId: number | null = null;
-    if (req.userCircleId) {
-      const [byCircle] = await db.select({ id: studentsTable.id }).from(studentsTable)
-        .where(and(eq(studentsTable.fullName, user.name), eq(studentsTable.circleId, req.userCircleId))).limit(1);
-      linkedStudentId = byCircle?.id ?? null;
-    }
-
+    const linkedStudentId = req.userStudentId ?? null;
     if (!linkedStudentId) { res.json([]); return; }
-
-    // التحقق إذا طلبت studentId مختلف — لا يُسمح
-    if (studentId && parseInt(studentId, 10) !== linkedStudentId) {
-      res.status(403).json({ error: "غير مصرح" }); return;
-    }
 
     let studentRecords = await db.select().from(recordsTable).where(eq(recordsTable.studentId, linkedStudentId));
     if (date) studentRecords = studentRecords.filter(r => r.date === date);
     if (dateFrom) studentRecords = studentRecords.filter(r => r.date >= dateFrom);
     if (dateTo) studentRecords = studentRecords.filter(r => r.date <= dateTo);
 
-    res.json(studentRecords.map(r => ({ ...r, studentName: user.name })));
+    const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, req.userId!));
+    res.json(studentRecords.map(r => ({ ...r, studentName: user?.name ?? "" })));
     return;
   }
 
