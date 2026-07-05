@@ -405,19 +405,44 @@ function VoiceInputButton({
 // ─── Surah / Ayah selectors ───────────────────────────────────────────────────
 
 function SurahSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return SURAHS;
+    const norm = (s: string) =>
+      s.replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[\u064E-\u0652]/g, "").trim();
+    const q = norm(query.trim());
+    return SURAHS.filter((s) => {
+      const n = norm(s.name);
+      return n.includes(q) || String(s.number).startsWith(q);
+    });
+  }, [query]);
+
   return (
-    <select
-      className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-background text-right"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      <option value="">اختر السورة</option>
-      {SURAHS.map((s) => (
-        <option key={s.number} value={s.name}>
-          {s.number}. {s.name}
-        </option>
-      ))}
-    </select>
+    <div className="space-y-1 w-full">
+      <div className="relative">
+        <Search className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="ابحث عن سورة..."
+          className="w-full border border-input rounded-md pr-7 pl-2 py-1.5 text-sm bg-background text-right placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+        />
+      </div>
+      <select
+        className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-background text-right"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        size={filtered.length > 0 && query.trim() ? Math.min(filtered.length + 1, 5) : undefined}
+      >
+        <option value="">اختر السورة</option>
+        {filtered.map((s) => (
+          <option key={s.number} value={s.name}>
+            {s.number}. {s.name}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
