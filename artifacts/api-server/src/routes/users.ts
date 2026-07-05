@@ -122,13 +122,16 @@ router.post("/users", authenticate, async (req, res): Promise<void> => {
   }).returning();
 
   if (rest.role === "student") {
-    await db.insert(studentsTable).values({
+    const [newStudent] = await db.insert(studentsTable).values({
       fullName: rest.name,
       circleId: rest.circleId ?? null,
       phone: rest.phone ?? null,
       country: rest.country ?? null,
       isArchived: false,
-    });
+    }).returning({ id: studentsTable.id });
+    if (newStudent) {
+      await db.update(usersTable).set({ studentId: newStudent.id }).where(eq(usersTable.id, user.id));
+    }
   }
 
   // ربط المعلمة/المشرفة بالحلقة تلقائياً
@@ -175,21 +178,30 @@ router.patch("/users/:id", authenticate, requireRole("leader"), async (req, res)
   }
 
   if (user.role === "student" && user.name) {
-    const existing = await db.select().from(studentsTable)
-      .where(eq(studentsTable.fullName, user.name));
     const circleId = user.circleId ?? null;
-    if (existing.length === 0) {
-      await db.insert(studentsTable).values({
+    // استخدام studentId المرتبط إن وُجد، وإلا البحث بالاسم
+    const studentRef = user.studentId
+      ? (await db.select().from(studentsTable).where(eq(studentsTable.id, user.studentId)))
+      : (await db.select().from(studentsTable).where(eq(studentsTable.fullName, user.name)));
+    if (studentRef.length === 0) {
+      const [newStudent] = await db.insert(studentsTable).values({
         fullName: user.name,
         circleId,
         phone: user.phone ?? null,
         country: user.country ?? null,
         isArchived: false,
-      });
-    } else if (circleId !== null) {
-      await db.update(studentsTable)
-        .set({ circleId })
-        .where(eq(studentsTable.fullName, user.name));
+      }).returning({ id: studentsTable.id });
+      if (newStudent) {
+        await db.update(usersTable).set({ studentId: newStudent.id }).where(eq(usersTable.id, user.id));
+      }
+    } else {
+      if (circleId !== null) {
+        await db.update(studentsTable).set({ circleId }).where(eq(studentsTable.id, studentRef[0].id));
+      }
+      // ضمان الرابط المباشر
+      if (!user.studentId) {
+        await db.update(usersTable).set({ studentId: studentRef[0].id }).where(eq(usersTable.id, user.id));
+      }
     }
   }
 
@@ -219,8 +231,10 @@ router.delete("/users/:id/permanent", authenticate, requireRole("leader"), async
   const id = parseInt(raw, 10);
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (user?.role === "student") {
-    const students = await db.select().from(studentsTable)
-      .where(eq(studentsTable.fullName, user.name));
+    // استخدام student_id المرتبط مباشرةً إن وُجد، وإلا البحث بالاسم للتوافق مع البيانات القديمة
+    const students = user.studentId
+      ? await db.select().from(studentsTable).where(eq(studentsTable.id, user.studentId))
+      : await db.select().from(studentsTable).where(eq(studentsTable.fullName, user.name));
     for (const student of students) {
       const sid = student.id;
       await db.delete(recordsTable).where(eq(recordsTable.studentId, sid));
@@ -264,6 +278,37 @@ router.patch("/users/:id/set-role", authenticate, async (req, res): Promise<void
       await db.update(circlesTable).set({ teacherId: id }).where(eq(circlesTable.id, circleId));
     } else if (role === "supervisor") {
       await db.update(circlesTable).set({ supervisorId: id }).where(eq(circlesTable.id, circleId));
+    }
+  }
+
+  // عند تحويل حساب إلى طالبة — ضمان وجود سجل student وربطه مباشرةً
+  if (role === "student" && user.name) {
+    if (user.studentId) {
+      // الرابط موجود — فقط حدّث circleId إذا تغيّر
+      if (circleId !== undefined) {
+        await db.update(studentsTable).set({ circleId: circleId ?? null }).where(eq(studentsTable.id, user.studentId));
+      }
+    } else {
+      // ابحث عن سجل طالبة مطابق أو أنشئ واحداً جديداً
+      const existing = await db.select({ id: studentsTable.id })
+        .from(studentsTable)
+        .where(and(eq(studentsTable.fullName, user.name), eq(studentsTable.isArchived, false)))
+        .limit(1);
+      if (existing.length > 0) {
+        await db.update(usersTable).set({ studentId: existing[0].id }).where(eq(usersTable.id, id));
+        if (circleId !== undefined) {
+          await db.update(studentsTable).set({ circleId: circleId ?? null }).where(eq(studentsTable.id, existing[0].id));
+        }
+      } else {
+        const [newStudent] = await db.insert(studentsTable).values({
+          fullName: user.name,
+          circleId: circleId ?? null,
+          isArchived: false,
+        }).returning({ id: studentsTable.id });
+        if (newStudent) {
+          await db.update(usersTable).set({ studentId: newStudent.id }).where(eq(usersTable.id, id));
+        }
+      }
     }
   }
 

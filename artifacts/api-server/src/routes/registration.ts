@@ -421,6 +421,11 @@ router.post("/registration/submit", async (req, res): Promise<void> => {
         .onConflictDoNothing();
     }
 
+    // ربط الحساب بسجل الطالبة مباشرةً
+    if (newStudent) {
+      await db.update(usersTable).set({ studentId: newStudent.id }).where(eq(usersTable.id, newUser.id));
+    }
+
     const circleName = targetCircleId
       ? (await db.select({ name: circlesTable.name }).from(circlesTable).where(eq(circlesTable.id, targetCircleId)))[0]?.name
       : undefined;

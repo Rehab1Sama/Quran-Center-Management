@@ -40,16 +40,21 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   req.userTrack = user.track;
   req.userCircleId = user.circleId;
 
-  // حل studentId للطالبات — نفس منطق /auth/me
+  // حل studentId للطالبات
   if (user.role === "student") {
     let studentId: number | null = null;
-    // أولاً: بالاسم + circleId المباشر على جدول الطالبات
-    if (user.circleId) {
+
+    // أولاً: الرابط المباشر في جدول المستخدمين (الأولوية القصوى)
+    if (user.studentId) {
+      studentId = user.studentId;
+    }
+    // ثانياً: بالاسم + circleId المباشر على جدول الطالبات
+    if (!studentId && user.circleId) {
       const [byCircle] = await db.select({ id: studentsTable.id }).from(studentsTable)
         .where(and(eq(studentsTable.fullName, user.name), eq(studentsTable.circleId, user.circleId))).limit(1);
       studentId = byCircle?.id ?? null;
     }
-    // ثانياً: عبر student_enrollments (الطالبات المضافات بالنظام الجديد)
+    // ثالثاً: عبر student_enrollments (الطالبات المضافات بالنظام الجديد)
     if (!studentId && user.circleId) {
       const [byEnrollment] = await db.select({ id: studentsTable.id }).from(studentsTable)
         .innerJoin(
@@ -63,7 +68,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
         .where(eq(studentsTable.fullName, user.name)).limit(1);
       studentId = byEnrollment?.id ?? null;
     }
-    // ثالثاً: بالاسم فقط كحل أخير
+    // رابعاً: بالاسم فقط كحل أخير
     if (!studentId) {
       const [byName] = await db.select({ id: studentsTable.id }).from(studentsTable)
         .where(eq(studentsTable.fullName, user.name)).limit(1);

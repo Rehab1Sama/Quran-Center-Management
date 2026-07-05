@@ -10,6 +10,7 @@ export const usersTable = pgTable("users", {
   role: text("role").notNull().default("student"),
   track: text("track"),
   circleId: integer("circle_id"),
+  studentId: integer("student_id"),
   phone: text("phone"),
   country: text("country"),
   ageRange: text("age_range"),
