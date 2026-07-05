@@ -10,12 +10,17 @@ const router: IRouter = Router();
 router.get("/records", authenticate, async (req, res): Promise<void> => {
   const { circleId, studentId, date, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
 
-  // الطالبات: يُسمح لهن برؤية سجلاتهن الخاصة فقط
+  // الطالبات: يُسمح لهن برؤية سجلاتهن الخاصة فقط — مفلترة بحلقتهن الحالية
   if (req.userRole === "student") {
     const linkedStudentId = req.userStudentId ?? null;
     if (!linkedStudentId) { res.json([]); return; }
 
-    let studentRecords = await db.select().from(recordsTable).where(eq(recordsTable.studentId, linkedStudentId));
+    // فلترة بـ student_id + circle_id معاً: الطالبة في حلقتين ترى بيانات حلقتها فقط
+    const whereClause = req.userCircleId
+      ? and(eq(recordsTable.studentId, linkedStudentId), eq(recordsTable.circleId, req.userCircleId))
+      : eq(recordsTable.studentId, linkedStudentId);
+
+    let studentRecords = await db.select().from(recordsTable).where(whereClause);
     if (date) studentRecords = studentRecords.filter(r => r.date === date);
     if (dateFrom) studentRecords = studentRecords.filter(r => r.date >= dateFrom);
     if (dateTo) studentRecords = studentRecords.filter(r => r.date <= dateTo);
