@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../lib/auth";
-import { db, usersTable, studentsTable } from "@workspace/db";
+import { db, usersTable, studentsTable, studentEnrollmentsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
 declare global {
@@ -43,11 +43,27 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   // حل studentId للطالبات — نفس منطق /auth/me
   if (user.role === "student") {
     let studentId: number | null = null;
+    // أولاً: بالاسم + circleId المباشر على جدول الطالبات
     if (user.circleId) {
       const [byCircle] = await db.select({ id: studentsTable.id }).from(studentsTable)
         .where(and(eq(studentsTable.fullName, user.name), eq(studentsTable.circleId, user.circleId))).limit(1);
       studentId = byCircle?.id ?? null;
     }
+    // ثانياً: عبر student_enrollments (الطالبات المضافات بالنظام الجديد)
+    if (!studentId && user.circleId) {
+      const [byEnrollment] = await db.select({ id: studentsTable.id }).from(studentsTable)
+        .innerJoin(
+          studentEnrollmentsTable,
+          and(
+            eq(studentEnrollmentsTable.studentId, studentsTable.id),
+            eq(studentEnrollmentsTable.circleId, user.circleId),
+            eq(studentEnrollmentsTable.isArchived, false),
+          ),
+        )
+        .where(eq(studentsTable.fullName, user.name)).limit(1);
+      studentId = byEnrollment?.id ?? null;
+    }
+    // ثالثاً: بالاسم فقط كحل أخير
     if (!studentId) {
       const [byName] = await db.select({ id: studentsTable.id }).from(studentsTable)
         .where(eq(studentsTable.fullName, user.name)).limit(1);

@@ -314,27 +314,8 @@ router.get("/auth/me", authenticate, async (req, res): Promise<void> => {
   }
   const { passwordHash: _ph, ...safeUser } = user;
 
-  let studentId: number | null = null;
-  if (user.role === "student") {
-    // أولاً: ابحثي بالاسم + الحلقة المحددة
-    if (user.circleId) {
-      const [byCircle] = await db
-        .select({ id: studentsTable.id })
-        .from(studentsTable)
-        .where(and(eq(studentsTable.fullName, user.name), eq(studentsTable.circleId, user.circleId)))
-        .limit(1);
-      studentId = byCircle?.id ?? null;
-    }
-    // ثانياً: إذا لم يُعثر عليها، ابحثي بالاسم فقط (حالة تعدد الحلقات)
-    if (!studentId) {
-      const [byName] = await db
-        .select({ id: studentsTable.id })
-        .from(studentsTable)
-        .where(eq(studentsTable.fullName, user.name))
-        .limit(1);
-      studentId = byName?.id ?? null;
-    }
-  }
+  // استخدام studentId المحسوب مسبقًا في middleware (authenticate) لتجنب التكرار
+  const studentId: number | null = user.role === "student" ? (req.userStudentId ?? null) : null;
 
   let circleDataEntryType: string | null = null;
   let circleTrackType: string | null = null;
