@@ -33,6 +33,7 @@ function formatDate(d: string) {
 export default function ShortcomingsPage() {
   const { data: currentUser } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const role = currentUser?.role;
+  const isStudent = role === "student";
 
   const [filterCircleId, setFilterCircleId] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
@@ -93,7 +94,7 @@ export default function ShortcomingsPage() {
           <AlertTriangle className="w-5 h-5 text-red-600" />
         </div>
         <div>
-          <h1 className="text-lg font-bold text-foreground">التقصير</h1>
+          <h1 className="text-lg font-bold text-foreground">{isStudent ? "تقصيري" : "التقصير"}</h1>
           <p className="text-xs text-muted-foreground">الجلسات التي لم تُراجَع فيها أو لم يُسمع فيها القارئ</p>
         </div>
       </div>
@@ -122,7 +123,7 @@ export default function ShortcomingsPage() {
             </div>
           </div>
 
-          {visibleCircles.length > 0 && (
+          {!isStudent && visibleCircles.length > 0 && (
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">الحلقة</label>
               <Select value={filterCircleId} onValueChange={setFilterCircleId}>

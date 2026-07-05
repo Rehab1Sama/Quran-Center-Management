@@ -97,7 +97,7 @@ async function buildShortcomingItem(
 // GET /shortcomings — leader sees all, track_supervisor sees their track, teacher sees their circle
 router.get("/shortcomings", authenticate, async (req, res): Promise<void> => {
   const role = req.userRole!;
-  if (!["leader", "track_supervisor", "teacher", "supervisor"].includes(role)) {
+  if (!["leader", "track_supervisor", "teacher", "supervisor", "student"].includes(role)) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
 
@@ -133,7 +133,11 @@ router.get("/shortcomings", authenticate, async (req, res): Promise<void> => {
     return track?.name ?? "";
   }
 
-  if (role === "track_supervisor") {
+  if (role === "student") {
+    const sId = req.userStudentId;
+    if (!sId) { res.json([]); return; }
+    records = records.filter(r => r.studentId === sId);
+  } else if (role === "track_supervisor") {
     const myTrack = req.userTrack ?? "";
     records = records.filter(r => getCircleTrackName(r.circleId) === myTrack);
   } else if (role === "teacher") {

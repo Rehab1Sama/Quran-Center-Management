@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { useGetTodayAttendance, useGetRepeatedAbsences } from "@workspace/api-client-react";
+import { useGetTodayAttendance, useGetRepeatedAbsences, useGetCurrentUser } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MessageCircle, AlertTriangle, CalendarX, Filter } from "lucide-react";
 
 export default function AttendancePage() {
   const [trackFilter, setTrackFilter] = useState<string>("الكل");
+
+  const { data: currentUser } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
+  const isStudent = currentUser?.role === "student";
 
   const { data: todayAbsences } = useGetTodayAttendance(undefined, {
     query: { queryKey: ["attendanceToday"] }
@@ -20,10 +23,10 @@ export default function AttendancePage() {
   ])).filter(Boolean).sort();
 
   const filteredToday = (todayAbsences?.absentStudents ?? []).filter(
-    (s: any) => trackFilter === "الكل" || s.track === trackFilter
+    (s: any) => isStudent || trackFilter === "الكل" || s.track === trackFilter
   );
   const filteredRepeated = (repeatedAbsences ?? []).filter(
-    (s: any) => trackFilter === "الكل" || s.track === trackFilter
+    (s: any) => isStudent || trackFilter === "الكل" || s.track === trackFilter
   );
 
   const openWhatsApp = (phone: string | null | undefined) => {
@@ -36,10 +39,10 @@ export default function AttendancePage() {
     <div className="space-y-6" dir="rtl">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">الغيابات</h1>
-          <p className="text-muted-foreground text-sm mt-1">متابعة الغيابات اليومية والمتكررة</p>
+          <h1 className="text-2xl font-bold text-foreground">{isStudent ? "غياباتي" : "الغيابات"}</h1>
+          <p className="text-muted-foreground text-sm mt-1">{isStudent ? "سجل غياباتك" : "متابعة الغيابات اليومية والمتكررة"}</p>
         </div>
-        {allTracks.length > 0 && (
+        {!isStudent && allTracks.length > 0 && (
           <div className="flex items-center gap-2">
             <Filter className="w-3.5 h-3.5 text-muted-foreground" />
             <div className="flex flex-wrap gap-1.5">
@@ -89,7 +92,7 @@ export default function AttendancePage() {
                       {item.circleName} · {item.track}
                     </p>
                   </div>
-                  {item.parentPhone && (
+                  {!isStudent && item.parentPhone && (
                     <button
                       onClick={() => openWhatsApp(item.parentPhone)}
                       className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-colors flex-shrink-0"
@@ -147,7 +150,7 @@ export default function AttendancePage() {
                         </Badge>
                       </td>
                       <td className="py-2.5 px-3">
-                        {item.parentPhone && (
+                        {!isStudent && item.parentPhone && (
                           <button
                             onClick={() => openWhatsApp(item.parentPhone)}
                             className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full transition-colors"

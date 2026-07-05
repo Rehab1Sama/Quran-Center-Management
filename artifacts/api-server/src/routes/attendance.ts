@@ -28,6 +28,15 @@ router.get("/attendance/today", authenticate, async (req, res): Promise<void> =>
     };
   });
 
+  // الطالبة: ترجع غياباتها فقط
+  if (req.userRole === "student") {
+    const sId = req.userStudentId;
+    if (!sId) { res.json({ date: today, totalAbsent: 0, absentStudents: [], circlesWithNoData: [] }); return; }
+    const mine = absentStudents.filter(a => a.studentId === sId);
+    res.json({ date: today, totalAbsent: mine.length, absentStudents: mine, circlesWithNoData: [] });
+    return;
+  }
+
   if (trackFilter) {
     absentStudents = absentStudents.filter(a => a.track.startsWith(trackFilter));
   }
@@ -90,7 +99,11 @@ router.get("/attendance/repeated-absences", authenticate, async (req, res): Prom
     .sort((a, b) => b.absenceCount - a.absenceCount);
 
   let filtered = result;
-  if (req.userRole === "track_supervisor" && req.userTrack) {
+  if (req.userRole === "student") {
+    const sId = req.userStudentId;
+    if (!sId) { res.json([]); return; }
+    filtered = result.filter(r => r.studentId === sId);
+  } else if (req.userRole === "track_supervisor" && req.userTrack) {
     filtered = result.filter(r => r.track.startsWith(req.userTrack!));
   }
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useGetCurrentUser } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -485,7 +486,78 @@ function CycleBanner({
   );
 }
 
+function StudentMyPlanView() {
+  const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
+  const [plan, setPlan] = useState<PlanSummary | null>(null);
+  const [trackType, setTrackType] = useState<string>("girls");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const studentId = (user as any)?.studentId;
+    if (!user) return;
+    if (!studentId) { setLoading(false); return; }
+    setLoading(true);
+    fetch(`${BASE}/api/students/${studentId}/review-plan`, { headers: authHeader() })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        setPlan(data ?? null);
+        setTrackType((user as any)?.circleTrackType ?? "girls");
+      })
+      .catch(() => setError("تعذّر تحميل الخطة"))
+      .finally(() => setLoading(false));
+  }, [(user as any)?.studentId]);
+
+  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  if (error) return <p className="text-center text-rose-500 py-10 text-sm">{error}</p>;
+  if (!plan) return (
+    <Card className="border-0 shadow-sm">
+      <CardContent className="py-12 text-center">
+        <XCircle className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+        <p className="text-sm text-muted-foreground">لا توجد خطة مراجعة حالية</p>
+      </CardContent>
+    </Card>
+  );
+
+  const quotaLabel = buildQuotaLabel(plan);
+
+  return (
+    <div className="space-y-4">
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="font-bold text-foreground">خطة المراجعة الحالية</p>
+              {quotaLabel && <p className="text-sm text-muted-foreground mt-0.5">{quotaLabel}</p>}
+              {!quotaLabel && plan.totalPages && <p className="text-sm text-muted-foreground mt-0.5">{plan.totalPages} صفحة</p>}
+            </div>
+            <PlanBadge plan={plan} trackType={trackType} />
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="border-0 shadow-sm overflow-hidden">
+        <FullPlanTable plan={plan} trackType={trackType} />
+      </Card>
+    </div>
+  );
+}
+
 export default function ReviewPlansOverviewPage({ userRole }: Props) {
+  if (userRole === "student") {
+    return (
+      <div className="max-w-3xl mx-auto space-y-5" dir="rtl">
+        <div>
+          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-primary" />
+            نصيبي
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">خطة المراجعة الخاصة بك</p>
+        </div>
+        <StudentMyPlanView />
+      </div>
+    );
+  }
+
   const [circles, setCircles] = useState<CircleOverview[]>([]);
   const [cycleInfo, setCycleInfo] = useState<CycleInfo | null>(null);
   const [loading, setLoading] = useState(true);
