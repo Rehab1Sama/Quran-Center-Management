@@ -10,7 +10,7 @@ function parseId(raw: string | string[]): number {
   return parseInt(Array.isArray(raw) ? raw[0] : raw, 10);
 }
 
-const STAFF_ROLES = ["leader", "track_supervisor", "teacher", "supervisor"];
+const STAFF_ROLES = ["leader", "deputy", "track_supervisor", "teacher", "supervisor"];
 
 // ── List students ──────────────────────────────────────────────────────────────
 router.get("/students", authenticate, async (req, res): Promise<void> => {
