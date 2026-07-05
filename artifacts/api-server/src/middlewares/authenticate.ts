@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../lib/auth";
-import { db, usersTable, studentsTable, studentEnrollmentsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, usersTable } from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
 
 declare global {
   namespace Express {
@@ -48,32 +48,41 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     if (user.studentId) {
       studentId = user.studentId;
     }
-    // ثانياً: بالاسم + circleId المباشر على جدول الطالبات
+
+    // ثانياً: بالاسم (TRIM) + circleId المباشر على جدول الطالبات
     if (!studentId && user.circleId) {
-      const [byCircle] = await db.select({ id: studentsTable.id }).from(studentsTable)
-        .where(and(eq(studentsTable.fullName, user.name), eq(studentsTable.circleId, user.circleId))).limit(1);
-      studentId = byCircle?.id ?? null;
+      const res2 = await db.execute(
+        sql`SELECT id FROM students WHERE TRIM(full_name)=TRIM(${user.name}) AND circle_id=${user.circleId} AND is_archived=false LIMIT 1`
+      );
+      studentId = (res2 as any).rows?.[0]?.id ?? null;
     }
+
     // ثالثاً: عبر student_enrollments (الطالبات المضافات بالنظام الجديد)
     if (!studentId && user.circleId) {
-      const [byEnrollment] = await db.select({ id: studentsTable.id }).from(studentsTable)
-        .innerJoin(
-          studentEnrollmentsTable,
-          and(
-            eq(studentEnrollmentsTable.studentId, studentsTable.id),
-            eq(studentEnrollmentsTable.circleId, user.circleId),
-            eq(studentEnrollmentsTable.isArchived, false),
-          ),
-        )
-        .where(eq(studentsTable.fullName, user.name)).limit(1);
-      studentId = byEnrollment?.id ?? null;
+      const res3 = await db.execute(
+        sql`SELECT s.id FROM students s
+            JOIN student_enrollments se ON se.student_id=s.id AND se.circle_id=${user.circleId} AND se.is_archived=false
+            WHERE TRIM(s.full_name)=TRIM(${user.name}) AND s.is_archived=false LIMIT 1`
+      );
+      studentId = (res3 as any).rows?.[0]?.id ?? null;
     }
-    // رابعاً: بالاسم فقط كحل أخير
+
+    // رابعاً: بالاسم (TRIM) فقط — فقط إذا كان الاسم فريداً
     if (!studentId) {
-      const [byName] = await db.select({ id: studentsTable.id }).from(studentsTable)
-        .where(eq(studentsTable.fullName, user.name)).limit(1);
-      studentId = byName?.id ?? null;
+      const res4 = await db.execute(
+        sql`SELECT id FROM students
+            WHERE TRIM(full_name)=TRIM(${user.name}) AND is_archived=false
+              AND (SELECT COUNT(*) FROM students WHERE TRIM(full_name)=TRIM(${user.name}) AND is_archived=false)=1
+            LIMIT 1`
+      );
+      studentId = (res4 as any).rows?.[0]?.id ?? null;
     }
+
+    // احفظ الربط في قاعدة البيانات لتسريع الطلبات القادمة
+    if (studentId && !user.studentId) {
+      db.execute(sql`UPDATE users SET student_id=${studentId} WHERE id=${user.id}`).catch(() => {});
+    }
+
     req.userStudentId = studentId;
   }
 

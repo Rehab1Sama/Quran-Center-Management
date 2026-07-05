@@ -143,7 +143,7 @@ async function migrateAndLinkStudentIds() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id integer REFERENCES students(id)
     `));
 
-    // 2. ربط الحسابات بالاسم + circleId المباشر على جدول students
+    // 2. ربط الحسابات بالاسم (TRIM) + circleId المباشر على جدول students
     await db.execute(sql.raw(`
       UPDATE users u
       SET student_id = s.id
@@ -151,7 +151,7 @@ async function migrateAndLinkStudentIds() {
       WHERE u.role = 'student'
         AND u.student_id IS NULL
         AND u.is_archived = false
-        AND s.full_name = u.name
+        AND TRIM(s.full_name) = TRIM(u.name)
         AND s.circle_id = u.circle_id
         AND s.is_archived = false
     `));
@@ -165,28 +165,28 @@ async function migrateAndLinkStudentIds() {
       WHERE u.role = 'student'
         AND u.student_id IS NULL
         AND u.is_archived = false
-        AND s.full_name = u.name
+        AND TRIM(s.full_name) = TRIM(u.name)
         AND se.circle_id = u.circle_id
         AND se.is_archived = false
     `));
 
-    // 4. ربط ما تبقى بالاسم فقط — فقط إذا كان الاسم فريداً (لتجنب الربط الخاطئ)
+    // 4. ربط ما تبقى بالاسم (TRIM) فقط — فقط إذا كان الاسم فريداً (لتجنب الربط الخاطئ)
     await db.execute(sql.raw(`
       UPDATE users u
       SET student_id = s.id
       FROM (
-        SELECT id, full_name
+        SELECT id, TRIM(full_name) as trimmed_name
         FROM students
         WHERE is_archived = false
-          AND full_name IN (
-            SELECT full_name FROM students WHERE is_archived = false
-            GROUP BY full_name HAVING COUNT(*) = 1
+          AND TRIM(full_name) IN (
+            SELECT TRIM(full_name) FROM students WHERE is_archived = false
+            GROUP BY TRIM(full_name) HAVING COUNT(*) = 1
           )
       ) s
       WHERE u.role = 'student'
         AND u.student_id IS NULL
         AND u.is_archived = false
-        AND s.full_name = u.name
+        AND TRIM(u.name) = s.trimmed_name
     `));
 
     const result = await db.execute(sql.raw(
