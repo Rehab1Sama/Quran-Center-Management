@@ -200,7 +200,7 @@ function AppRoutes() {
             : <Redirect to="/" />}
         </Route>
         <Route path="/attendance">
-          {(isLeaderOrDeputy || isTrackSupervisor) ? <AttendancePage /> : <Redirect to="/" />}
+          {(isLeaderOrDeputy || isTrackSupervisor || isStudent) ? <AttendancePage /> : <Redirect to="/" />}
         </Route>
         <Route path="/audio">
           {isStudent && isFeatureEnabled("audio") ? <AudioPage /> : <Redirect to="/" />}
@@ -218,7 +218,7 @@ function AppRoutes() {
           {isFeatureEnabled("calendar") ? <CalendarPage userRole={user.role} userId={user.id} /> : <Redirect to="/" />}
         </Route>
         <Route path="/shortcomings">
-          {(isLeaderOrDeputy || isTrackSupervisor) && isFeatureEnabled("shortcomings") ? <ShortcomingsPage /> : <Redirect to="/" />}
+          {(isLeaderOrDeputy || isTrackSupervisor || isStudent) && isFeatureEnabled("shortcomings") ? <ShortcomingsPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/stumbling-stats">
           {(isLeaderOrDeputy || isTrackSupervisor) && isFeatureEnabled("stats_stumbling") ? <StumblingStatsPage /> : <Redirect to="/" />}
@@ -271,7 +271,7 @@ function AppRoutes() {
           {isLeaderOrDeputy ? <CirclesStaffingPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/review-plans-overview">
-          {(isLeaderOrDeputy || isTrackSupervisor || isTeacher || isSupervisor)
+          {(isLeaderOrDeputy || isTrackSupervisor || isTeacher || isSupervisor || isStudent)
             ? <ReviewPlansOverviewPage userRole={user.role} />
             : <Redirect to="/" />}
         </Route>

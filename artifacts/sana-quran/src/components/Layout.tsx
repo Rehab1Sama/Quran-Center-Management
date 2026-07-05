@@ -797,6 +797,9 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
   if (role === "student") {
     return filterNav([
       { href: "/", label: "تقدمي", icon: BarChart3 },
+      { href: "/attendance", label: "غياباتي", icon: CalendarCheck },
+      { href: "/shortcomings", label: "تقصيري", icon: AlertTriangle, feature: "shortcomings" },
+      { href: "/review-plans-overview", label: "نصيبي", icon: BookOpen },
       { href: "/statistics", label: "إحصائياتي", icon: BarChart3, feature: "stats_general" },
       { href: "/badges", label: "أوسمتي", icon: Award, feature: "badges" },
       { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
