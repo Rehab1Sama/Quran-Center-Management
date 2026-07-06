@@ -103,7 +103,8 @@ router.get("/students/unassigned-search", authenticate, async (req, res): Promis
 
   const nameFilter = sql`lower(${studentsTable.fullName}) like ${`%${q.toLowerCase()}%`}`;
 
-  // Students in the registration circle matching the name
+  // Students in the registration circle matching the name,
+  // but ONLY if they have no active non-registration enrollment
   const inReg = regCircle ? await db
     .select({
       studentId: studentsTable.id,
@@ -118,9 +119,20 @@ router.get("/students/unassigned-search", authenticate, async (req, res): Promis
       eq(studentEnrollmentsTable.circleId, regCircle.id),
       eq(studentEnrollmentsTable.isArchived, false),
     ))
-    .where(and(eq(studentsTable.isArchived, false), nameFilter)) : [];
+    .where(and(
+      eq(studentsTable.isArchived, false),
+      nameFilter,
+      // Exclude students who already have an active non-registration enrollment
+      sql`NOT EXISTS (
+        SELECT 1 FROM ${studentEnrollmentsTable} se2
+        WHERE se2.student_id = ${studentsTable.id}
+          AND se2.circle_id != ${regCircle.id}
+          AND se2.is_archived = false
+      )`,
+    )) : [];
 
-  // Students with no circle at all matching the name
+  // Students with no circle at all matching the name,
+  // and no active enrollment anywhere
   const noCircle = await db
     .select({
       studentId: studentsTable.id,
@@ -130,7 +142,16 @@ router.get("/students/unassigned-search", authenticate, async (req, res): Promis
       circleName: sql<string | null>`null`,
     })
     .from(studentsTable)
-    .where(and(isNull(studentsTable.circleId), eq(studentsTable.isArchived, false), nameFilter));
+    .where(and(
+      isNull(studentsTable.circleId),
+      eq(studentsTable.isArchived, false),
+      nameFilter,
+      sql`NOT EXISTS (
+        SELECT 1 FROM ${studentEnrollmentsTable} se
+        WHERE se.student_id = ${studentsTable.id}
+          AND se.is_archived = false
+      )`,
+    ));
 
   // Deduplicate
   const regIds = new Set(inReg.map(s => s.studentId));
@@ -720,20 +741,44 @@ router.post("/students/:id/enroll", authenticate, async (req, res): Promise<void
       ));
     if (!assignment) { res.status(403).json({ error: "Forbidden: not assigned to this circle" }); return; }
 
-    // Student must be unassigned (null circleId or registration circle) or archived
+    // Student must have no active non-registration enrollment (use enrollments as source of truth)
     const [regCircle] = await db.select({ id: circlesTable.id })
       .from(circlesTable).where(eq(circlesTable.trackType, "registration"));
-    const [st] = await db.select({ circleId: studentsTable.circleId, isArchived: studentsTable.isArchived })
+    const [st] = await db.select({ isArchived: studentsTable.isArchived })
       .from(studentsTable).where(eq(studentsTable.id, id));
     if (!st) { res.status(404).json({ error: "Student not found" }); return; }
-    const isUnassigned = st.circleId === null || (regCircle && st.circleId === regCircle.id);
-    if (!isUnassigned && !st.isArchived) {
-      res.status(403).json({ error: "Forbidden: student is already assigned to a circle" }); return;
+
+    if (!st.isArchived) {
+      // Check active enrollments excluding the registration circle
+      const activeEnrollments = await db
+        .select({ circleId: studentEnrollmentsTable.circleId })
+        .from(studentEnrollmentsTable)
+        .where(and(
+          eq(studentEnrollmentsTable.studentId, id),
+          eq(studentEnrollmentsTable.isArchived, false),
+          ...(regCircle ? [ne(studentEnrollmentsTable.circleId, regCircle.id)] : []),
+        ));
+      if (activeEnrollments.length > 0) {
+        res.status(403).json({ error: "Forbidden: student is already enrolled in a circle" }); return;
+      }
     }
   }
 
   const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
+
+  // Find and archive any registration-circle enrollment before adding to real circle
+  const [regCircleForEnroll] = await db.select({ id: circlesTable.id })
+    .from(circlesTable).where(eq(circlesTable.trackType, "registration"));
+  if (regCircleForEnroll) {
+    await db.update(studentEnrollmentsTable)
+      .set({ isArchived: true, archivedAt: new Date() })
+      .where(and(
+        eq(studentEnrollmentsTable.studentId, id),
+        eq(studentEnrollmentsTable.circleId, regCircleForEnroll.id),
+        eq(studentEnrollmentsTable.isArchived, false),
+      ));
+  }
 
   const [enrollment] = await db.insert(studentEnrollmentsTable)
     .values({ studentId: id, circleId, isArchived: false })
@@ -743,10 +788,11 @@ router.post("/students/:id/enroll", authenticate, async (req, res): Promise<void
     })
     .returning();
 
-  // If student has no primary circle, set it
-  if (!student.circleId) {
-    await db.update(studentsTable).set({ circleId }).where(eq(studentsTable.id, id));
-  }
+  // Always update primary circle to the new real circle
+  await db.update(studentsTable).set({ circleId }).where(eq(studentsTable.id, id));
+  // Sync user account
+  await db.update(usersTable).set({ circleId })
+    .where(and(eq(usersTable.name, student.fullName), eq(usersTable.role, "student")));
 
   res.status(201).json(enrollment);
 });
