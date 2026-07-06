@@ -86,6 +86,58 @@ router.get("/students", authenticate, async (req, res): Promise<void> => {
   res.json(students);
 });
 
+// ── Search unassigned students (registration circle or no circle) ─────────────
+// GET /students/unassigned-search?q=name
+// data_entry can search by name (min 2 chars). Returns active students who are
+// either in a registration/holding circle or have no circle assignment at all.
+router.get("/students/unassigned-search", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy", "track_supervisor", "data_entry"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const q = ((req.query.q as string) ?? "").trim();
+  if (!q || q.length < 2) { res.json([]); return; }
+
+  // Find the registration/holding circle (trackType = 'registration')
+  const [regCircle] = await db.select({ id: circlesTable.id, name: circlesTable.name })
+    .from(circlesTable).where(eq(circlesTable.trackType, "registration"));
+
+  const nameFilter = sql`lower(${studentsTable.fullName}) like ${`%${q.toLowerCase()}%`}`;
+
+  // Students in the registration circle matching the name
+  const inReg = regCircle ? await db
+    .select({
+      studentId: studentsTable.id,
+      fullName: studentsTable.fullName,
+      phone: studentsTable.phone,
+      source: sql<string>`'registration'`,
+      circleName: sql<string>`${regCircle.name}`,
+    })
+    .from(studentsTable)
+    .innerJoin(studentEnrollmentsTable, and(
+      eq(studentEnrollmentsTable.studentId, studentsTable.id),
+      eq(studentEnrollmentsTable.circleId, regCircle.id),
+      eq(studentEnrollmentsTable.isArchived, false),
+    ))
+    .where(and(eq(studentsTable.isArchived, false), nameFilter)) : [];
+
+  // Students with no circle at all matching the name
+  const noCircle = await db
+    .select({
+      studentId: studentsTable.id,
+      fullName: studentsTable.fullName,
+      phone: studentsTable.phone,
+      source: sql<string>`'no_circle'`,
+      circleName: sql<string | null>`null`,
+    })
+    .from(studentsTable)
+    .where(and(isNull(studentsTable.circleId), eq(studentsTable.isArchived, false), nameFilter));
+
+  // Deduplicate
+  const regIds = new Set(inReg.map(s => s.studentId));
+  const combined = [...inReg, ...noCircle.filter(s => !regIds.has(s.studentId))];
+  res.json(combined);
+});
+
 // ── Global archived search (any role with data_entry access) ──────────────────
 // GET /students/archived-search?q=name
 // Returns archived students (globally or enrollment-archived) matching the name query.
@@ -649,12 +701,36 @@ router.patch("/students/:id/leave", authenticate, async (req, res): Promise<void
 // POST /students/:id/enroll
 // Body: { circleId: number }
 router.post("/students/:id/enroll", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "track_supervisor"].includes(req.userRole!)) {
+  if (!["leader", "track_supervisor", "data_entry"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
   const id = parseId(req.params.id);
   const { circleId } = req.body as { circleId: number };
   if (!circleId) { res.status(400).json({ error: "circleId required" }); return; }
+
+  // data_entry: target circle must be one of their assigned circles,
+  // and student must be unassigned (no real circle or in registration) or archived
+  if (req.userRole === "data_entry") {
+    const [assignment] = await db
+      .select({ circleId: dataEntryCircleAssignmentsTable.circleId })
+      .from(dataEntryCircleAssignmentsTable)
+      .where(and(
+        eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId!),
+        eq(dataEntryCircleAssignmentsTable.circleId, circleId),
+      ));
+    if (!assignment) { res.status(403).json({ error: "Forbidden: not assigned to this circle" }); return; }
+
+    // Student must be unassigned (null circleId or registration circle) or archived
+    const [regCircle] = await db.select({ id: circlesTable.id })
+      .from(circlesTable).where(eq(circlesTable.trackType, "registration"));
+    const [st] = await db.select({ circleId: studentsTable.circleId, isArchived: studentsTable.isArchived })
+      .from(studentsTable).where(eq(studentsTable.id, id));
+    if (!st) { res.status(404).json({ error: "Student not found" }); return; }
+    const isUnassigned = st.circleId === null || (regCircle && st.circleId === regCircle.id);
+    if (!isUnassigned && !st.isArchived) {
+      res.status(403).json({ error: "Forbidden: student is already assigned to a circle" }); return;
+    }
+  }
 
   const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }

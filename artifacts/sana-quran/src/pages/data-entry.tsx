@@ -688,9 +688,10 @@ export default function DataEntryPage() {
   // For enrolling archived student: which student to enroll and into which circle
   const [enrollDialogStudent, setEnrollDialogStudent] = useState<any | null>(null);
   const [enrollTargetCircleId, setEnrollTargetCircleId] = useState<number | null>(null);
-  // Global archive search
+  // Global search (archived + unassigned/registration)
   const [globalArchiveSearch, setGlobalArchiveSearch] = useState("");
   const [globalArchiveResults, setGlobalArchiveResults] = useState<any[]>([]);
+  const [globalUnassignedResults, setGlobalUnassignedResults] = useState<any[]>([]);
   const [globalArchiveLoading, setGlobalArchiveLoading] = useState(false);
 
   useEffect(() => {
@@ -707,21 +708,31 @@ export default function DataEntryPage() {
       .finally(() => setArchivedLoading(false));
   }, [isDataEntry, activeTab, archiveVersion]);
 
-  // Debounced global archive search
+  // Debounced global search (archived + unassigned)
   useEffect(() => {
     if (!isDataEntry || activeTab !== "archive") return;
     const q = globalArchiveSearch.trim();
-    if (q.length < 2) { setGlobalArchiveResults([]); return; }
+    if (q.length < 2) {
+      setGlobalArchiveResults([]);
+      setGlobalUnassignedResults([]);
+      return;
+    }
     const token = getToken();
     if (!token) return;
     setGlobalArchiveLoading(true);
     const timer = setTimeout(() => {
-      fetch(`${BASE}/api/students/archived-search?q=${encodeURIComponent(q)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((r) => (r.ok ? r.json() : []))
-        .then(setGlobalArchiveResults)
-        .catch(() => setGlobalArchiveResults([]))
+      const headers = { Authorization: `Bearer ${token}` };
+      Promise.all([
+        fetch(`${BASE}/api/students/archived-search?q=${encodeURIComponent(q)}`, { headers })
+          .then((r) => (r.ok ? r.json() : [])),
+        fetch(`${BASE}/api/students/unassigned-search?q=${encodeURIComponent(q)}`, { headers })
+          .then((r) => (r.ok ? r.json() : [])),
+      ])
+        .then(([archived, unassigned]) => {
+          setGlobalArchiveResults(archived);
+          setGlobalUnassignedResults(unassigned);
+        })
+        .catch(() => { setGlobalArchiveResults([]); setGlobalUnassignedResults([]); })
         .finally(() => setGlobalArchiveLoading(false));
     }, 400);
     return () => clearTimeout(timer);
@@ -1245,21 +1256,29 @@ export default function DataEntryPage() {
     }
   }, [toast, queryClient]);
 
-  const handleEnrollFromArchive = useCallback(async (studentId: number, circleId: number) => {
+  // enrollMode: "restore" for archived students, "enroll" for unassigned/registration students
+  const handleEnrollFromArchive = useCallback(async (studentId: number, circleId: number, enrollMode: "restore" | "enroll" = "restore") => {
     const token = getToken();
     if (!token) return;
     setArchiveActionLoading(studentId);
     try {
-      const res = await fetch(`${BASE}/api/students/${studentId}/restore`, {
-        method: "PATCH",
+      const url = enrollMode === "enroll"
+        ? `${BASE}/api/students/${studentId}/enroll`
+        : `${BASE}/api/students/${studentId}/restore`;
+      const method = enrollMode === "enroll" ? "POST" : "PATCH";
+      const res = await fetch(url, {
+        method,
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ circleId }),
       });
       if (!res.ok) throw new Error("فشل النقل");
-      toast({ title: "تم نقل الطالبة", description: "تم نقل الطالبة إلى حلقتك بنجاح" });
+      toast({ title: "تم إلحاق الطالبة", description: "تم نقل الطالبة إلى حلقتك بنجاح" });
       setEnrollDialogStudent(null);
       setEnrollTargetCircleId(null);
       setArchiveVersion(v => v + 1);
+      setGlobalArchiveResults([]);
+      setGlobalUnassignedResults([]);
+      setGlobalArchiveSearch("");
       queryClient.invalidateQueries({ queryKey: ["missingData"] });
     } catch {
       toast({ title: "خطأ", description: "فشل نقل الطالبة", variant: "destructive" });
@@ -2260,14 +2279,14 @@ export default function DataEntryPage() {
             })()
           )}
 
-          {/* Global archive search */}
+          {/* Global search — archived + unassigned/registration */}
           <div className="border-t border-border/50 pt-4 space-y-3">
             <p className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
               <Search className="w-3.5 h-3.5" />
-              بحث في كل الأرشيف
+              بحث عام
             </p>
             <p className="text-xs text-muted-foreground -mt-1">
-              دوّري على أي طالبة مؤرشفة في النظام — حتى لو أُرشفت من حلقة مو تابعة لكِ
+              دوّري بالاسم على أي طالبة — مؤرشفة، في حلقة التسجيل، أو غير مرتبطة بحلقة
             </p>
             <div className="relative">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -2283,14 +2302,17 @@ export default function DataEntryPage() {
               <p className="text-xs text-muted-foreground text-center py-2">جاري البحث...</p>
             )}
 
-            {!globalArchiveLoading && globalArchiveSearch.trim().length >= 2 && globalArchiveResults.length === 0 && (
+            {!globalArchiveLoading && globalArchiveSearch.trim().length >= 2
+              && globalArchiveResults.length === 0 && globalUnassignedResults.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-2">لا توجد نتائج</p>
             )}
 
+            {/* Archived results */}
             {globalArchiveResults.length > 0 && (
               <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-muted-foreground px-1">مؤرشفات</p>
                 {globalArchiveResults.map((s: any) => (
-                  <Card key={`global-${s.studentId}-${s.circleId ?? "none"}`} className="border-0 shadow-sm border-r-2 border-r-violet-300">
+                  <Card key={`arch-${s.studentId}-${s.circleId ?? "none"}`} className="border-0 shadow-sm border-r-2 border-r-rose-300">
                     <CardContent className="py-3 px-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
@@ -2309,15 +2331,51 @@ export default function DataEntryPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-50 shrink-0 text-xs"
+                          className="gap-1.5 border-rose-300 text-rose-700 hover:bg-rose-50 shrink-0 text-xs"
                           onClick={() => {
-                            setEnrollDialogStudent(s);
+                            setEnrollDialogStudent({ ...s, enrollMode: "restore" });
                             setEnrollTargetCircleId(assignedCircles[0]?.id ?? null);
                           }}
                           disabled={archiveActionLoading === s.studentId}
                         >
                           <ArchiveRestore className="w-3.5 h-3.5" />
-                          انقليها لحلقتك
+                          انقليها
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Unassigned / registration results */}
+            {globalUnassignedResults.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-muted-foreground px-1">في التسجيل أو بدون حلقة</p>
+                {globalUnassignedResults.map((s: any) => (
+                  <Card key={`unassigned-${s.studentId}`} className="border-0 shadow-sm border-r-2 border-r-amber-300">
+                    <CardContent className="py-3 px-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm">{s.fullName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {s.source === "registration"
+                              ? <span className="font-medium text-amber-600">حلقة التسجيل · {s.circleName}</span>
+                              : <span className="text-muted-foreground">بدون حلقة</span>}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50 shrink-0 text-xs"
+                          onClick={() => {
+                            setEnrollDialogStudent({ ...s, enrollMode: "enroll" });
+                            setEnrollTargetCircleId(assignedCircles[0]?.id ?? null);
+                          }}
+                          disabled={archiveActionLoading === s.studentId}
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                          أضيفيها
                         </Button>
                       </div>
                     </CardContent>
@@ -2338,23 +2396,34 @@ export default function DataEntryPage() {
         </div>
       )}
 
-      {/* Enroll from archive dialog */}
+      {/* Enroll / restore dialog */}
       <Dialog open={!!enrollDialogStudent} onOpenChange={(o) => { if (!o) { setEnrollDialogStudent(null); setEnrollTargetCircleId(null); } }}>
         <DialogContent className="max-w-sm" dir="rtl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ArchiveRestore className="w-5 h-5 text-primary" />
-              نقل طالبة من الأرشيف
+              {enrollDialogStudent?.enrollMode === "enroll"
+                ? <><Users className="w-5 h-5 text-amber-600" /> إلحاق طالبة بحلقتك</>
+                : <><ArchiveRestore className="w-5 h-5 text-primary" /> نقل طالبة من الأرشيف</>}
             </DialogTitle>
           </DialogHeader>
           {enrollDialogStudent && (
             <div className="space-y-4">
-              <div className="rounded-xl bg-muted/40 p-3">
+              <div className={`rounded-xl p-3 ${enrollDialogStudent.enrollMode === "enroll" ? "bg-amber-50 border border-amber-100" : "bg-muted/40"}`}>
                 <p className="font-bold text-sm">{enrollDialogStudent.fullName}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">أُرشفت من: {enrollDialogStudent.circleName}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {enrollDialogStudent.enrollMode === "enroll"
+                    ? (enrollDialogStudent.source === "registration"
+                        ? `في حلقة التسجيل · ${enrollDialogStudent.circleName}`
+                        : "بدون حلقة")
+                    : (enrollDialogStudent.isGlobalArchive
+                        ? "أرشيف عام"
+                        : `أُرشفت من: ${enrollDialogStudent.circleName ?? "—"}`)}
+                </p>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-sm font-semibold">انقليها إلى حلقة:</Label>
+                <Label className="text-sm font-semibold">
+                  {enrollDialogStudent.enrollMode === "enroll" ? "أضيفيها إلى حلقة:" : "انقليها إلى حلقة:"}
+                </Label>
                 <select
                   className="w-full border border-input rounded-xl px-3 py-2.5 text-sm bg-background text-right"
                   value={enrollTargetCircleId ?? ""}
@@ -2376,11 +2445,17 @@ export default function DataEntryPage() {
               disabled={!enrollTargetCircleId || archiveActionLoading === enrollDialogStudent?.studentId}
               onClick={() => {
                 if (enrollDialogStudent && enrollTargetCircleId) {
-                  handleEnrollFromArchive(enrollDialogStudent.studentId, enrollTargetCircleId);
+                  handleEnrollFromArchive(
+                    enrollDialogStudent.studentId,
+                    enrollTargetCircleId,
+                    enrollDialogStudent.enrollMode ?? "restore",
+                  );
                 }
               }}
             >
-              {archiveActionLoading === enrollDialogStudent?.studentId ? "جاري النقل..." : "نقل الطالبة"}
+              {archiveActionLoading === enrollDialogStudent?.studentId
+                ? "جاري..."
+                : enrollDialogStudent?.enrollMode === "enroll" ? "إلحاق الطالبة" : "نقل الطالبة"}
             </Button>
           </DialogFooter>
         </DialogContent>
