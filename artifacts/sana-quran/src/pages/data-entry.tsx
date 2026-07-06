@@ -688,6 +688,10 @@ export default function DataEntryPage() {
   // For enrolling archived student: which student to enroll and into which circle
   const [enrollDialogStudent, setEnrollDialogStudent] = useState<any | null>(null);
   const [enrollTargetCircleId, setEnrollTargetCircleId] = useState<number | null>(null);
+  // Global archive search
+  const [globalArchiveSearch, setGlobalArchiveSearch] = useState("");
+  const [globalArchiveResults, setGlobalArchiveResults] = useState<any[]>([]);
+  const [globalArchiveLoading, setGlobalArchiveLoading] = useState(false);
 
   useEffect(() => {
     if (!isDataEntry || activeTab !== "archive") return;
@@ -702,6 +706,26 @@ export default function DataEntryPage() {
       .catch(() => setArchivedStudents([]))
       .finally(() => setArchivedLoading(false));
   }, [isDataEntry, activeTab, archiveVersion]);
+
+  // Debounced global archive search
+  useEffect(() => {
+    if (!isDataEntry || activeTab !== "archive") return;
+    const q = globalArchiveSearch.trim();
+    if (q.length < 2) { setGlobalArchiveResults([]); return; }
+    const token = getToken();
+    if (!token) return;
+    setGlobalArchiveLoading(true);
+    const timer = setTimeout(() => {
+      fetch(`${BASE}/api/students/archived-search?q=${encodeURIComponent(q)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => (r.ok ? r.json() : []))
+        .then(setGlobalArchiveResults)
+        .catch(() => setGlobalArchiveResults([]))
+        .finally(() => setGlobalArchiveLoading(false));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [isDataEntry, activeTab, globalArchiveSearch, archiveVersion]);
 
   // Auto-select track from user profile
   useEffect(() => {
@@ -2236,11 +2260,78 @@ export default function DataEntryPage() {
             })()
           )}
 
+          {/* Global archive search */}
+          <div className="border-t border-border/50 pt-4 space-y-3">
+            <p className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+              <Search className="w-3.5 h-3.5" />
+              بحث في كل الأرشيف
+            </p>
+            <p className="text-xs text-muted-foreground -mt-1">
+              دوّري على أي طالبة مؤرشفة في النظام — حتى لو أُرشفت من حلقة مو تابعة لكِ
+            </p>
+            <div className="relative">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                className="pr-9 text-right"
+                placeholder="اكتبي اسم الطالبة (حرفين على الأقل)..."
+                value={globalArchiveSearch}
+                onChange={(e) => setGlobalArchiveSearch(e.target.value)}
+              />
+            </div>
+
+            {globalArchiveLoading && (
+              <p className="text-xs text-muted-foreground text-center py-2">جاري البحث...</p>
+            )}
+
+            {!globalArchiveLoading && globalArchiveSearch.trim().length >= 2 && globalArchiveResults.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-2">لا توجد نتائج</p>
+            )}
+
+            {globalArchiveResults.length > 0 && (
+              <div className="space-y-2">
+                {globalArchiveResults.map((s: any) => (
+                  <Card key={`global-${s.studentId}-${s.circleId ?? "none"}`} className="border-0 shadow-sm border-r-2 border-r-violet-300">
+                    <CardContent className="py-3 px-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm">{s.fullName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {s.isGlobalArchive
+                              ? <span className="text-rose-500 font-medium">أرشيف عام</span>
+                              : <>أُرشفت من: <span className="font-medium">{s.circleName}</span></>}
+                            {s.archivedAt && (
+                              <span className="mr-2">
+                                · {new Date(s.archivedAt).toLocaleDateString("ar-SA", { day: "numeric", month: "short" })}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-50 shrink-0 text-xs"
+                          onClick={() => {
+                            setEnrollDialogStudent(s);
+                            setEnrollTargetCircleId(assignedCircles[0]?.id ?? null);
+                          }}
+                          disabled={archiveActionLoading === s.studentId}
+                        >
+                          <ArchiveRestore className="w-3.5 h-3.5" />
+                          انقليها لحلقتك
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Info note */}
           <Card className="border-0 bg-amber-50/60 shadow-none">
             <CardContent className="py-3 px-4">
               <p className="text-xs text-amber-700">
-                <span className="font-bold">ملاحظة:</span> يمكنك أرشفة طالبة من حلقتك بالضغط على اسمها في قائمة إدخال البيانات ثم اختيار "أرشفة".
+                <span className="font-bold">ملاحظة:</span> يمكنك أرشفة طالبة من حلقتك بالضغط على زر الأرشيف 📦 بجانب اسمها في قائمة إدخال البيانات.
               </p>
             </CardContent>
           </Card>

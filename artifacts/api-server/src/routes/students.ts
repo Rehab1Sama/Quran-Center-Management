@@ -86,6 +86,61 @@ router.get("/students", authenticate, async (req, res): Promise<void> => {
   res.json(students);
 });
 
+// ── Global archived search (any role with data_entry access) ──────────────────
+// GET /students/archived-search?q=name
+// Returns archived students (globally or enrollment-archived) matching the name query.
+// data_entry: name search only, min 2 chars, no bulk listing.
+router.get("/students/archived-search", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy", "track_supervisor", "data_entry"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const q = ((req.query.q as string) ?? "").trim();
+  if (!q || q.length < 2) { res.json([]); return; }
+
+  // Globally archived students matching the name
+  const globalArchived = await db
+    .select({
+      studentId: studentsTable.id,
+      fullName: studentsTable.fullName,
+      phone: studentsTable.phone,
+      isGlobalArchive: sql<boolean>`true`,
+      circleId: studentsTable.circleId,
+      circleName: sql<string | null>`null`,
+      archivedAt: studentsTable.archivedAt,
+    })
+    .from(studentsTable)
+    .where(and(eq(studentsTable.isArchived, true), sql`lower(${studentsTable.fullName}) like ${`%${q.toLowerCase()}%`}`));
+
+  // Enrollment-archived students matching the name (not globally archived)
+  const enrollmentArchived = await db
+    .select({
+      studentId: studentsTable.id,
+      fullName: studentsTable.fullName,
+      phone: studentsTable.phone,
+      isGlobalArchive: sql<boolean>`false`,
+      circleId: studentEnrollmentsTable.circleId,
+      circleName: circlesTable.name,
+      archivedAt: studentEnrollmentsTable.archivedAt,
+    })
+    .from(studentEnrollmentsTable)
+    .innerJoin(studentsTable, eq(studentsTable.id, studentEnrollmentsTable.studentId))
+    .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))
+    .where(and(
+      eq(studentEnrollmentsTable.isArchived, true),
+      eq(studentsTable.isArchived, false),
+      sql`lower(${studentsTable.fullName}) like ${`%${q.toLowerCase()}%`}`,
+    ));
+
+  // Deduplicate: prefer global archive record if student appears in both
+  const globalIds = new Set(globalArchived.map(s => s.studentId));
+  const combined = [
+    ...globalArchived,
+    ...enrollmentArchived.filter(s => !globalIds.has(s.studentId)),
+  ];
+
+  res.json(combined);
+});
+
 // ── All enrollment-archived students (across all circles) ──────────────────────
 router.get("/students/enrollment-archived", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "deputy", "track_supervisor", "data_entry"].includes(req.userRole!)) {
