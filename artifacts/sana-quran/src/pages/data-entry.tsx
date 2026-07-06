@@ -462,35 +462,56 @@ function AyahSelect({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const [query, setQuery] = useState("");
   const surah = SURAHS.find((s) => s.name === surahName);
   const max = surah?.ayahs ?? 0;
-  const num = parseInt(value, 10);
-  const isOutOfRange = value !== "" && (!Number.isFinite(num) || num < 1 || num > max);
+
+  const filtered = useMemo(() => {
+    if (!max) return [];
+    const q = query.trim();
+    if (!q) return Array.from({ length: max }, (_, i) => i + 1);
+    return Array.from({ length: max }, (_, i) => i + 1).filter((n) =>
+      String(n).startsWith(q)
+    );
+  }, [max, query]);
 
   return (
-    <input
-      type="number"
-      inputMode="numeric"
-      min={1}
-      max={max || undefined}
-      disabled={!surahName}
-      value={value}
-      onChange={(e) => {
-        const v = e.target.value;
-        // allow clearing or typing; clamp only on blur
-        onChange(v);
-      }}
-      onBlur={() => {
-        if (!value || !max) return;
-        const n = parseInt(value, 10);
-        if (!Number.isFinite(n) || n < 1) onChange("1");
-        else if (n > max) onChange(String(max));
-      }}
-      placeholder={max ? `١ — ${max}` : "آية"}
-      className={`w-full border rounded-md px-2 py-1.5 text-sm bg-background text-right placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-        isOutOfRange ? "border-rose-400 bg-rose-50 focus:ring-rose-300" : "border-input"
-      }`}
-    />
+    <div className="space-y-1 w-full">
+      <input
+        type="number"
+        inputMode="numeric"
+        min={1}
+        max={max || undefined}
+        disabled={!surahName}
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          // if the typed value is a valid ayah, select it immediately
+          const n = parseInt(e.target.value, 10);
+          if (Number.isFinite(n) && n >= 1 && n <= max) onChange(String(n));
+          else if (e.target.value === "") onChange("");
+        }}
+        placeholder={max ? `١ — ${max}` : "آية"}
+        className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-background text-right placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+      />
+      <select
+        className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-background text-right disabled:opacity-50 disabled:cursor-not-allowed"
+        value={value}
+        disabled={!surahName}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setQuery(e.target.value);
+        }}
+        size={filtered.length > 0 && query.trim() ? Math.min(filtered.length + 1, 5) : undefined}
+      >
+        <option value="">آية</option>
+        {filtered.map((n) => (
+          <option key={n} value={String(n)}>
+            {n}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
