@@ -2,11 +2,12 @@ import { Router, type IRouter } from "express";
 import { db, dataEntrySessionsTable, recordsTable, usersTable } from "@workspace/db";
 import { eq, and, gte } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
+import { getMakkahDay } from "../lib/date";
 
 const router: IRouter = Router();
 
 function getMeccaTodayServer(): string {
-  return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return getMakkahDay();
 }
 
 // هل الوقت الحالي (بتوقيت مكة) صباح أم مساء؟

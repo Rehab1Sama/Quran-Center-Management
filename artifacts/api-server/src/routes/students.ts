@@ -3,6 +3,7 @@ import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTab
 import { eq, and, gte, desc, sql, ne, isNull } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateStudentBody, UpdateStudentBody } from "@workspace/api-zod";
+import { getMakkahDay, getMakkahDaysAgo } from "../lib/date";
 
 const router: IRouter = Router();
 
@@ -345,7 +346,7 @@ router.patch("/students/:id/restore", authenticate, async (req, res): Promise<vo
 router.get("/students/on-leave", authenticate, async (req, res): Promise<void> => {
   if (!req.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-  const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const today = getMakkahDay();
 
   // Get all active enrollments that have a current leave
   const enrollments = await db
@@ -899,10 +900,7 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     cancelledBy: l.cancelledById ? (lhUserMap[l.cancelledById] ?? "غير معروف") : null,
   }));
 
-  const meccaNow = new Date(Date.now() + 3 * 60 * 60 * 1000);
-  const cutoff180 = new Date(meccaNow);
-  cutoff180.setDate(cutoff180.getDate() - 179);
-  const cutoffStr = cutoff180.toISOString().slice(0, 10);
+  const cutoffStr = getMakkahDaysAgo(179);
   const heatmapData = allRecords
     .filter(r => r.date >= cutoffStr)
     .map(r => {

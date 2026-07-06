@@ -30,7 +30,7 @@ export default function VolunteerPage({ userRole }: VolunteerPageProps) {
   const [showDialog, setShowDialog] = useState(false);
   const [editingRecord, setEditingRecord] = useState<any>(null);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
-  const [form, setForm] = useState({ studentId: 0, date: new Date().toISOString().split("T")[0], juzNumber: "", responded: true, grade: "جيد", notes: "" });
+  const [form, setForm] = useState({ studentId: 0, date: (() => { const d = new Date(Date.now() + 3*60*60*1000); if(d.getUTCHours()<5) d.setUTCDate(d.getUTCDate()-1); return d.toISOString().slice(0,10); })(), juzNumber: "", responded: true, grade: "جيد", notes: "" });
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -51,7 +51,8 @@ export default function VolunteerPage({ userRole }: VolunteerPageProps) {
     setSelectedStudent(student);
     setEditingRecord(null);
     const totalJuz = student.juzCompleted;
-    setForm({ studentId: student.studentId, date: new Date().toISOString().split("T")[0], juzNumber: String(totalJuz + 1), responded: true, grade: "جيد", notes: "" });
+    const _d = new Date(Date.now() + 3*60*60*1000); if(_d.getUTCHours()<5) _d.setUTCDate(_d.getUTCDate()-1);
+    setForm({ studentId: student.studentId, date: _d.toISOString().slice(0,10), juzNumber: String(totalJuz + 1), responded: true, grade: "جيد", notes: "" });
     setShowDialog(true);
   }
 

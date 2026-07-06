@@ -2,11 +2,12 @@ import { Router, type IRouter } from "express";
 import { db, dataEntryCircleAssignmentsTable, usersTable, circlesTable, recordsTable, studentsTable, teacherAbsencesTable } from "@workspace/db";
 import { eq, and, gte, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
+import { getMakkahDay } from "../lib/date";
 
 const router: IRouter = Router();
 
 function getMeccaTodayServer(): string {
-  return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return getMakkahDay();
 }
 
 // GET /api/data-entry/my-circles — حلقات مدخلة البيانات المعيّنة لها

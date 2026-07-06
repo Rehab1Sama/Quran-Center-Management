@@ -154,7 +154,7 @@ function EventItem({ event, isLeader, onEdit, onDelete }: EventItemProps) {
 interface CalendarPageProps { userRole?: string; userId?: number; }
 
 export default function CalendarPage({ userRole }: CalendarPageProps) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = (() => { const d = new Date(Date.now() + 3*60*60*1000); if(d.getUTCHours()<5) d.setUTCDate(d.getUTCDate()-1); return d.toISOString().slice(0,10); })();
   const currentYear = new Date().getFullYear();
 
   const [showDialog, setShowDialog] = useState(false);

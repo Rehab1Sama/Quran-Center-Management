@@ -3,6 +3,7 @@ import { db, teacherAbsencesTable, circlesTable } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { MarkTeacherAbsentBody } from "@workspace/api-zod";
+import { getMakkahDay, getMakkahDaysAgo } from "../lib/date";
 
 const router: IRouter = Router();
 
@@ -56,8 +57,8 @@ router.delete("/circles/:id/teacher-absence", authenticate, async (req, res): Pr
 
 router.get("/teacher-absences", authenticate, async (req, res): Promise<void> => {
   const { dateFrom, dateTo } = req.query as Record<string, string | undefined>;
-  const today = new Date().toISOString().slice(0, 10);
-  const from = dateFrom ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const today = getMakkahDay();
+  const from = dateFrom ?? getMakkahDaysAgo(30);
   const to = dateTo ?? today;
 
   const absences = await db.select().from(teacherAbsencesTable)

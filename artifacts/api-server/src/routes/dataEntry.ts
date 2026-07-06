@@ -40,11 +40,12 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
   const userRole = req.userRole;
 
   // Students already recorded today — used to mark (not exclude) them
+  // المفتاح: studentId-circleId لأن نفس الطالبة قد تكون في حلقتين بأنصبة مختلفة
   const todayRecords = await db
-    .select({ studentId: recordsTable.studentId, recordId: recordsTable.id })
+    .select({ studentId: recordsTable.studentId, circleId: recordsTable.circleId, recordId: recordsTable.id })
     .from(recordsTable)
     .where(eq(recordsTable.date, today));
-  const recordMap = new Map(todayRecords.map((r) => [r.studentId, r.recordId]));
+  const recordMap = new Map(todayRecords.map((r) => [`${r.studentId}-${r.circleId}`, r.recordId]));
 
   // For data_entry: get their assigned circle IDs
   // null = no restriction (show all), array = restrict to these circles
@@ -133,7 +134,7 @@ router.get("/data-entry/missing", authenticate, async (req, res): Promise<void> 
       s.leaveStart <= today &&
       today <= s.leaveEnd
     );
-    const recordId = recordMap.get(s.studentId) ?? null;
+    const recordId = recordMap.get(`${s.studentId}-${s.circleId}`) ?? null;
     return { ...s, onLeave, recordId, hasRecord: recordId !== null };
   });
 

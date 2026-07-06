@@ -2,15 +2,16 @@ import { Router, type IRouter } from "express";
 import { db, recordsTable, studentsTable, circlesTable, usersTable, teacherAbsencesTable, tracksTable, dailyCircleTasksTable, examRecordsTable } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
+import { getMakkahDay, getMakkahDaysAgo } from "../lib/date";
 
 const router: IRouter = Router();
 
 function getDateRange(dateFrom?: string, dateTo?: string): { from: string; to: string; label: string } {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getMakkahDay();
   if (dateFrom && dateTo) {
     return { from: dateFrom, to: dateTo, label: `${dateFrom} إلى ${dateTo}` };
   }
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const weekAgo = getMakkahDaysAgo(7);
   return { from: weekAgo, to: today, label: "هذا الأسبوع" };
 }
 
@@ -325,7 +326,7 @@ router.get("/stats/monthly-comparison", authenticate, async (req, res): Promise<
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10);
-  const todayStr = now.toISOString().slice(0, 10);
+  const todayStr = getMakkahDay();
 
   const thisMonthRecords = await db.select().from(recordsTable)
     .where(and(gte(recordsTable.date, thisMonthStart), lte(recordsTable.date, todayStr)));
@@ -365,7 +366,7 @@ router.get("/stats/monthly-comparison", authenticate, async (req, res): Promise<
 });
 
 router.get("/stats/today-banner", async (_req, res): Promise<void> => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getMakkahDay();
   const records = await db.select().from(recordsTable).where(eq(recordsTable.date, today));
   const circles = await db.select().from(circlesTable).where(eq(circlesTable.isArchived, false));
   const students = await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false));
@@ -495,8 +496,8 @@ router.get("/stats/monthly-report", authenticate, async (req, res): Promise<void
 });
 
 router.get("/stats/daily-snapshot", authenticate, async (req, res): Promise<void> => {
-  const today = new Date().toISOString().slice(0, 10);
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const today = getMakkahDay();
+  const weekAgo = getMakkahDaysAgo(7);
   const weekFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const allStudents = await db.select().from(studentsTable)
@@ -765,14 +766,13 @@ router.get("/stats/juz-stats", authenticate, async (req, res): Promise<void> => 
 
 // مقارنة الأسبوع الحالي بالأسبوع الماضي
 router.get("/stats/weekly-comparison", authenticate, async (req, res): Promise<void> => {
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = getMakkahDay();
 
   // الأسبوع الحالي: آخر 7 أيام
-  const thisWeekStart = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const thisWeekStart = getMakkahDaysAgo(6);
   // الأسبوع الماضي: 8-14 يوماً
-  const lastWeekStart = new Date(today.getTime() - 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const lastWeekEnd   = new Date(today.getTime() - 7  * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const lastWeekStart = getMakkahDaysAgo(13);
+  const lastWeekEnd   = getMakkahDaysAgo(7);
 
   const userRole = req.userRole;
   const userId   = req.userId;
@@ -885,7 +885,7 @@ router.get("/stats/teacher-performance", authenticate, async (req, res): Promise
   const userId = req.userId;
 
   const { dateFrom, dateTo } = req.query as Record<string, string | undefined>;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getMakkahDay();
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
   const from = dateFrom ?? monthStart;
   const to   = dateTo   ?? today;

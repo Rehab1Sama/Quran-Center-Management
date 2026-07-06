@@ -33,13 +33,15 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useToast } from "@/hooks/use-toast";
 
 function AttendanceHeatmap({ heatmapData }: { heatmapData: Array<{ date: string; status: string }> }) {
-  const meccaToday = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  const meccaMs = Date.now() + 3 * 60 * 60 * 1000;
+  const meccaToday = new Date(meccaMs);
+  if (meccaToday.getUTCHours() < 5) meccaToday.setUTCDate(meccaToday.getUTCDate() - 1);
   const todayStr = meccaToday.toISOString().slice(0, 10);
 
   const recordMap = new Map(heatmapData.map(r => [r.date, r.status]));
 
   const startDate = new Date(meccaToday);
-  startDate.setDate(meccaToday.getDate() - 181);
+  startDate.setUTCDate(meccaToday.getUTCDate() - 181);
   while (startDate.getUTCDay() !== 0) startDate.setDate(startDate.getDate() - 1);
 
   const weeks: Array<Array<string | null>> = [];
@@ -121,9 +123,16 @@ function formatDateShort(iso: string) {
   return new Date(iso).toLocaleDateString("ar-SA", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function getMakkahDay(): string {
+  const meccaMs = Date.now() + 3 * 60 * 60 * 1000;
+  const d = new Date(meccaMs);
+  if (d.getUTCHours() < 5) d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 function isOnLeave(leaveStart?: string | null, leaveEnd?: string | null): boolean {
   if (!leaveStart || !leaveEnd) return false;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getMakkahDay();
   return leaveStart <= today && today <= leaveEnd;
 }
 
@@ -631,7 +640,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
       {(() => {
         const enrollments: Array<{ circleId: number; circleName: string; circleTrack: string; isArchived: boolean; leaveStart?: string | null; leaveEnd?: string | null }> = (profile as any).enrollments ?? [];
         if (enrollments.length === 0) return null;
-        const today = new Date().toISOString().slice(0, 10);
+        const today = getMakkahDay();
         return (
           <Card className="border-0 shadow-sm">
             <CardHeader className="pb-2">

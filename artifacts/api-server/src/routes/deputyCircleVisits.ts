@@ -2,24 +2,25 @@ import { Router, type IRouter } from "express";
 import { db, deputyCircleVisitsTable, circlesTable } from "@workspace/db";
 import { eq, and, gte } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
+import { getMakkahDay } from "../lib/date";
 
 const router: IRouter = Router();
 
 function getMeccaToday(): string {
-  return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return getMakkahDay();
 }
 
 function getWeekStart(): string {
-  const d = new Date(Date.now() + 3 * 60 * 60 * 1000);
-  const day = d.getDay();
-  const diff = (day === 0 ? 0 : day);
-  d.setDate(d.getDate() - diff);
+  const today = getMakkahDay();
+  const d = new Date(today + "T00:00:00Z");
+  const day = d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() - (day === 0 ? 0 : day));
   return d.toISOString().slice(0, 10);
 }
 
 function getMonthStart(): string {
-  const d = new Date(Date.now() + 3 * 60 * 60 * 1000);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  const today = getMakkahDay();
+  return today.slice(0, 8) + "01";
 }
 
 router.get("/deputy/circle-visits", authenticate, async (req, res): Promise<void> => {

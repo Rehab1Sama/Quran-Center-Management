@@ -6,6 +6,7 @@ import {
 } from "@workspace/db";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
+import { getMakkahDay, getMakkahDaysAgo } from "../lib/date";
 
 const router: IRouter = Router();
 
@@ -14,9 +15,9 @@ router.get("/stats/stumbling", authenticate, async (req, res): Promise<void> => 
     res.status(403).json({ error: "Forbidden" }); return;
   }
 
-  const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const thirtyDaysAgo = new Date(Date.now() + 3 * 60 * 60 * 1000 - 30 * 86400000).toISOString().slice(0, 10);
-  const twoDaysAgo = new Date(Date.now() + 3 * 60 * 60 * 1000 - 2 * 86400000).toISOString().slice(0, 10);
+  const today = getMakkahDay();
+  const thirtyDaysAgo = getMakkahDaysAgo(30);
+  const twoDaysAgo = getMakkahDaysAgo(2);
 
   const [allUsers, allCircles, allStudents, allTracks] = await Promise.all([
     db.select().from(usersTable),

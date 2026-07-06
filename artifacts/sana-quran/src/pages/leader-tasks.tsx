@@ -16,7 +16,7 @@ import {
   Trash2, Plus, ChevronDown, ChevronUp, CalendarDays,
 } from "lucide-react";
 
-const today = new Date().toISOString().slice(0, 10);
+const today = (() => { const d = new Date(Date.now() + 3*60*60*1000); if(d.getUTCHours()<5) d.setUTCDate(d.getUTCDate()-1); return d.toISOString().slice(0,10); })();
 const fmtDate = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("ar-SA", { day: "2-digit", month: "long", year: "numeric" });
 
 type Track = { id: number; name: string };
