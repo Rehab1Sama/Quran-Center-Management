@@ -688,6 +688,8 @@ export default function DataEntryPage() {
   // For enrolling archived student: which student to enroll and into which circle
   const [enrollDialogStudent, setEnrollDialogStudent] = useState<any | null>(null);
   const [enrollTargetCircleId, setEnrollTargetCircleId] = useState<number | null>(null);
+  // Confirm archive dialog
+  const [confirmArchiveStudent, setConfirmArchiveStudent] = useState<{ studentId: number; studentName: string; circleId: number } | null>(null);
   // Global search (archived + unassigned/registration)
   const [globalArchiveSearch, setGlobalArchiveSearch] = useState("");
   const [globalArchiveResults, setGlobalArchiveResults] = useState<any[]>([]);
@@ -1765,7 +1767,7 @@ export default function DataEntryPage() {
                                 variant="outline"
                                 className="gap-1 text-amber-600 border-amber-200 hover:bg-amber-50 h-8 px-2"
                                 title="أرشفة الطالبة من هذه الحلقة"
-                                onClick={() => handleArchiveStudent(student.studentId, selectedCircleId)}
+                                onClick={() => setConfirmArchiveStudent({ studentId: student.studentId, studentName: student.studentName, circleId: selectedCircleId })}
                                 disabled={archiveActionLoading === student.studentId}
                               >
                                 <Archive className="w-3 h-3" />
@@ -2395,6 +2397,43 @@ export default function DataEntryPage() {
           </Card>
         </div>
       )}
+
+      {/* Confirm archive dialog */}
+      <Dialog open={!!confirmArchiveStudent} onOpenChange={(o) => { if (!o) setConfirmArchiveStudent(null); }}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Archive className="w-5 h-5 text-amber-600" />
+              تأكيد الأرشفة
+            </DialogTitle>
+          </DialogHeader>
+          <div className="rounded-xl bg-amber-50 border border-amber-100 p-3">
+            <p className="text-sm">
+              هل أنتِ متأكدة من أرشفة{" "}
+              <span className="font-bold">{confirmArchiveStudent?.studentName}</span>{" "}
+              من هذه الحلقة؟
+            </p>
+            <p className="text-xs text-amber-600 mt-1.5">ستُنقل إلى قسم الأرشيف ويمكن استعادتها لاحقاً.</p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setConfirmArchiveStudent(null)}>
+              إلغاء
+            </Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={archiveActionLoading === confirmArchiveStudent?.studentId}
+              onClick={() => {
+                if (confirmArchiveStudent) {
+                  handleArchiveStudent(confirmArchiveStudent.studentId, confirmArchiveStudent.circleId);
+                  setConfirmArchiveStudent(null);
+                }
+              }}
+            >
+              {archiveActionLoading === confirmArchiveStudent?.studentId ? "جاري..." : "تأكيد الأرشفة"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Enroll / restore dialog */}
       <Dialog open={!!enrollDialogStudent} onOpenChange={(o) => { if (!o) { setEnrollDialogStudent(null); setEnrollTargetCircleId(null); } }}>
