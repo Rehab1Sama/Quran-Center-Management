@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, usersTable, studentArchiveEventsTable, studentLeaveHistoryTable, studentEnrollmentsTable } from "@workspace/db";
-import { eq, and, gte, desc, sql, ne, isNull } from "drizzle-orm";
+import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, usersTable, studentArchiveEventsTable, studentLeaveHistoryTable, studentEnrollmentsTable, dataEntryCircleAssignmentsTable } from "@workspace/db";
+import { eq, and, gte, desc, sql, ne, isNull, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateStudentBody, UpdateStudentBody } from "@workspace/api-zod";
 import { getMakkahDay, getMakkahDaysAgo } from "../lib/date";
@@ -118,6 +118,18 @@ router.get("/students/enrollment-archived", authenticate, async (req, res): Prom
     return;
   }
 
+  // data_entry: filter to their assigned circles only (deny-by-default if no assignments)
+  if (req.userRole === "data_entry") {
+    const assignments = await db
+      .select({ circleId: dataEntryCircleAssignmentsTable.circleId })
+      .from(dataEntryCircleAssignmentsTable)
+      .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId!));
+    if (assignments.length === 0) { res.json([]); return; }
+    const assignedIds = new Set(assignments.map(a => a.circleId));
+    res.json(rows.filter(r => assignedIds.has(r.circleId)));
+    return;
+  }
+
   res.json(rows);
 });
 
@@ -222,13 +234,24 @@ router.delete("/students/:id", authenticate, async (req, res): Promise<void> => 
 // If no circleId → global archive (leader only): archive student + all enrollments
 router.patch("/students/:id/archive", authenticate, async (req, res): Promise<void> => {
   const { circleId } = req.body as { circleId?: number };
-  // Per-circle archive: leader + track_supervisor allowed
+  // Per-circle archive: leader + track_supervisor + data_entry (own circles only)
   // Global archive (no circleId): leader only
-  const canPerCircle = ["leader", "track_supervisor"].includes(req.userRole!);
+  const canPerCircle = ["leader", "track_supervisor", "data_entry"].includes(req.userRole!);
   const canGlobal = req.userRole === "leader";
   if ((circleId && !canPerCircle) || (!circleId && !canGlobal)) {
     res.status(403).json({ error: "Forbidden" });
     return;
+  }
+  // data_entry: verify they are assigned to the target circle
+  if (circleId && req.userRole === "data_entry") {
+    const [assignment] = await db
+      .select({ circleId: dataEntryCircleAssignmentsTable.circleId })
+      .from(dataEntryCircleAssignmentsTable)
+      .where(and(
+        eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId!),
+        eq(dataEntryCircleAssignmentsTable.circleId, circleId),
+      ));
+    if (!assignment) { res.status(403).json({ error: "Forbidden: not assigned to this circle" }); return; }
   }
   const id = parseId(req.params.id);
 
@@ -236,6 +259,20 @@ router.patch("/students/:id/archive", authenticate, async (req, res): Promise<vo
   if (!before) { res.status(404).json({ error: "Student not found" }); return; }
 
   if (circleId) {
+    // Verify an active enrollment exists before archiving
+    const [enrollment] = await db.select()
+      .from(studentEnrollmentsTable)
+      .where(and(
+        eq(studentEnrollmentsTable.studentId, id),
+        eq(studentEnrollmentsTable.circleId, circleId),
+        eq(studentEnrollmentsTable.isArchived, false),
+      ))
+      .limit(1);
+    if (!enrollment) {
+      res.status(404).json({ error: "No active enrollment found for this student in this circle" });
+      return;
+    }
+
     // Per-circle archive: archive the enrollment
     await db.update(studentEnrollmentsTable)
       .set({ isArchived: true, archivedAt: new Date() })
@@ -304,11 +341,46 @@ router.patch("/students/:id/archive", authenticate, async (req, res): Promise<vo
 // If circleId → restore/upsert enrollment + make student active
 // If no circleId → restore globally (no circle assignment)
 router.patch("/students/:id/restore", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "track_supervisor"].includes(req.userRole!)) {
+  if (!["leader", "track_supervisor", "data_entry"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
   const id = parseId(req.params.id);
+  // data_entry: can only restore students who have an archived enrollment in their assigned circles
+  if (req.userRole === "data_entry") {
+    const { circleId } = req.body as { circleId?: number | null };
+    if (!circleId) { res.status(403).json({ error: "Forbidden: data_entry must specify a circleId" }); return; }
+    // Verify target circle is assigned to this data_entry user
+    const [assignment] = await db
+      .select({ circleId: dataEntryCircleAssignmentsTable.circleId })
+      .from(dataEntryCircleAssignmentsTable)
+      .where(and(
+        eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId!),
+        eq(dataEntryCircleAssignmentsTable.circleId, circleId),
+      ));
+    if (!assignment) { res.status(403).json({ error: "Forbidden: not assigned to this circle" }); return; }
+    // Verify there is an archived enrollment for this student in one of their assigned circles
+    const assignedCircles = await db
+      .select({ circleId: dataEntryCircleAssignmentsTable.circleId })
+      .from(dataEntryCircleAssignmentsTable)
+      .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId!));
+    const assignedIds = assignedCircles.map(a => a.circleId);
+    const [archivedEnrollment] = await db.select()
+      .from(studentEnrollmentsTable)
+      .where(and(
+        eq(studentEnrollmentsTable.studentId, id),
+        eq(studentEnrollmentsTable.isArchived, true),
+        inArray(studentEnrollmentsTable.circleId, assignedIds),
+      ))
+      .limit(1);
+    // Also allow globally archived students (no enrollment) to be enrolled
+    const [student] = await db.select({ isArchived: studentsTable.isArchived })
+      .from(studentsTable).where(eq(studentsTable.id, id));
+    if (!archivedEnrollment && !student?.isArchived) {
+      res.status(403).json({ error: "Forbidden: student has no archived enrollment in your circles" });
+      return;
+    }
+  }
   const { circleId } = req.body as { circleId?: number | null };
 
   const updateData: { isArchived: boolean; archivedAt: null; circleId?: number | null } = {
