@@ -463,21 +463,34 @@ function AyahSelect({
   onChange: (v: string) => void;
 }) {
   const surah = SURAHS.find((s) => s.name === surahName);
-  const max = surah?.ayahs ?? 1;
+  const max = surah?.ayahs ?? 0;
+  const num = parseInt(value, 10);
+  const isOutOfRange = value !== "" && (!Number.isFinite(num) || num < 1 || num > max);
+
   return (
-    <select
-      className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-background text-right"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
+    <input
+      type="number"
+      inputMode="numeric"
+      min={1}
+      max={max || undefined}
       disabled={!surahName}
-    >
-      <option value="">آية</option>
-      {Array.from({ length: max }, (_, i) => i + 1).map((n) => (
-        <option key={n} value={n.toString()}>
-          {n}
-        </option>
-      ))}
-    </select>
+      value={value}
+      onChange={(e) => {
+        const v = e.target.value;
+        // allow clearing or typing; clamp only on blur
+        onChange(v);
+      }}
+      onBlur={() => {
+        if (!value || !max) return;
+        const n = parseInt(value, 10);
+        if (!Number.isFinite(n) || n < 1) onChange("1");
+        else if (n > max) onChange(String(max));
+      }}
+      placeholder={max ? `١ — ${max}` : "آية"}
+      className={`w-full border rounded-md px-2 py-1.5 text-sm bg-background text-right placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+        isOutOfRange ? "border-rose-400 bg-rose-50 focus:ring-rose-300" : "border-input"
+      }`}
+    />
   );
 }
 
