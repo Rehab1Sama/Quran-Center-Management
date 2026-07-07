@@ -504,9 +504,9 @@ export default function CirclesPage() {
     }
   };
 
-  const tracks = Array.from(new Set(
-    (circles ?? []).flatMap(c => (typeof c.track === "string" && c.track) ? [c.track] : [])
-  )).sort();
+  const _trackSet = new Set<string>();
+  (circles ?? []).forEach((c: any) => { if (typeof c.track === "string" && c.track) _trackSet.add(c.track); });
+  const tracks: string[] = Array.from(_trackSet).sort();
 
   const filtered = circles?.filter(c => {
     const matchSearch = !search || c.name.includes(search) || (c as { teacherName?: string }).teacherName?.includes(search);
@@ -748,11 +748,16 @@ export default function CirclesPage() {
                                     value={editData.track}
                                     onChange={e => setEditData(d => ({ ...d, track: e.target.value }))}
                                   >
-                                    {tracks.map(t => (
+                                    {/* ضمان ظهور المسار الحالي للحلقة حتى لو لم يكن في القائمة المشتقة */}
+                                    {Array.from(new Set([
+                                      ...(editData.track ? [editData.track] : []),
+                                      ...tracks,
+                                    ])).map(t => (
                                       <option key={t} value={t}>{t}</option>
                                     ))}
                                   </select>
-                                  {editData.track !== (circle as any).track && (
+                                  {/* تحذير فقط إذا تغيّر المسار فعلاً — مع تطبيع القيمتين */}
+                                  {(editData.track || "") !== ((circle as any).track || "") && editData.track && (
                                     <p className="text-[10px] text-amber-600 font-medium">
                                       ⚠ ستنتقل الحلقة مع معلمتها ومشرفتها وطالباتها إلى مسار «{editData.track}»
                                     </p>
