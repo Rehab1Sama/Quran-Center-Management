@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
   Layers, Plus, Trash2, BookOpen, Users,
-  X, Check, Pencil, Link2, UserPlus, RefreshCw,
+  X, Check, Pencil, Link2, UserPlus, RefreshCw, ArrowRightLeft,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -92,6 +92,8 @@ export default function ManageTracksPage() {
   const [editCircleWhatsapp, setEditCircleWhatsapp] = useState("");
   const [editCircleMeetingTime, setEditCircleMeetingTime] = useState("");
   const [editCircleCapacity, setEditCircleCapacity] = useState("");
+  const [movingCircleId, setMovingCircleId] = useState<number | null>(null);
+  const [moveTargetTrack, setMoveTargetTrack] = useState("");
   const [syncing, setSyncing] = useState(false);
 
   const invalidate = () => {
@@ -218,6 +220,22 @@ export default function ManageTracksPage() {
           invalidate();
         },
         onError: () => toast({ title: "خطأ في التعديل", variant: "destructive" }),
+      }
+    );
+  };
+
+  const handleMoveCircle = (id: number, circleName: string) => {
+    if (!moveTargetTrack) return;
+    updateCircle.mutate(
+      { id, data: { track: moveTargetTrack } },
+      {
+        onSuccess: () => {
+          toast({ title: `نُقلت حلقة "${circleName}" إلى مسار "${moveTargetTrack}"` });
+          setMovingCircleId(null);
+          setMoveTargetTrack("");
+          invalidate();
+        },
+        onError: () => toast({ title: "خطأ في نقل الحلقة", variant: "destructive" }),
       }
     );
   };
@@ -486,6 +504,39 @@ export default function ManageTracksPage() {
                                   <X className="w-3.5 h-3.5" />
                                 </button>
                               </div>
+                            ) : movingCircleId === circle.id ? (
+                              <div className="flex-1 flex items-center gap-2 flex-wrap">
+                                <ArrowRightLeft className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <span className="text-xs text-muted-foreground">نقل إلى:</span>
+                                <select
+                                  autoFocus
+                                  className="flex-1 border border-input rounded-md px-2 py-1 text-sm bg-background text-right"
+                                  value={moveTargetTrack}
+                                  onChange={e => setMoveTargetTrack(e.target.value)}
+                                >
+                                  <option value="">— اختاري المسار —</option>
+                                  {(tracks ?? [])
+                                    .filter(t => t.name !== track.name)
+                                    .map(t => (
+                                      <option key={t.id} value={t.name}>{t.name}</option>
+                                    ))}
+                                </select>
+                                <button
+                                  onClick={() => handleMoveCircle(circle.id, circle.name)}
+                                  disabled={!moveTargetTrack || updateCircle.isPending}
+                                  className="p-1 rounded text-green-600 hover:bg-green-50 disabled:opacity-40 transition-colors"
+                                  title="تأكيد النقل"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => { setMovingCircleId(null); setMoveTargetTrack(""); }}
+                                  className="p-1 rounded text-muted-foreground hover:bg-muted transition-colors"
+                                  title="إلغاء"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             ) : editingCircleExtra === circle.id ? (
                               <div className="flex-1 space-y-2">
                                 <div className="flex items-center gap-2">
@@ -567,6 +618,13 @@ export default function ManageTracksPage() {
                                     title="تعديل الاسم"
                                   >
                                     <Pencil className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => { setMovingCircleId(circle.id); setMoveTargetTrack(""); }}
+                                    className="p-1 rounded text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                                    title="نقل إلى مسار آخر"
+                                  >
+                                    <ArrowRightLeft className="w-3 h-3" />
                                   </button>
                                   <button
                                     onClick={() => {
