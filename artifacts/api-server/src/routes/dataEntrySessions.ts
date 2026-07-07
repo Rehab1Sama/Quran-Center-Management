@@ -150,6 +150,7 @@ router.get("/data-entry/sessions/today", authenticate, async (req, res): Promise
 });
 
 // GET /api/data-entry/sessions/range — إحصائيات نطاق تاريخي (للقائدة والنائبة)
+// يرجع لكل مُدخِلة: إجمالي الأسبوع + تفصيل يومي
 router.get("/data-entry/sessions/range", authenticate, async (req, res): Promise<void> => {
   if (!["leader", "deputy"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" }); return;
@@ -160,25 +161,47 @@ router.get("/data-entry/sessions/range", authenticate, async (req, res): Promise
   const from = dateFrom ?? today;
   const to = dateTo ?? today;
 
-  const sessions = await db.select().from(dataEntrySessionsTable)
-    .where(and(gte(dataEntrySessionsTable.date, from)));
+  const [sessions, allDataEntryUsers] = await Promise.all([
+    db.select().from(dataEntrySessionsTable)
+      .where(gte(dataEntrySessionsTable.date, from))
+      .then(rows => rows.filter(s => s.date <= to)),
+    db.select().from(usersTable)
+      .where(and(eq(usersTable.role, "data_entry"), eq(usersTable.isArchived, false))),
+  ]);
 
-  const filtered = sessions.filter(s => s.date <= to);
-
-  const allDataEntryUsers = await db.select().from(usersTable)
-    .where(and(eq(usersTable.role, "data_entry"), eq(usersTable.isArchived, false)));
+  // Build sorted list of dates in range
+  const dates: string[] = [];
+  const cur = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
+  while (cur <= end) {
+    dates.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
 
   const result = allDataEntryUsers.map(user => {
-    const userSessions = filtered.filter(s => s.userId === user.id);
+    const userSessions = sessions.filter(s => s.userId === user.id);
     const totalMorning = userSessions.reduce((sum, s) => sum + s.morningMinutes, 0);
     const totalEvening = userSessions.reduce((sum, s) => sum + s.eveningMinutes, 0);
+
+    // Per-day breakdown
+    const byDay = dates.map(date => {
+      const day = userSessions.find(s => s.date === date);
+      return {
+        date,
+        morningMinutes: Math.round((day?.morningMinutes ?? 0) * 10) / 10,
+        eveningMinutes: Math.round((day?.eveningMinutes ?? 0) * 10) / 10,
+        totalMinutes: Math.round(((day?.morningMinutes ?? 0) + (day?.eveningMinutes ?? 0)) * 10) / 10,
+      };
+    });
+
     return {
       userId: user.id,
       userName: user.name,
       morningMinutes: Math.round(totalMorning * 10) / 10,
       eveningMinutes: Math.round(totalEvening * 10) / 10,
       totalMinutes: Math.round((totalMorning + totalEvening) * 10) / 10,
-      days: userSessions.length,
+      activeDays: userSessions.length,
+      byDay,
     };
   });
 

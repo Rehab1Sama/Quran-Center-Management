@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronDown, ChevronUp, Archive, RotateCcw, UserCircle, Link2, PlaneTakeoff, XCircle, RefreshCw, Sun, Moon, UserX, MoveRight, Crown } from "lucide-react";
+import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronDown, ChevronUp, Archive, RotateCcw, UserCircle, Link2, PlaneTakeoff, XCircle, RefreshCw, Sun, Moon, UserX, MoveRight, Crown, Pencil, ArrowRightLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -425,7 +425,7 @@ export default function CirclesPage() {
   const [search, setSearch] = useState("");
   const [selectedTrack, setSelectedTrack] = useState<string>("");
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editData, setEditData] = useState({ meetingTime: "", period: "am" as "am" | "pm", newStudentCapacity: "", whatsappLink: "" });
+  const [editData, setEditData] = useState({ name: "", track: "", meetingTime: "", period: "am" as "am" | "pm", newStudentCapacity: "", whatsappLink: "" });
   const [saving, setSaving] = useState(false);
   const [expandedCircle, setExpandedCircle] = useState<number | null>(null);
   const [seeding, setSeeding] = useState(false);
@@ -529,6 +529,8 @@ export default function CirclesPage() {
     const period: "am" | "pm" = h >= 12 ? "pm" : "am";
     const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
     setEditData({
+      name: circle.name ?? "",
+      track: (circle as any).track ?? "",
       meetingTime: mt ? `${String(h12).padStart(2,"0")}:${mt.split(":")[1]}` : "",
       period,
       newStudentCapacity: c.newStudentCapacity?.toString() ?? "",
@@ -548,6 +550,8 @@ export default function CirclesPage() {
       await updateCircle.mutateAsync({
         id: circleId,
         data: {
+          name: editData.name || undefined,
+          track: editData.track || undefined,
           meetingTime: time || null,
           newStudentCapacity: editData.newStudentCapacity ? Number(editData.newStudentCapacity) : null,
           whatsappLink: editData.whatsappLink || null,
@@ -719,6 +723,43 @@ export default function CirclesPage() {
                         {/* Inline edit form */}
                         {isEditing && (
                           <div className="mt-3 pt-3 border-t border-border/50 space-y-3">
+                            {/* Name + track — leader only */}
+                            {isLeader && (
+                              <>
+                                <div className="space-y-1">
+                                  <Label className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                                    <Pencil className="w-3 h-3" />
+                                    اسم الحلقة
+                                  </Label>
+                                  <Input
+                                    value={editData.name}
+                                    onChange={e => setEditData(d => ({ ...d, name: e.target.value }))}
+                                    className="h-8 text-xs text-right"
+                                    placeholder="اسم الحلقة"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                                    <ArrowRightLeft className="w-3 h-3" />
+                                    نقل إلى مسار
+                                  </Label>
+                                  <select
+                                    className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-background text-right"
+                                    value={editData.track}
+                                    onChange={e => setEditData(d => ({ ...d, track: e.target.value }))}
+                                  >
+                                    {tracks.map(t => (
+                                      <option key={t} value={t}>{t}</option>
+                                    ))}
+                                  </select>
+                                  {editData.track !== (circle as any).track && (
+                                    <p className="text-[10px] text-amber-600 font-medium">
+                                      ⚠ ستنتقل الحلقة مع معلمتها ومشرفتها وطالباتها إلى مسار «{editData.track}»
+                                    </p>
+                                  )}
+                                </div>
+                              </>
+                            )}
                             <div className="space-y-2">
                               <Label className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
                                 <Clock className="w-3 h-3" />

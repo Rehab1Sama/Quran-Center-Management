@@ -363,11 +363,23 @@ router.patch("/circles/:id", authenticate, async (req, res): Promise<void> => {
     return;
   }
 
+  // Load existing circle before update to detect track change
+  const [existing] = await db.select().from(circlesTable).where(eq(circlesTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Circle not found" }); return; }
+
   const [circle] = await db.update(circlesTable).set(parsed.data).where(eq(circlesTable.id, id)).returning();
-  if (!circle) {
-    res.status(404).json({ error: "Circle not found" });
-    return;
+  if (!circle) { res.status(404).json({ error: "Circle not found" }); return; }
+
+  // If track name changed, sync it on the teacher & supervisor user accounts
+  if (parsed.data.track && parsed.data.track !== existing.track) {
+    const staffIds = [existing.teacherId, existing.supervisorId].filter(Boolean) as number[];
+    if (staffIds.length > 0) {
+      await db.update(usersTable)
+        .set({ track: parsed.data.track })
+        .where(inArray(usersTable.id, staffIds));
+    }
   }
+
   res.json(circle);
 });
 

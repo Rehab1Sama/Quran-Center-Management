@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useGetMissingDataEntry, useGetDailySnapshot, useGetCurrentUser } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, AlertCircle, Clock, Timer, Sun, Moon, Activity, CheckSquare, Square, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckCircle, AlertCircle, Clock, Timer, Sun, Moon, Activity, CheckSquare, Square, ChevronDown, ChevronUp, CalendarDays, CalendarClock } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
