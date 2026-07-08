@@ -118,6 +118,7 @@ export interface ReviewPlan {
     isCompleted: boolean;
     isLocked: boolean;
   };
+  dayRecords?: Record<string, { reviewFarPages: number | null; isAbsent: boolean }>;
 }
 
 interface SurahRange {
@@ -424,9 +425,49 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
                   const isToday = day.dayNumber === currentDay;
                   const isPast = day.dayNumber < currentDay;
                   const cr = computedRanges?.[dayIdx];
+
+                  // Per-day colour based on far-review record (girls plans only)
+                  const rec = plan.dayRecords && dateStr ? plan.dayRecords[dateStr] : undefined;
+                  type DayStatus = "absent" | "ahead" | "ontrack" | "behind" | null;
+                  let status: DayStatus = null;
+                  if (plan.planType === "girls_review") {
+                    if (isPast && rec?.isAbsent) {
+                      status = "absent";
+                    } else if (rec && !rec.isAbsent && rec.reviewFarPages != null) {
+                      // record exists (past or today) — classify by quota
+                      const quota = day.pages ?? 0;
+                      const done = rec.reviewFarPages;
+                      if (quota <= 0) {
+                        status = "ontrack"; // zero-quota day: any entry counts as on-track
+                      } else if (done > quota) {
+                        status = "ahead";
+                      } else if (done >= quota) {
+                        status = "ontrack";
+                      } else {
+                        status = "behind";
+                      }
+                    } else if (isPast && !rec) {
+                      // past day with no record at all → behind
+                      status = "behind";
+                    }
+                    // today with no record yet → status stays null (keep theme colour)
+                  }
+
+                  const statusBg: Record<NonNullable<DayStatus>, string> = {
+                    absent: "#f3f4f6",
+                    ahead:  "#dbeafe",
+                    ontrack:"#dcfce7",
+                    behind: "#fef9c3",
+                  };
+                  const rowStyle: React.CSSProperties = status
+                    ? { background: statusBg[status] }
+                    : isToday
+                      ? { background: plan.themeColor + "70" }
+                      : {};
+
                   return (
                     <tr key={day.dayNumber} className={`border-t border-border/20 ${isToday ? "font-semibold" : ""}`}
-                      style={isToday ? { background: plan.themeColor + "70" } : isPast ? { opacity: 0.45 } : {}}>
+                      style={rowStyle}>
                       <td className="py-1.5 px-2 text-center text-muted-foreground font-mono">{day.dayNumber}</td>
                       <td className="py-1.5 px-2 text-muted-foreground text-[11px]">{dateStr ? formatArDate(dateStr) : "—"}</td>
                       <td className="py-1.5 px-2 text-[11px]">
@@ -436,7 +477,14 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
                             ? cr.map((seg: DayRangeSegment) => `${seg.surahStart} آية ${seg.ayahStart} ← ${seg.surahEnd} آية ${seg.ayahEnd}`).join(' + ')
                             : "—"}
                       </td>
-                      <td className="py-1.5 px-2 text-center">{day.pages ?? "—"}</td>
+                      <td className="py-1.5 px-2 text-center">
+                        {day.pages ?? "—"}
+                        {rec && !rec.isAbsent && rec.reviewFarPages != null && (
+                          <span className="block text-[10px] text-muted-foreground leading-tight">
+                            {rec.reviewFarPages}✓
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -447,6 +495,21 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
             <button onClick={() => setExpanded(!expanded)} className="mt-1.5 text-xs text-primary underline w-full text-center">
               {expanded ? "إخفاء الأيام" : `عرض جميع الأيام (${plan.days.length})`}
             </button>
+          )}
+          {plan.planType === "girls_review" && (
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[10px] text-muted-foreground">
+              {([
+                { color: "#dcfce7", label: "على الخطة" },
+                { color: "#dbeafe", label: "متقدمة" },
+                { color: "#fef9c3", label: "متأخرة" },
+                { color: "#f3f4f6", label: "غائبة" },
+              ] as { color: string; label: string }[]).map(({ color, label }) => (
+                <span key={label} className="flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 rounded-sm border border-border/30" style={{ background: color }} />
+                  {label}
+                </span>
+              ))}
+            </div>
           )}
         </div>
       )}

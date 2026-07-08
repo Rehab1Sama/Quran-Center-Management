@@ -9,7 +9,7 @@ import {
   globalSettingsTable,
   recordsTable,
 } from "@workspace/db";
-import { eq, and, desc, inArray, isNotNull, gte, lte } from "drizzle-orm";
+import { eq, and, desc, inArray, isNotNull, gte, lte, sql } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
 const router: IRouter = Router();
@@ -226,12 +226,34 @@ router.get("/students/:id/review-plan", authenticate, async (req, res): Promise<
     };
   }
 
+  // For girls_review plans, fetch far-review records for per-day colour coding
+  // Use DISTINCT ON (date) ordered by updated_at DESC to pick the latest record per day
+  let dayRecords: Record<string, { reviewFarPages: number | null; isAbsent: boolean }> = {};
+  if (plan.planType === "girls_review" && plan.startDate) {
+    const cycleDates = getCycleDates(plan.startDate, 21);
+    const recs = await db
+      .select({ date: recordsTable.date, reviewFarPages: recordsTable.reviewFarPages, isAbsent: recordsTable.isAbsent })
+      .from(recordsTable)
+      .where(and(
+        eq(recordsTable.studentId, studentId),
+        inArray(recordsTable.date, cycleDates),
+      ))
+      .orderBy(recordsTable.date, desc(recordsTable.updatedAt));
+    // Keep only the latest record per date (first occurrence after ordering by updatedAt desc)
+    for (const r of recs) {
+      if (!dayRecords[r.date]) {
+        dayRecords[r.date] = { reviewFarPages: r.reviewFarPages, isAbsent: r.isAbsent };
+      }
+    }
+  }
+
   res.json({
     ...plan,
     createdAt: plan.createdAt.toISOString(),
     updatedAt: plan.updatedAt?.toISOString(),
     days,
     cycleInfo,
+    dayRecords,
   });
 });
 
