@@ -43,6 +43,23 @@ type PlanSummary = {
   planMode: string | null;
   createdAt: string;
   days: DayEntry[];
+  status: "behind" | "ontrack" | "ahead" | null;
+};
+
+const STATUS_COLORS: Record<"behind" | "ontrack" | "ahead", string> = {
+  ahead: "#dbeafe",
+  ontrack: "#dcfce7",
+  behind: "#fef9c3",
+};
+const STATUS_TEXT_COLORS: Record<"behind" | "ontrack" | "ahead", string> = {
+  ahead: "#1d4ed8",
+  ontrack: "#15803d",
+  behind: "#a16207",
+};
+const STATUS_LABELS: Record<"behind" | "ontrack" | "ahead", string> = {
+  ahead: "متقدمة",
+  ontrack: "منتظمة",
+  behind: "متأخرة",
 };
 
 type StudentRow = {
@@ -241,6 +258,14 @@ function StudentPlanRow({ student, trackType }: { student: StudentRow; trackType
         <div className="flex items-center gap-2 shrink-0">
           {student.hasPlan && student.plan ? (
             <>
+              {student.plan.status && (
+                <span
+                  className="text-[10px] rounded-full px-2 py-0.5 font-semibold whitespace-nowrap"
+                  style={{ background: STATUS_COLORS[student.plan.status], color: STATUS_TEXT_COLORS[student.plan.status] }}
+                >
+                  {STATUS_LABELS[student.plan.status]}
+                </span>
+              )}
               <span
                 className="w-3 h-3 rounded-full border border-border/30 shrink-0"
                 style={{ background: student.plan.themeColor }}
@@ -563,7 +588,9 @@ export default function ReviewPlansOverviewPage({ userRole }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "with" | "without">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "behind" | "ontrack" | "ahead">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const canSeeStatusTabs = userRole === "leader" || userRole === "deputy" || userRole === "track_supervisor";
 
   const fetchData = async () => {
     setLoading(true);
@@ -605,11 +632,21 @@ export default function ReviewPlansOverviewPage({ userRole }: Props) {
   const withoutPlanCount = allStudents.filter(s => !s.hasPlan).length;
   const totalCount = allStudents.length;
 
+  // Status counts (across all girls-plan students), used for tab badges
+  const statusCounts = {
+    behind: allStudents.filter(s => s.plan?.status === "behind").length,
+    ontrack: allStudents.filter(s => s.plan?.status === "ontrack").length,
+    ahead: allStudents.filter(s => s.plan?.status === "ahead").length,
+  };
+
   // Filter circles
   function filterCircle(circle: CircleOverview): CircleOverview {
     let students = circle.students;
     if (filter === "with") students = students.filter(s => s.hasPlan);
     if (filter === "without") students = students.filter(s => !s.hasPlan);
+    if (canSeeStatusTabs && statusFilter !== "all") {
+      students = students.filter(s => s.plan?.status === statusFilter);
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       students = students.filter(s => s.studentName.toLowerCase().includes(q));
@@ -620,7 +657,7 @@ export default function ReviewPlansOverviewPage({ userRole }: Props) {
   const filteredTracks = Object.entries(trackGroups).map(([track, circs]) => ({
     track,
     circles: circs.map(filterCircle).filter(c =>
-      filter === "all" && !searchQuery.trim() ? true : c.students.length > 0
+      filter === "all" && statusFilter === "all" && !searchQuery.trim() ? true : c.students.length > 0
     ),
   })).filter(t => t.circles.length > 0);
 
@@ -704,6 +741,38 @@ export default function ReviewPlansOverviewPage({ userRole }: Props) {
             className="flex-1 min-w-40 text-sm border border-border rounded-xl px-3 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary/30"
             dir="rtl"
           />
+        </div>
+      )}
+
+      {/* Status tabs — leader / deputy / track supervisor only */}
+      {!loading && !error && canSeeStatusTabs && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {([
+            { key: "all", label: "الكل", count: totalCount },
+            { key: "behind", label: STATUS_LABELS.behind, count: statusCounts.behind },
+            { key: "ontrack", label: STATUS_LABELS.ontrack, count: statusCounts.ontrack },
+            { key: "ahead", label: STATUS_LABELS.ahead, count: statusCounts.ahead },
+          ] as const).map(tab => {
+            const active = statusFilter === tab.key;
+            const bg = tab.key === "all" ? undefined : STATUS_COLORS[tab.key];
+            const textColor = tab.key === "all" ? undefined : STATUS_TEXT_COLORS[tab.key];
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setStatusFilter(tab.key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                  active ? "border-transparent shadow-sm" : "border-border/50 text-muted-foreground hover:bg-muted"
+                }`}
+                style={active ? { background: bg ?? "var(--primary)", color: tab.key === "all" ? "white" : textColor } : {}}
+              >
+                {tab.key !== "all" && (
+                  <span className="w-2.5 h-2.5 rounded-full border border-black/10" style={{ background: STATUS_COLORS[tab.key] }} />
+                )}
+                {tab.label}
+                <span className="opacity-70">({tab.count})</span>
+              </button>
+            );
+          })}
         </div>
       )}
 

@@ -730,6 +730,83 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
     cycleInfo = { cycleStartDate, cycleEndDate, currentDay, isCompleted: today > cycleEndDate };
   }
 
+  // Compute per-student overall status (behind / ontrack / ahead) for girls_review plans
+  const girlsPlans = activePlans.filter((p: typeof activePlans[0]) => p.planType === "girls_review" && p.startDate);
+  const cycleDatesByPlan = new Map<number, string[]>();
+  const allDatesSet = new Set<string>();
+  for (const p of girlsPlans) {
+    const dates = getCycleDates(p.startDate!, 21);
+    cycleDatesByPlan.set(p.id, dates);
+    dates.forEach(d => allDatesSet.add(d));
+  }
+
+  const studentIdsForRecords = girlsPlans.map((p: typeof activePlans[0]) => p.studentId);
+  // Key by `${studentId}:${circleId}` so records from another circle (e.g. after a transfer) never leak into this plan's status.
+  const dayRecordsByStudentCircle = new Map<string, Record<string, { reviewFarPages: number | null; isAbsent: boolean }>>();
+  if (studentIdsForRecords.length > 0 && allDatesSet.size > 0) {
+    const recordsRaw = await db
+      .select({
+        studentId: recordsTable.studentId,
+        circleId: recordsTable.circleId,
+        date: recordsTable.date,
+        reviewFarPages: recordsTable.reviewFarPages,
+        isAbsent: recordsTable.isAbsent,
+      })
+      .from(recordsTable)
+      .where(and(
+        inArray(recordsTable.studentId, studentIdsForRecords),
+        inArray(recordsTable.date, [...allDatesSet]),
+      ))
+      .orderBy(recordsTable.studentId, recordsTable.date, desc(recordsTable.updatedAt));
+    for (const r of recordsRaw) {
+      const key = `${r.studentId}:${r.circleId}`;
+      let m = dayRecordsByStudentCircle.get(key);
+      if (!m) { m = {}; dayRecordsByStudentCircle.set(key, m); }
+      if (!m[r.date]) m[r.date] = { reviewFarPages: r.reviewFarPages, isAbsent: r.isAbsent };
+    }
+  }
+
+  type PlanStatus = "behind" | "ontrack" | "ahead" | null;
+  function computePlanStatus(plan: typeof activePlans[0], planDays: typeof allDays): PlanStatus {
+    const cycleDates = cycleDatesByPlan.get(plan.id);
+    if (!cycleDates) return null;
+    const today = getTodayMecca();
+    const dayIdx = cycleDates.indexOf(today);
+    const currentDay = dayIdx >= 0 ? dayIdx + 1 : today < cycleDates[0]! ? 0 : 22;
+    if (currentDay <= 0) return null; // plan hasn't started yet
+
+    const dayRecords = dayRecordsByStudentCircle.get(`${plan.studentId}:${plan.circleId}`) ?? {};
+    let hasBehind = false, hasAhead = false, hasOntrack = false;
+
+    const evaluateDay = (dayNumber: number) => {
+      const day = planDays.find((d: typeof allDays[0]) => d.dayNumber === dayNumber);
+      const dateStr = cycleDates[dayNumber - 1];
+      const rec = dateStr ? dayRecords[dateStr] : undefined;
+      if (rec?.isAbsent) return;
+      const quota = day?.pages ?? 0;
+      if (rec && rec.reviewFarPages != null) {
+        const done = rec.reviewFarPages;
+        if (quota <= 0) hasOntrack = true;
+        else if (done > quota) hasAhead = true;
+        else if (done >= quota) hasOntrack = true;
+        else hasBehind = true;
+      } else {
+        hasBehind = true;
+      }
+    };
+
+    for (let d = 1; d < currentDay; d++) evaluateDay(d);
+    // Also factor in today's entry if it has already been recorded
+    const todayDateStr = cycleDates[currentDay - 1];
+    const todayRec = todayDateStr ? dayRecords[todayDateStr] : undefined;
+    if (todayRec && !todayRec.isAbsent && todayRec.reviewFarPages != null) evaluateDay(currentDay);
+
+    if (hasBehind) return "behind";
+    if (hasAhead) return "ahead";
+    if (hasOntrack) return "ontrack";
+    return null;
+  }
+
   const result = circles.map(circle => {
     const students = allStudents.filter(s => s.circleId === circle.id);
     return {
@@ -761,6 +838,7 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
             planMode: plan.planMode,
             createdAt: plan.createdAt.toISOString(),
             days: planDays,
+            status: plan ? computePlanStatus(plan, planDays) : null,
           } : null,
         };
       }),
