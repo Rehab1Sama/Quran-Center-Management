@@ -446,8 +446,8 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
                       } else {
                         status = "behind";
                       }
-                    } else if (isPast && !rec) {
-                      // past day with no record at all → behind
+                    } else if (isPast && !rec?.isAbsent) {
+                      // past day with no record, or a record with no far-review pages entered → behind
                       status = "behind";
                     }
                     // today with no record yet → status stays null (keep theme colour)

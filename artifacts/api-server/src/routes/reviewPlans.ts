@@ -236,6 +236,7 @@ router.get("/students/:id/review-plan", authenticate, async (req, res): Promise<
       .from(recordsTable)
       .where(and(
         eq(recordsTable.studentId, studentId),
+        eq(recordsTable.circleId, plan.circleId),
         inArray(recordsTable.date, cycleDates),
       ))
       .orderBy(recordsTable.date, desc(recordsTable.updatedAt));
