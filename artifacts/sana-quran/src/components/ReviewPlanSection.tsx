@@ -430,7 +430,7 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
                   const rec = plan.dayRecords && dateStr ? plan.dayRecords[dateStr] : undefined;
                   type DayStatus = "absent" | "ahead" | "ontrack" | "behind" | null;
                   let status: DayStatus = null;
-                  if (plan.planType === "girls_review") {
+                  if (planMode === "girls") {
                     if (isPast && rec?.isAbsent) {
                       status = "absent";
                     } else if (rec && !rec.isAbsent && rec.reviewFarPages != null) {
@@ -496,7 +496,7 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
               {expanded ? "إخفاء الأيام" : `عرض جميع الأيام (${plan.days.length})`}
             </button>
           )}
-          {plan.planType === "girls_review" && (
+          {planMode === "girls" && (
             <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[10px] text-muted-foreground">
               {([
                 { color: "#dcfce7", label: "على الخطة" },
