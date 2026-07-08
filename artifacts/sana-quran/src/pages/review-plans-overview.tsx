@@ -83,6 +83,7 @@ type CycleInfo = {
   cycleEndDate: string;
   currentDay: number;
   isCompleted: boolean;
+  scheduledEndDate: string | null;
 };
 
 interface Props {
@@ -361,9 +362,14 @@ function CycleBanner({
   onRenewSuccess: () => void;
 }) {
   const [renewOpen, setRenewOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [newDate, setNewDate] = useState(getMeccaToday());
+  const [endDate, setEndDate] = useState(getMeccaToday());
+  const [scheduleStart, setScheduleStart] = useState("");
   const [renewing, setRenewing] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
   const [renewResult, setRenewResult] = useState<{ renewed: number; skipped: number } | null>(null);
+  const [scheduleResult, setScheduleResult] = useState<{ cycleEndDate: string; newCycleStart: string } | null>(null);
   const canRenew = userRole === "leader" || userRole === "deputy";
 
   const today = getMeccaToday();
@@ -392,6 +398,25 @@ function CycleBanner({
     }
   };
 
+  const handleSchedule = async () => {
+    setScheduling(true);
+    try {
+      const res = await fetch(`${BASE}/api/review-plans/schedule-cycle-end`, {
+        method: "POST",
+        headers: authHeader(),
+        body: JSON.stringify({ cycleEndDate: endDate, newCycleStart: scheduleStart }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "خطأ");
+      setScheduleResult({ cycleEndDate: data.cycleEndDate, newCycleStart: data.newCycleStart });
+      onRenewSuccess();
+    } catch (e: any) {
+      alert("خطأ: " + e.message);
+    } finally {
+      setScheduling(false);
+    }
+  };
+
   return (
     <>
       <Card className={`border-0 shadow-sm ${cycleInfo.isCompleted ? "bg-emerald-50 border-emerald-200" : "bg-violet-50 border-violet-200"}`}>
@@ -417,18 +442,35 @@ function CycleBanner({
                     ? `متبقٍ ${daysLeft} يوم · ينتهي ${formatArDate(cycleInfo.cycleEndDate)}`
                     : `ينتهي ${formatArDate(cycleInfo.cycleEndDate)}`}
                 </p>
+                {cycleInfo.scheduledEndDate && (
+                  <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    مجدوَل: تُقفل الخطط الحالية في {formatArDate(cycleInfo.scheduledEndDate)}
+                  </p>
+                )}
               </div>
             </div>
             {canRenew && (
-              <Button
-                size="sm"
-                className="gap-1.5 text-xs"
-                variant={cycleInfo.isCompleted ? "default" : "outline"}
-                onClick={() => { setRenewResult(null); setNewDate(today); setRenewOpen(true); }}
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                تجديد الخطط
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  variant="outline"
+                  onClick={() => { setScheduleResult(null); setEndDate(today); setScheduleStart(""); setScheduleOpen(true); }}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  جدولة نهاية الدورة
+                </Button>
+                <Button
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  variant={cycleInfo.isCompleted ? "default" : "outline"}
+                  onClick={() => { setRenewResult(null); setNewDate(today); setRenewOpen(true); }}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  تجديد الخطط الآن
+                </Button>
+              </div>
             )}
           </div>
 
@@ -502,6 +544,80 @@ function CycleBanner({
                   {renewing ? <><Loader2 className="w-4 h-4 animate-spin" />جاري التجديد...</> : <><RotateCcw className="w-4 h-4" />تجديد الآن</>}
                 </Button>
                 <Button variant="ghost" onClick={() => setRenewOpen(false)} disabled={renewing}>إلغاء</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Schedule cycle-end dialog */}
+      <Dialog open={scheduleOpen} onOpenChange={v => { if (!v && !scheduling) setScheduleOpen(false); }}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-right">
+              <Clock className="w-4 h-4 text-primary" />
+              جدولة نهاية الدورة الحالية
+            </DialogTitle>
+          </DialogHeader>
+
+          {scheduleResult ? (
+            <div className="space-y-3 py-2">
+              <div className="bg-emerald-50 rounded-xl p-4 text-center space-y-1">
+                <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
+                <p className="font-bold text-emerald-700">تمت الجدولة بنجاح!</p>
+                <p className="text-sm text-muted-foreground">
+                  ستُقفل الخطط الحالية في <span className="font-bold text-foreground">{formatArDate(scheduleResult.cycleEndDate)}</span>{" "}
+                  وتبدأ الدورة الجديدة في <span className="font-bold text-foreground">{formatArDate(scheduleResult.newCycleStart)}</span>
+                </p>
+              </div>
+              <Button className="w-full" onClick={() => setScheduleOpen(false)}>إغلاق</Button>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-4 py-2">
+                <p className="text-sm text-muted-foreground">
+                  حددي تاريخ نهاية الدورة الحالية — ستُقفل خطط جميع الطالبات تلقائياً في ذلك التاريخ (حتى لو لم تصل خطة إحداهن لليوم الـ٢١ طبيعيًا)، وتبدأ خطط الدورة الجديدة تلقائيًا في التاريخ التالي.
+                </p>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold">تاريخ نهاية الدورة الحالية</label>
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    className="text-right"
+                  />
+                  {endDate && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      {formatArDate(endDate)}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold">تاريخ بداية الدورة الجديدة</label>
+                  <Input
+                    type="date"
+                    value={scheduleStart}
+                    min={endDate}
+                    onChange={e => setScheduleStart(e.target.value)}
+                    className="text-right"
+                  />
+                  {scheduleStart && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      {formatArDate(scheduleStart)} · مدتها ٢١ يوم
+                    </p>
+                  )}
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                  ⚠️ الطالبات اللي ما عندهن خطة أصلًا ما راح يتأثرن — يبدأن خطتهن من الصفر بعد بداية الدورة الجديدة. أما الخطط التي تُجدَّد تلقائيًا، فيمكن للطالبة تعديلها خلال ٤٨ ساعة من إنشائها.
+                </div>
+              </div>
+              <DialogFooter className="flex-row-reverse gap-2">
+                <Button onClick={handleSchedule} disabled={scheduling || !endDate || !scheduleStart} className="gap-1.5">
+                  {scheduling ? <><Loader2 className="w-4 h-4 animate-spin" />جاري الجدولة...</> : <><Clock className="w-4 h-4" />جدولة</>}
+                </Button>
+                <Button variant="ghost" onClick={() => setScheduleOpen(false)} disabled={scheduling}>إلغاء</Button>
               </DialogFooter>
             </>
           )}

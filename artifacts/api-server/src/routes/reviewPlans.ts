@@ -27,6 +27,15 @@ function getTodayMecca(): string {
   return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+// Validates a "YYYY-MM-DD" string is both well-formed AND a real calendar date
+// (rejects things like "2026-02-30" that a regex alone would let through).
+function isValidIsoDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(y!, m! - 1, d!));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m! - 1 && date.getUTCDate() === d;
+}
+
 // Returns all non-Friday dates from startDate up to totalDays count
 function getCycleDates(startDate: string, totalDays: number): string[] {
   const dates: string[] = [];
@@ -74,6 +83,36 @@ async function getGlobalCycleStartDate(): Promise<string | null> {
   return row?.value ?? null;
 }
 
+// A leader-scheduled forced end date for the CURRENT girls cycle (may fall before
+// each plan's natural start+21 end date, so the cycle can be closed on a fixed
+// calendar date such as "٧ صفر" regardless of when individual plans started).
+async function getGlobalCycleEndDate(): Promise<string | null> {
+  const [row] = await db.select().from(globalSettingsTable)
+    .where(eq(globalSettingsTable.key, "girls_cycle_end_date"));
+  return row?.value ?? null;
+}
+
+// Effective end date for a plan: the scheduled forced cycle-end date if it applies
+// to this plan (plan started on/before it, and it actually shortens the cycle),
+// otherwise the plan's own natural start+21 end date.
+async function getEffectiveEndDate(plan: { startDate: string; planType: string }): Promise<string> {
+  const natural = getPlanEndDate(plan.startDate, plan.planType as "girls_review" | "fixation");
+  if (plan.planType !== "girls_review") return natural;
+  const forced = await getGlobalCycleEndDate();
+  if (forced && plan.startDate <= forced && forced < natural) return forced;
+  return natural;
+}
+
+const AUTO_PLAN_EDIT_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+// Auto-generated plans (created by the cycle renewal) may be freely replaced by
+// the student/staff within 48 hours of creation, even though they'd normally be
+// locked for the whole cycle — this lets a student correct an auto-carried quota.
+function isWithinAutoPlanEditWindow(plan: { planMode: string | null; createdAt: Date }): boolean {
+  if (plan.planMode !== "auto") return false;
+  return Date.now() - plan.createdAt.getTime() <= AUTO_PLAN_EDIT_WINDOW_MS;
+}
+
 // Auto-renew a completed girls plan for the new cycle.
 // newCycleStart: the start date of the new cycle (from global settings).
 async function autoRenewGirlsPlan(
@@ -82,79 +121,95 @@ async function autoRenewGirlsPlan(
   circleId: number,
   newCycleStart: string
 ): Promise<(typeof reviewPlansTable.$inferSelect & { days: typeof reviewPlanDaysTable.$inferSelect[] }) | null> {
-  // Guard: check if new plan for this cycle already exists
-  const [existing] = await db.select({ id: reviewPlansTable.id })
-    .from(reviewPlansTable)
-    .where(and(
-      eq(reviewPlansTable.studentId, studentId),
-      eq(reviewPlansTable.circleId, circleId),
-      eq(reviewPlansTable.startDate, newCycleStart),
-      eq(reviewPlansTable.status, "active")
-    ))
-    .limit(1);
-  if (existing) return null;
+  return db.transaction(async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+    // Serialize concurrent renewal attempts for the same student+circle (e.g. two
+    // overview requests racing) so only one ever creates the new-cycle plan.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`renew:${studentId}:${circleId}`}))`);
 
-  // Collect new memorization during old plan period
-  const oldEndDate = getPlanEndDate(oldPlan.startDate, "girls_review");
-  const memRows = await db.select({ memorizePages: recordsTable.memorizePages })
-    .from(recordsTable)
-    .where(and(
-      eq(recordsTable.studentId, studentId),
-      gte(recordsTable.date, oldPlan.startDate),
-      lte(recordsTable.date, oldEndDate),
-      isNotNull(recordsTable.memorizePages)
-    ));
+    // Guard: check if new plan for this cycle already exists
+    const [existing] = await tx.select({ id: reviewPlansTable.id })
+      .from(reviewPlansTable)
+      .where(and(
+        eq(reviewPlansTable.studentId, studentId),
+        eq(reviewPlansTable.circleId, circleId),
+        eq(reviewPlansTable.startDate, newCycleStart),
+        eq(reviewPlansTable.status, "active")
+      ))
+      .limit(1);
+    if (existing) return null;
 
-  const newMemPages = memRows.reduce((s, r) => s + (r.memorizePages ?? 0), 0);
+    // Re-check the old plan is still active under the lock (another concurrent
+    // renewal may have already archived it while we waited for the lock).
+    const [stillActive] = await tx.select({ id: reviewPlansTable.id })
+      .from(reviewPlansTable)
+      .where(and(eq(reviewPlansTable.id, oldPlan.id), eq(reviewPlansTable.status, "active")))
+      .limit(1);
+    if (!stillActive) return null;
 
-  // Compute new quota
-  let newQuotaJuz = oldPlan.quotaJuz;
-  let newTotalPages = oldPlan.totalPages;
+    // Collect new memorization during old plan period (respecting a forced/scheduled
+    // cycle-end date if it shortened this plan's cycle, so days after the forced
+    // cutoff aren't counted toward the previous cycle's carry-over quota).
+    const oldEndDate = await getEffectiveEndDate(oldPlan);
+    const memRows = await tx.select({ memorizePages: recordsTable.memorizePages })
+      .from(recordsTable)
+      .where(and(
+        eq(recordsTable.studentId, studentId),
+        gte(recordsTable.date, oldPlan.startDate),
+        lte(recordsTable.date, oldEndDate),
+        isNotNull(recordsTable.memorizePages)
+      ));
 
-  if (oldPlan.quotaType === "juz" && oldPlan.quotaJuz) {
-    const extraJuz = Math.floor(newMemPages / 20);
-    newQuotaJuz = Math.min(30, oldPlan.quotaJuz + extraJuz);
-    newTotalPages = newQuotaJuz * 20;
-  } else if (newTotalPages) {
-    newTotalPages = newTotalPages + newMemPages;
-  }
+    const newMemPages = memRows.reduce((s, r) => s + (r.memorizePages ?? 0), 0);
 
-  const total = newTotalPages ?? (newQuotaJuz ?? 0) * 20;
+    // Compute new quota
+    let newQuotaJuz = oldPlan.quotaJuz;
+    let newTotalPages = oldPlan.totalPages;
 
-  // Archive old plan
-  await db.update(reviewPlansTable)
-    .set({ status: "cancelled" })
-    .where(eq(reviewPlansTable.id, oldPlan.id));
+    if (oldPlan.quotaType === "juz" && oldPlan.quotaJuz) {
+      const extraJuz = Math.floor(newMemPages / 20);
+      newQuotaJuz = Math.min(30, oldPlan.quotaJuz + extraJuz);
+      newTotalPages = newQuotaJuz * 20;
+    } else if (newTotalPages) {
+      newTotalPages = newTotalPages + newMemPages;
+    }
 
-  // Create new plan
-  const [newPlan] = await db.insert(reviewPlansTable).values({
-    studentId,
-    circleId,
-    planType: "girls_review",
-    status: "active",
-    quotaType: oldPlan.quotaType,
-    quotaJuz: newQuotaJuz ?? null,
-    quotaSurahStart: oldPlan.quotaSurahStart ?? null,
-    quotaAyahStart: oldPlan.quotaAyahStart ?? null,
-    quotaSurahEnd: oldPlan.quotaSurahEnd ?? null,
-    quotaAyahEnd: oldPlan.quotaAyahEnd ?? null,
-    extraRanges: oldPlan.extraRanges ?? null,
-    planMode: "auto",
-    totalPages: total || null,
-    startDate: newCycleStart,
-    themeColor: oldPlan.themeColor,
-  }).returning();
+    const total = newTotalPages ?? (newQuotaJuz ?? 0) * 20;
 
-  let savedDays: typeof reviewPlanDaysTable.$inferSelect[] = [];
-  if (total > 0) {
-    const dist = distribute(total, 21);
-    const inserted = await db.insert(reviewPlanDaysTable).values(
-      dist.map((pages, i) => ({ planId: newPlan.id, dayNumber: i + 1, pages }))
-    ).returning();
-    savedDays = inserted;
-  }
+    // Archive old plan
+    await tx.update(reviewPlansTable)
+      .set({ status: "cancelled" })
+      .where(eq(reviewPlansTable.id, oldPlan.id));
 
-  return { ...newPlan, days: savedDays };
+    // Create new plan
+    const [newPlan] = await tx.insert(reviewPlansTable).values({
+      studentId,
+      circleId,
+      planType: "girls_review",
+      status: "active",
+      quotaType: oldPlan.quotaType,
+      quotaJuz: newQuotaJuz ?? null,
+      quotaSurahStart: oldPlan.quotaSurahStart ?? null,
+      quotaAyahStart: oldPlan.quotaAyahStart ?? null,
+      quotaSurahEnd: oldPlan.quotaSurahEnd ?? null,
+      quotaAyahEnd: oldPlan.quotaAyahEnd ?? null,
+      extraRanges: oldPlan.extraRanges ?? null,
+      planMode: "auto",
+      totalPages: total || null,
+      startDate: newCycleStart,
+      themeColor: oldPlan.themeColor,
+    }).returning();
+
+    let savedDays: typeof reviewPlanDaysTable.$inferSelect[] = [];
+    if (total > 0) {
+      const dist = distribute(total, 21);
+      const inserted = await tx.insert(reviewPlanDaysTable).values(
+        dist.map((pages, i) => ({ planId: newPlan.id, dayNumber: i + 1, pages }))
+      ).returning();
+      savedDays = inserted;
+    }
+
+    return { ...newPlan, days: savedDays };
+  });
 }
 
 // ─── GET: student's active review plan ────────────────────────────────────────
@@ -180,7 +235,7 @@ router.get("/students/:id/review-plan", authenticate, async (req, res): Promise<
   // Auto-renew girls plans when cycle ends and new global cycle is set
   if (plan.planType === "girls_review" && plan.startDate && circleId) {
     const today = getTodayMecca();
-    const endDate = getPlanEndDate(plan.startDate, "girls_review");
+    const endDate = await getEffectiveEndDate(plan);
 
     if (today > endDate) {
       const newCycleStart = await getGlobalCycleStartDate();
@@ -321,8 +376,8 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       ))
       .limit(1);
 
-    if (activePlan?.startDate) {
-      const endDate = getPlanEndDate(activePlan.startDate, activePlan.planType as "girls_review" | "fixation");
+    if (activePlan?.startDate && !isWithinAutoPlanEditWindow(activePlan)) {
+      const endDate = await getEffectiveEndDate(activePlan);
       const today = getTodayMecca();
       if (today <= endDate) {
         res.status(403).json({
@@ -489,8 +544,13 @@ router.delete("/students/:id/review-plan/:planId", authenticate, async (req, res
     .limit(1);
 
   const adminRoles = ["leader", "deputy", "track_supervisor"];
-  if (!adminRoles.includes(req.userRole!) && planToDelete?.planType === "girls_review" && planToDelete.startDate) {
-    const endDate = getPlanEndDate(planToDelete.startDate, "girls_review");
+  if (
+    !adminRoles.includes(req.userRole!) &&
+    planToDelete?.planType === "girls_review" &&
+    planToDelete.startDate &&
+    !isWithinAutoPlanEditWindow(planToDelete)
+  ) {
+    const endDate = await getEffectiveEndDate(planToDelete);
     const today = getTodayMecca();
     if (today <= endDate) {
       res.status(403).json({
@@ -546,7 +606,7 @@ router.post("/review-plans/renew-all", authenticate, async (req, res): Promise<v
   if (!allowed.includes(req.userRole!)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const { newCycleStart } = req.body ?? {};
-  if (!newCycleStart || !/^\d{4}-\d{2}-\d{2}$/.test(newCycleStart)) {
+  if (!isValidIsoDate(newCycleStart)) {
     res.status(400).json({ error: "newCycleStart مطلوب بصيغة YYYY-MM-DD" }); return;
   }
 
@@ -588,7 +648,7 @@ router.post("/review-plans/renew-all", authenticate, async (req, res): Promise<v
   let skipped = 0;
 
   for (const plan of activePlans) {
-    const endDate = getPlanEndDate(plan.startDate, "girls_review");
+    const endDate = await getEffectiveEndDate(plan);
     const today = getTodayMecca();
     // Only renew completed plans that haven't been moved to new cycle yet
     if (today > endDate && plan.startDate !== newCycleStart) {
@@ -601,6 +661,45 @@ router.post("/review-plans/renew-all", authenticate, async (req, res): Promise<v
   }
 
   res.json({ renewed, skipped, newCycleStart });
+});
+
+// ─── POST: schedule the current cycle's forced end date + the next cycle's start ──
+// Lets a leader/deputy fix a specific end date for the cycle in progress (e.g. "٧
+// صفر") even if individual plans' natural start+21 end date falls later, and set
+// when the next 21-day cycle begins. The actual lock/renewal happens automatically,
+// lazily, the moment that end date arrives (via the existing per-student and
+// overview auto-renew checks) — no separate trigger is needed on the day itself.
+router.post("/review-plans/schedule-cycle-end", authenticate, async (req, res): Promise<void> => {
+  const allowed = ["leader", "deputy"];
+  if (!allowed.includes(req.userRole!)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { cycleEndDate, newCycleStart } = req.body ?? {};
+  if (!isValidIsoDate(cycleEndDate)) {
+    res.status(400).json({ error: "cycleEndDate مطلوب بصيغة YYYY-MM-DD" }); return;
+  }
+  if (!isValidIsoDate(newCycleStart)) {
+    res.status(400).json({ error: "newCycleStart مطلوب بصيغة YYYY-MM-DD" }); return;
+  }
+  if (newCycleStart <= cycleEndDate) {
+    res.status(400).json({ error: "تاريخ بداية الدورة الجديدة يجب أن يكون بعد تاريخ نهاية الدورة الحالية" }); return;
+  }
+
+  async function upsertSetting(key: string, value: string) {
+    const existing = await db.select({ key: globalSettingsTable.key })
+      .from(globalSettingsTable)
+      .where(eq(globalSettingsTable.key, key))
+      .limit(1);
+    if (existing.length > 0) {
+      await db.update(globalSettingsTable).set({ value }).where(eq(globalSettingsTable.key, key));
+    } else {
+      await db.insert(globalSettingsTable).values({ key, value });
+    }
+  }
+
+  await upsertSetting("girls_cycle_end_date", cycleEndDate);
+  await upsertSetting("girls_cycle_start_date", newCycleStart);
+
+  res.json({ cycleEndDate, newCycleStart });
 });
 
 // ─── GET: global cycle info ────────────────────────────────────────────────────
@@ -695,13 +794,37 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
     .orderBy(studentsTable.fullName);
 
   // Get active plans WITH their days for staff full-display
-  const activePlans = await db.select().from(reviewPlansTable)
+  let activePlans = await db.select().from(reviewPlansTable)
     .where(and(
       inArray(reviewPlansTable.circleId, circleIds),
       eq(reviewPlansTable.status, "active")
     ));
 
-  const planIds = activePlans.map(p => p.id);
+  // Eagerly auto-renew any plans whose (possibly forced) cycle end date has
+  // already passed, so the overview always reflects the current cycle without
+  // requiring the leader to press a separate "renew" action first.
+  const sweepNewCycleStart = await getGlobalCycleStartDate();
+  if (sweepNewCycleStart) {
+    const today = getTodayMecca();
+    let anyRenewed = false;
+    for (const plan of activePlans) {
+      if (plan.planType !== "girls_review" || !plan.startDate || plan.startDate === sweepNewCycleStart) continue;
+      const effectiveEnd = await getEffectiveEndDate(plan);
+      if (today > effectiveEnd && sweepNewCycleStart > effectiveEnd) {
+        const renewedPlan = await autoRenewGirlsPlan(plan, plan.studentId, plan.circleId, sweepNewCycleStart);
+        if (renewedPlan) anyRenewed = true;
+      }
+    }
+    if (anyRenewed) {
+      activePlans = await db.select().from(reviewPlansTable)
+        .where(and(
+          inArray(reviewPlansTable.circleId, circleIds),
+          eq(reviewPlansTable.status, "active")
+        ));
+    }
+  }
+
+  const planIds = activePlans.map((p: typeof activePlans[0]) => p.id);
   const allDays = planIds.length > 0
     ? await db.select().from(reviewPlanDaysTable)
         .where(inArray(reviewPlanDaysTable.planId, planIds))
@@ -720,14 +843,21 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
   }
 
   const cycleStartDate = await getGlobalCycleStartDate();
-  let cycleInfo: { cycleStartDate: string; cycleEndDate: string; currentDay: number; isCompleted: boolean } | null = null;
+  const forcedCycleEndDate = await getGlobalCycleEndDate();
+  let cycleInfo: {
+    cycleStartDate: string; cycleEndDate: string; currentDay: number; isCompleted: boolean;
+    scheduledEndDate: string | null;
+  } | null = null;
   if (cycleStartDate) {
     const cycleDates = getCycleDates(cycleStartDate, 21);
     const cycleEndDate = cycleDates[cycleDates.length - 1] ?? cycleStartDate;
     const today = getTodayMecca();
     const dayIdx = cycleDates.indexOf(today);
     const currentDay = dayIdx >= 0 ? dayIdx + 1 : today < cycleDates[0]! ? 0 : 22;
-    cycleInfo = { cycleStartDate, cycleEndDate, currentDay, isCompleted: today > cycleEndDate };
+    // scheduledEndDate: a forced end date only counts as "the previous cycle is
+    // being wound down" while it still lies before this (new) cycle's start.
+    const scheduledEndDate = forcedCycleEndDate && forcedCycleEndDate < cycleStartDate ? forcedCycleEndDate : null;
+    cycleInfo = { cycleStartDate, cycleEndDate, currentDay, isCompleted: today > cycleEndDate, scheduledEndDate };
   }
 
   // Compute per-student overall status (behind / ontrack / ahead) for girls_review plans
