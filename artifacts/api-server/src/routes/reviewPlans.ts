@@ -842,7 +842,29 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
     daysByPlan.get(day.planId)!.push(day);
   }
 
-  const cycleStartDate = await getGlobalCycleStartDate();
+  let cycleStartDate = await getGlobalCycleStartDate();
+
+  // Auto-detect: if the global cycle start was never set but there are active
+  // girls_review plans (e.g. migrating a database that had plans before this
+  // feature was added), derive the cycle start from the most common startDate
+  // among those plans and persist it so subsequent requests skip this step.
+  if (!cycleStartDate) {
+    const girlsCircleIds = circles.filter(c => c.trackType === "girls").map(c => c.id);
+    if (girlsCircleIds.length > 0) {
+      const startDateCounts = new Map<string, number>();
+      for (const plan of activePlans) {
+        if (plan.planType === "girls_review" && plan.startDate && girlsCircleIds.includes(plan.circleId)) {
+          startDateCounts.set(plan.startDate, (startDateCounts.get(plan.startDate) ?? 0) + 1);
+        }
+      }
+      if (startDateCounts.size > 0) {
+        const detected = [...startDateCounts.entries()].sort((a, b) => b[1] - a[1])[0]![0];
+        await upsertSetting("girls_cycle_start_date", detected);
+        cycleStartDate = detected;
+      }
+    }
+  }
+
   const forcedCycleEndDate = await getGlobalCycleEndDate();
   let cycleInfo: {
     cycleStartDate: string; cycleEndDate: string; currentDay: number; isCompleted: boolean;
