@@ -352,6 +352,96 @@ function CircleCard({ circle }: { circle: CircleOverview }) {
   );
 }
 
+// Shown instead of CycleBanner when there are girls circles but no cycle has
+// ever been started yet (e.g. a brand-new database) — lets the leader/deputy
+// set the very first cycle's start date so the normal renew/schedule tools
+// become available afterwards.
+function StartCycleBanner({ userRole, onStarted }: { userRole?: string; onStarted: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [startDate, setStartDate] = useState(getMeccaToday());
+  const [starting, setStarting] = useState(false);
+  const canStart = userRole === "leader" || userRole === "deputy";
+
+  const handleStart = async () => {
+    setStarting(true);
+    try {
+      const res = await fetch(`${BASE}/api/review-plans/renew-all`, {
+        method: "POST",
+        headers: authHeader(),
+        body: JSON.stringify({ newCycleStart: startDate }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "خطأ");
+      setOpen(false);
+      onStarted();
+    } catch (e: any) {
+      alert("خطأ: " + e.message);
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  if (!canStart) return null;
+
+  return (
+    <>
+      <Card className="border-0 shadow-sm bg-violet-50 border-violet-200">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-violet-100">
+                <Clock className="w-5 h-5 text-violet-600" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-foreground">لم تبدأ دورة مراجعة بعد</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  حددي تاريخ بداية الدورة الأولى لخطط مراجعة الفتيات
+                </p>
+              </div>
+            </div>
+            <Button size="sm" className="gap-1.5 text-xs" onClick={() => { setStartDate(getMeccaToday()); setOpen(true); }}>
+              <Clock className="w-3.5 h-3.5" />
+              بدء الدورة الأولى
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={v => { if (!v && !starting) setOpen(false); }}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-right">
+              <Clock className="w-4 h-4 text-primary" />
+              بدء الدورة الأولى
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              حددي تاريخ بداية الدورة — سيتم اعتمادها كبداية دور المراجعة (٢١ يوم) لجميع الطالبات اللاتي لديهن خطة حالياً، وبعدها تقدرين تجدولين نهاية الدورات وتجديدها من هنا.
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold">تاريخ بداية الدورة</label>
+              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-right" />
+              {startDate && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CalendarDays className="w-3.5 h-3.5" />
+                  {formatArDate(startDate)}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="flex-row-reverse gap-2">
+            <Button onClick={handleStart} disabled={starting || !startDate} className="gap-1.5">
+              {starting ? <><Loader2 className="w-4 h-4 animate-spin" />جاري البدء...</> : <><Clock className="w-4 h-4" />بدء الدورة</>}
+            </Button>
+            <Button variant="ghost" onClick={() => setOpen(false)} disabled={starting}>إلغاء</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function CycleBanner({
   cycleInfo,
   userRole,
@@ -807,6 +897,11 @@ export default function ReviewPlansOverviewPage({ userRole }: Props) {
           userRole={userRole}
           onRenewSuccess={fetchData}
         />
+      )}
+
+      {/* First-time setup banner — shown when girls circles exist but no cycle started yet */}
+      {!loading && !error && !hasCycleData && girlsCircles.length > 0 && (
+        <StartCycleBanner userRole={userRole} onStarted={fetchData} />
       )}
 
       {/* Summary cards */}
