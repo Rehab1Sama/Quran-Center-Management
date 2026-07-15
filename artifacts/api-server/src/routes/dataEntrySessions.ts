@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, dataEntrySessionsTable, recordsTable, usersTable } from "@workspace/db";
-import { eq, and, gte } from "drizzle-orm";
+import { db, dataEntrySessionsTable, dataEntryCircleAssignmentsTable, recordsTable, usersTable, circlesTable, studentsTable } from "@workspace/db";
+import { eq, and, gte, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { getMakkahDay } from "../lib/date";
 
@@ -206,6 +206,122 @@ router.get("/data-entry/sessions/range", authenticate, async (req, res): Promise
   });
 
   res.json(result);
+});
+
+// GET /api/data-entry/daily-log?date=YYYY-MM-DD
+// لكل مدخلة بيانات: مدة الجلسة + تفصيل كل حلقة (عبّأت/ما عبّأت، مكتملة/ناقصة)
+router.get("/data-entry/daily-log", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  const today = getMeccaTodayServer();
+  const date = (typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date))
+    ? req.query.date : today;
+
+  const SESSION_GAP_MS = 15 * 60 * 1000;
+  const RECORD_BUFFER_MS = 2 * 60 * 1000;
+
+  function isMorningTS(ts: Date): boolean {
+    const meccaHour = (ts.getUTCHours() + 3) % 24;
+    return meccaHour >= 6 && meccaHour < 14;
+  }
+
+  const [allDataEntryUsers, allAssignments, allCircles, dayRecords, allStudents] = await Promise.all([
+    db.select({ id: usersTable.id, name: usersTable.name })
+      .from(usersTable)
+      .where(and(eq(usersTable.role, "data_entry"), eq(usersTable.isArchived, false))),
+    db.select().from(dataEntryCircleAssignmentsTable),
+    db.select({ id: circlesTable.id, name: circlesTable.name, track: circlesTable.track })
+      .from(circlesTable)
+      .where(eq(circlesTable.isArchived, false)),
+    db.select({
+      studentId: recordsTable.studentId,
+      circleId: recordsTable.circleId,
+      enteredById: recordsTable.enteredById,
+      createdAt: recordsTable.createdAt,
+    }).from(recordsTable).where(eq(recordsTable.date, date)),
+    db.select({ id: studentsTable.id, circleId: studentsTable.circleId })
+      .from(studentsTable)
+      .where(eq(studentsTable.isArchived, false)),
+  ]);
+
+  type DEUser    = { id: number; name: string };
+  type DECircle  = { id: number; name: string; track: string };
+  type DERecord  = { studentId: number; circleId: number; enteredById: number | null; createdAt: Date };
+  type DEStudent = { id: number; circleId: number };
+  type DEAssign  = typeof dataEntryCircleAssignmentsTable.$inferSelect;
+
+  const result = (allDataEntryUsers as DEUser[]).map((user: DEUser) => {
+    // حلقاتها المُسندة — إذا ما فيه إسناد تعتبر مسؤولة عن كل الحلقات
+    const assignedIds = (allAssignments as DEAssign[])
+      .filter((a: DEAssign) => a.dataEntryUserId === user.id)
+      .map((a: DEAssign) => a.circleId);
+    const userCircles = assignedIds.length > 0
+      ? (allCircles as DECircle[]).filter((c: DECircle) => assignedIds.includes(c.id))
+      : (allCircles as DECircle[]);
+
+    // مدة الجلسة من توقيتات إنشاء السجلات (نفس خوارزمية sessions/today)
+    const stamps = (dayRecords as DERecord[])
+      .filter((r: DERecord) => r.enteredById === user.id)
+      .map((r: DERecord) => new Date(r.createdAt))
+      .sort((a: Date, b: Date) => a.getTime() - b.getTime());
+
+    let morningMinutes = 0;
+    let eveningMinutes = 0;
+
+    if (stamps.length > 0) {
+      type WorkSeg = { stamps: Date[]; morning: boolean };
+      const segs: WorkSeg[] = [];
+      let cur: WorkSeg = { stamps: [stamps[0]!], morning: isMorningTS(stamps[0]!) };
+      for (let i = 1; i < stamps.length; i++) {
+        if (stamps[i]!.getTime() - stamps[i - 1]!.getTime() > SESSION_GAP_MS) {
+          segs.push(cur);
+          cur = { stamps: [stamps[i]!], morning: isMorningTS(stamps[i]!) };
+        } else {
+          cur.stamps.push(stamps[i]!);
+        }
+      }
+      segs.push(cur);
+      for (const s of segs) {
+        const dur = (s.stamps[s.stamps.length - 1]!.getTime() - s.stamps[0]!.getTime() + RECORD_BUFFER_MS) / 60000;
+        if (s.morning) morningMinutes += dur; else eveningMinutes += dur;
+      }
+    }
+
+    // إحصائيات كل حلقة
+    const circles = userCircles.map((circle: DECircle) => {
+      const totalStudents = (allStudents as DEStudent[]).filter((s: DEStudent) => s.circleId === circle.id).length;
+      const circleRecords = (dayRecords as DERecord[]).filter((r: DERecord) => r.circleId === circle.id);
+      const enteredStudentIds = new Set(circleRecords.map((r: DERecord) => r.studentId));
+      const enteredCount = enteredStudentIds.size;
+      const missingCount = totalStudents - enteredCount;
+      const enteredByUser = circleRecords.some((r: DERecord) => r.enteredById === user.id);
+      return {
+        circleId: circle.id,
+        circleName: circle.name,
+        track: circle.track,
+        totalStudents,
+        enteredCount,
+        missingCount,
+        completed: totalStudents > 0 && missingCount === 0,
+        enteredByUser,
+      };
+    });
+
+    return {
+      userId: user.id,
+      userName: user.name,
+      morningMinutes: Math.round(morningMinutes * 10) / 10,
+      eveningMinutes: Math.round(eveningMinutes * 10) / 10,
+      totalMinutes: Math.round((morningMinutes + eveningMinutes) * 10) / 10,
+      enteredAny: circles.some((c: { enteredByUser: boolean }) => c.enteredByUser),
+      allCompleted: circles.length > 0 && circles.every((c: { completed: boolean }) => c.completed),
+      circles,
+    };
+  });
+
+  res.json({ date, users: result });
 });
 
 export default router;

@@ -77,6 +77,18 @@ function distribute(total: number, parts: number): number[] {
   return arr;
 }
 
+async function upsertSetting(key: string, value: string): Promise<void> {
+  const existing = await db.select({ key: globalSettingsTable.key })
+    .from(globalSettingsTable)
+    .where(eq(globalSettingsTable.key, key))
+    .limit(1);
+  if (existing.length > 0) {
+    await db.update(globalSettingsTable).set({ value }).where(eq(globalSettingsTable.key, key));
+  } else {
+    await db.insert(globalSettingsTable).values({ key, value });
+  }
+}
+
 async function getGlobalCycleStartDate(): Promise<string | null> {
   const [row] = await db.select().from(globalSettingsTable)
     .where(eq(globalSettingsTable.key, "girls_cycle_start_date"));
@@ -682,18 +694,6 @@ router.post("/review-plans/schedule-cycle-end", authenticate, async (req, res): 
   }
   if (newCycleStart <= cycleEndDate) {
     res.status(400).json({ error: "تاريخ بداية الدورة الجديدة يجب أن يكون بعد تاريخ نهاية الدورة الحالية" }); return;
-  }
-
-  async function upsertSetting(key: string, value: string) {
-    const existing = await db.select({ key: globalSettingsTable.key })
-      .from(globalSettingsTable)
-      .where(eq(globalSettingsTable.key, key))
-      .limit(1);
-    if (existing.length > 0) {
-      await db.update(globalSettingsTable).set({ value }).where(eq(globalSettingsTable.key, key));
-    } else {
-      await db.insert(globalSettingsTable).values({ key, value });
-    }
   }
 
   await upsertSetting("girls_cycle_end_date", cycleEndDate);
