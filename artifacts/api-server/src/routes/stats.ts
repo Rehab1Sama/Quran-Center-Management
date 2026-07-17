@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, recordsTable, studentsTable, circlesTable, usersTable, teacherAbsencesTable, tracksTable, dailyCircleTasksTable, examRecordsTable } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
-import { getMakkahDay, getMakkahDaysAgo } from "../lib/date";
+import { getMakkahDay, getMakkahDaysAgo, getMakkahWeekStart, getMakkahLastWeekStart, getMakkahLastWeekEnd } from "../lib/date";
 
 const router: IRouter = Router();
 
@@ -11,8 +11,8 @@ function getDateRange(dateFrom?: string, dateTo?: string): { from: string; to: s
   if (dateFrom && dateTo) {
     return { from: dateFrom, to: dateTo, label: `${dateFrom} إلى ${dateTo}` };
   }
-  const weekAgo = getMakkahDaysAgo(7);
-  return { from: weekAgo, to: today, label: "هذا الأسبوع" };
+  const weekStart = getMakkahWeekStart();
+  return { from: weekStart, to: today, label: "هذا الأسبوع" };
 }
 
 router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
@@ -768,11 +768,11 @@ router.get("/stats/juz-stats", authenticate, async (req, res): Promise<void> => 
 router.get("/stats/weekly-comparison", authenticate, async (req, res): Promise<void> => {
   const todayStr = getMakkahDay();
 
-  // الأسبوع الحالي: آخر 7 أيام
-  const thisWeekStart = getMakkahDaysAgo(6);
-  // الأسبوع الماضي: 8-14 يوماً
-  const lastWeekStart = getMakkahDaysAgo(13);
-  const lastWeekEnd   = getMakkahDaysAgo(7);
+  // الأسبوع الحالي: من الأحد حتى اليوم
+  const thisWeekStart = getMakkahWeekStart();
+  // الأسبوع الماضي: الأحد السابق حتى السبت
+  const lastWeekStart = getMakkahLastWeekStart();
+  const lastWeekEnd   = getMakkahLastWeekEnd();
 
   const userRole = req.userRole;
   const userId   = req.userId;
