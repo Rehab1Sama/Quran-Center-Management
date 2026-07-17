@@ -1989,6 +1989,39 @@ export default function DataEntryPage() {
                   </div>
                 )}
 
+                {inputFields.includes("listen") && (
+                  <div className="border border-teal-200 bg-teal-50/40 rounded-xl p-4">
+                    <p className="font-semibold text-sm mb-3 flex items-center gap-2">
+                      <span>🎧</span>
+                      هل استمعت للقارئ؟
+                    </p>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, listenedToReciter: true }))}
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
+                          form.listenedToReciter === true
+                            ? "border-teal-500 bg-teal-100 text-teal-700"
+                            : "border-border/50 text-muted-foreground hover:border-teal-300"
+                        }`}
+                      >
+                        ✓ نعم
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, listenedToReciter: false }))}
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
+                          form.listenedToReciter === false
+                            ? "border-rose-400 bg-rose-50 text-rose-600"
+                            : "border-border/50 text-muted-foreground hover:border-rose-300"
+                        }`}
+                      >
+                        ✗ لا
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {inputFields.includes("review_near") && (
                   <SurahSection
                     title="المراجعة القريبة"
@@ -2151,39 +2184,6 @@ export default function DataEntryPage() {
                         </option>
                       ))}
                     </select>
-                  </div>
-                )}
-
-                {inputFields.includes("listen") && (
-                  <div className="border border-teal-200 bg-teal-50/40 rounded-xl p-4">
-                    <p className="font-semibold text-sm mb-3 flex items-center gap-2">
-                      <span>🎧</span>
-                      هل استمعت للقارئ؟
-                    </p>
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setForm((f) => ({ ...f, listenedToReciter: true }))}
-                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
-                          form.listenedToReciter === true
-                            ? "border-teal-500 bg-teal-100 text-teal-700"
-                            : "border-border/50 text-muted-foreground hover:border-teal-300"
-                        }`}
-                      >
-                        ✓ نعم
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setForm((f) => ({ ...f, listenedToReciter: false }))}
-                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
-                          form.listenedToReciter === false
-                            ? "border-rose-400 bg-rose-50 text-rose-600"
-                            : "border-border/50 text-muted-foreground hover:border-rose-300"
-                        }`}
-                      >
-                        ✗ لا
-                      </button>
-                    </div>
                   </div>
                 )}
 
