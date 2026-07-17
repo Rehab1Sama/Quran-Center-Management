@@ -179,9 +179,12 @@ router.patch("/records/:id", authenticate, async (req, res): Promise<void> => {
   if (req.userRole === "data_entry") {
     const [existing] = await db.select().from(recordsTable).where(eq(recordsTable.id, id));
     if (!existing) { res.status(404).json({ error: "Record not found" }); return; }
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-    if (existing.createdAt < twoHoursAgo) {
-      res.status(403).json({ error: "انتهت مدة التعديل (٢ ساعة من وقت الإدخال)" });
+    const isThursdayRecord = new Date(existing.date + "T12:00:00Z").getUTCDay() === 4;
+    const windowMs = isThursdayRecord ? 48 * 60 * 60 * 1000 : 2 * 60 * 60 * 1000;
+    const cutoff = new Date(Date.now() - windowMs);
+    if (existing.createdAt < cutoff) {
+      const label = isThursdayRecord ? "٤٨ ساعة" : "٢ ساعة";
+      res.status(403).json({ error: `انتهت مدة التعديل (${label} من وقت الإدخال)` });
       return;
     }
   }

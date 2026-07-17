@@ -529,12 +529,14 @@ interface FormState {
   memorize: SectionState;
   reviewNear: SectionState;
   reviewFar: SectionState;
+  reviewFar2: SectionState;
   review: SectionState;
   recitation: SectionState;
   repetitions: string;
   listenedToReciter: boolean | null;
   noReviewNear: boolean;
   noReviewFar: boolean;
+  noReviewFar2: boolean;
   noReview: boolean;
   memorizeMode: "range" | "manual";
   manualPages: string;
@@ -554,12 +556,14 @@ const emptyForm = (): FormState => ({
   memorize: emptySection(),
   reviewNear: emptySection(),
   reviewFar: emptySection(),
+  reviewFar2: emptySection(),
   review: emptySection(),
   recitation: emptySection(),
   repetitions: "7",
   listenedToReciter: null,
   noReviewNear: false,
   noReviewFar: false,
+  noReviewFar2: true,
   noReview: false,
   memorizeMode: "range",
   manualPages: "",
@@ -884,6 +888,15 @@ export default function DataEntryPage() {
         ayahEnd: last.reviewFarAyahEnd?.toString() ?? "1",
       };
     }
+    if (last.reviewFar2SurahStart && last.reviewFar2SurahEnd) {
+      updates.reviewFar2 = {
+        surahStart: last.reviewFar2SurahStart,
+        ayahStart: last.reviewFar2AyahStart?.toString() ?? "1",
+        surahEnd: last.reviewFar2SurahEnd,
+        ayahEnd: last.reviewFar2AyahEnd?.toString() ?? "1",
+      };
+      updates.noReviewFar2 = false;
+    }
     if (last.reviewSurahStart && last.reviewSurahEnd) {
       updates.review = {
         surahStart: last.reviewSurahStart,
@@ -1030,6 +1043,12 @@ export default function DataEntryPage() {
         surahEnd: record.reviewFarSurahEnd ?? "",
         ayahEnd: record.reviewFarAyahEnd?.toString() ?? "",
       },
+      reviewFar2: {
+        surahStart: record.reviewFar2SurahStart ?? "",
+        ayahStart: record.reviewFar2AyahStart?.toString() ?? "",
+        surahEnd: record.reviewFar2SurahEnd ?? "",
+        ayahEnd: record.reviewFar2AyahEnd?.toString() ?? "",
+      },
       review: {
         surahStart: record.reviewSurahStart ?? "",
         ayahStart: record.reviewAyahStart?.toString() ?? "",
@@ -1046,6 +1065,7 @@ export default function DataEntryPage() {
       listenedToReciter: record.listenedToReciter ?? null,
       noReviewNear: !record.reviewNearSurahStart,
       noReviewFar: !record.reviewFarSurahStart,
+      noReviewFar2: !record.reviewFar2SurahStart,
       noReview: !record.reviewSurahStart,
       memorizeMode: !record.memorizeSurahStart && (record.memorizePages ?? 0) > 0 ? "manual" : "range",
       manualPages: !record.memorizeSurahStart && (record.memorizePages ?? 0) > 0 ? record.memorizePages.toString() : "",
@@ -1139,6 +1159,13 @@ export default function DataEntryPage() {
         payload.reviewFarAyahEnd = Number(form.reviewFar.ayahEnd) || 1;
         payload.reviewFarPages = calcPages(form.reviewFar);
       }
+      if (inputFields.includes("review_far") && !form.noReviewFar2 && form.reviewFar2.surahStart && form.reviewFar2.surahEnd) {
+        payload.reviewFar2SurahStart = form.reviewFar2.surahStart;
+        payload.reviewFar2AyahStart = Number(form.reviewFar2.ayahStart) || 1;
+        payload.reviewFar2SurahEnd = form.reviewFar2.surahEnd;
+        payload.reviewFar2AyahEnd = Number(form.reviewFar2.ayahEnd) || 1;
+        payload.reviewFar2Pages = calcPages(form.reviewFar2);
+      }
       if (inputFields.includes("review") && isMothersEntry && form.reviewMode === "manual") {
         if (form.manualReviewPages && Number(form.manualReviewPages) > 0) {
           payload.reviewPages = Number(form.manualReviewPages);
@@ -1218,9 +1245,10 @@ export default function DataEntryPage() {
   const memPages = isMothersEntry && form.memorizeMode === "manual" ? Number(form.manualPages) || 0 : calcPages(form.memorize);
   const revNearPages = calcPages(form.reviewNear);
   const revFarPages = calcPages(form.reviewFar);
+  const revFar2Pages = form.noReviewFar2 ? 0 : calcPages(form.reviewFar2);
   const revPages = isMothersEntry && form.reviewMode === "manual" ? Number(form.manualReviewPages) || 0 : calcPages(form.review);
   const recPages = calcPages(form.recitation);
-  const hasPages = memPages > 0 || revNearPages > 0 || revFarPages > 0 || revPages > 0 || recPages > 0;
+  const hasPages = memPages > 0 || revNearPages > 0 || revFarPages > 0 || revFar2Pages > 0 || revPages > 0 || recPages > 0;
 
   const isFixationEntry = resolveTrackType(selectedCircle?.dataEntryType) === "fixation";
 
@@ -1718,10 +1746,12 @@ export default function DataEntryPage() {
                   const recordForEdit = hasRecord
                     ? (circleRecords as any[]).find((r: any) => r.studentId === student.studentId)
                     : null;
+                  const isThursdayRecord = recordForEdit ? isThursdayDate(recordForEdit.date) : false;
+                  const editWindowMs = isThursdayRecord ? 48 * 60 * 60 * 1000 : 2 * 60 * 60 * 1000;
                   const canEdit =
                     !hasRecord ||
                     (user as any)?.role === "leader" ||
-                    (recordForEdit && new Date(recordForEdit.createdAt).getTime() > Date.now() - 2 * 60 * 60 * 1000);
+                    (recordForEdit && new Date(recordForEdit.createdAt).getTime() > Date.now() - editWindowMs);
 
                   // Plan comparison badge
                   const studentPlan = circlePlans.find((p: any) => p.studentId === student.studentId);
@@ -2062,6 +2092,9 @@ export default function DataEntryPage() {
                           ...f,
                           noReviewFar: !f.noReviewFar,
                           reviewFar: !f.noReviewFar ? emptySection() : f.reviewFar,
+                          // إذا قُفل النطاق الأول، أخفِ الثاني تلقائيًا
+                          noReviewFar2: !f.noReviewFar ? true : f.noReviewFar2,
+                          reviewFar2: !f.noReviewFar ? emptySection() : f.reviewFar2,
                         }))
                       }
                       onVoiceFill={(ss, as, se, ae) =>
@@ -2072,6 +2105,43 @@ export default function DataEntryPage() {
                         }))
                       }
                     />
+                    {/* النطاق الثاني للمراجعة البعيدة */}
+                    {!form.noReviewFar && (
+                      form.noReviewFar2 ? (
+                        <button
+                          type="button"
+                          onClick={() => setForm((f) => ({ ...f, noReviewFar2: false }))}
+                          className="text-xs text-teal-600 hover:text-teal-800 flex items-center gap-1 py-0.5 pr-1"
+                        >
+                          <span className="text-base leading-none">+</span>
+                          إضافة نطاق ثانٍ للمراجعة البعيدة
+                        </button>
+                      ) : (
+                        <div className="space-y-1">
+                          <SurahSection
+                            title="المراجعة البعيدة — نطاق ثانٍ"
+                            color="border-teal-200 bg-teal-100/40"
+                            section={form.reviewFar2}
+                            onChange={(f, v) => updateSection("reviewFar2", f, v)}
+                            autoSuggested={autoFilled && !!form.reviewFar2.surahStart}
+                            onVoiceFill={(ss, as, se, ae) =>
+                              setForm((f) => ({
+                                ...f,
+                                reviewFar2: { surahStart: ss, ayahStart: as, surahEnd: se, ayahEnd: ae },
+                              }))
+                            }
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setForm((f) => ({ ...f, noReviewFar2: true, reviewFar2: emptySection() }))}
+                            className="text-xs text-rose-500 hover:text-rose-700 flex items-center gap-1 py-0.5 pr-1"
+                          >
+                            <span className="text-base leading-none">−</span>
+                            حذف النطاق الثاني
+                          </button>
+                        </div>
+                      )
+                    )}
                   </div>
                 )}
 
@@ -2205,6 +2275,11 @@ export default function DataEntryPage() {
                       {revFarPages > 0 && (
                         <Badge className="bg-teal-100 text-teal-600 border-0">
                           م. بعيدة: {formatPages(revFarPages)} وجه
+                        </Badge>
+                      )}
+                      {revFar2Pages > 0 && (
+                        <Badge className="bg-teal-100 text-teal-600 border-0">
+                          م. بعيدة ٢: {formatPages(revFar2Pages)} وجه
                         </Badge>
                       )}
                       {revPages > 0 && (
