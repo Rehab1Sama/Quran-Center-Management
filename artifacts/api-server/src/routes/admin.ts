@@ -9,7 +9,7 @@ const router: IRouter = Router();
 
 router.post("/admin/schema-push", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
   const dbDir = path.resolve(process.cwd(), "../../lib/db");
-  const connectionString = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL || "";
+  const connectionString = process.env.SUPABASE_DB_URL || process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL || "";
 
   const env = {
     ...process.env,
