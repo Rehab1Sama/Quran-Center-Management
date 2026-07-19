@@ -50,6 +50,45 @@ router.get("/records", authenticate, async (req, res): Promise<void> => {
   res.json(records.map(r => ({ ...r, studentName: nameMap[r.studentId] ?? "" })));
 });
 
+// إدخال جماعي لحلقات إشراق وسُنى
+router.post("/records/bulk", authenticate, async (req, res): Promise<void> => {
+  const records = req.body as any[];
+  if (!Array.isArray(records) || records.length === 0) {
+    res.status(400).json({ error: "يجب إرسال قائمة سجلات" });
+    return;
+  }
+  const date = records[0]?.date as string;
+  if (!date) { res.status(400).json({ error: "date is required" }); return; }
+
+  const existing = await db.select({ studentId: recordsTable.studentId })
+    .from(recordsTable).where(eq(recordsTable.date, date));
+  const alreadyEntered = new Set(existing.map(r => r.studentId));
+
+  let created = 0;
+  let skipped = 0;
+  for (const rec of records) {
+    const { studentId, circleId, isAbsent = false, ...rest } = rec;
+    if (!studentId || !circleId) { skipped++; continue; }
+    if (alreadyEntered.has(studentId)) { skipped++; continue; }
+    await db.insert(recordsTable).values({
+      studentId,
+      circleId,
+      date,
+      enteredById: req.userId!,
+      isAbsent,
+      memorizePages: 0,
+      reviewNearPages: 0,
+      reviewFarPages: 0,
+      reviewPages: 0,
+      recitationPages: 0,
+      ...rest,
+    });
+    created++;
+  }
+
+  res.json({ created, skipped });
+});
+
 // إدخال يوم الخميس تلقائيًا: مراجعة عامة لكل محفوظ الأحد–الأربعاء
 router.post("/records/thursday-bulk", authenticate, async (req, res): Promise<void> => {
   if (req.userRole !== "leader") {

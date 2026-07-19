@@ -44,6 +44,7 @@ import {
   Archive,
   ArchiveRestore,
   ClipboardList,
+  Zap,
 } from "lucide-react";
 import { getDayDates, getCurrentPlanDay } from "@/components/ReviewPlanSection";
 
@@ -703,6 +704,15 @@ export default function DataEntryPage() {
   const [submittedDaysVersion, setSubmittedDaysVersion] = useState(0);
   const [circlePlans, setCirclePlans] = useState<any[]>([]);
 
+  // ── Bulk entry state ───────────────────────────────────────────────────────
+  type BulkOverride = { isAbsent: boolean; memorize?: SectionState };
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [bulkStep, setBulkStep] = useState<1 | 2>(1);
+  const [bulkForm, setBulkForm] = useState<FormState>(emptyForm());
+  const [bulkOverrides, setBulkOverrides] = useState<Record<number, BulkOverride>>({});
+  const [bulkEditingStudent, setBulkEditingStudent] = useState<number | null>(null);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+
   // Assigned circles for data_entry users
   const [assignedCircles, setAssignedCircles] = useState<any[]>([]);
   useEffect(() => {
@@ -951,6 +961,11 @@ export default function DataEntryPage() {
 
   const selectedCircle = (circles ?? []).find((c: any) => c.id === selectedCircleId) as any;
   const inputFields = getInputFields(selectedCircle?.dataEntryType);
+
+  const isBulkEligible = !!selectedCircle && (
+    selectedCircle.track?.startsWith("إشراق") ||
+    selectedCircle.track?.startsWith("سُنى")
+  );
 
   const isMothersEntry = selectedCircle?.dataEntryType === "mothers";
   const isThursdaySelected = isThursdayDate(selectedDate);
@@ -1215,6 +1230,81 @@ export default function DataEntryPage() {
             toast({ title: "خطأ في الحفظ", description: err?.data?.error ?? err?.message, variant: "destructive" }),
         },
       );
+    }
+  };
+
+  const handleBulkSave = async () => {
+    setBulkSubmitting(true);
+    const token = getToken();
+    if (!token || !selectedCircleId) { setBulkSubmitting(false); return; }
+
+    const payloads = pendingStudents.map((student: any) => {
+      const override = bulkOverrides[student.studentId] ?? { isAbsent: false };
+      const effectiveMem = override.memorize ?? bulkForm.memorize;
+      const payload: any = {
+        studentId: student.studentId,
+        circleId: student.circleId,
+        date: selectedDate,
+        isAbsent: override.isAbsent,
+        memorizePages: 0,
+        reviewNearPages: 0,
+        reviewFarPages: 0,
+        reviewPages: 0,
+        recitationPages: 0,
+      };
+      if (!override.isAbsent) {
+        if (inputFields.includes("memorize") && effectiveMem.surahStart && effectiveMem.surahEnd) {
+          payload.memorizeSurahStart = effectiveMem.surahStart;
+          payload.memorizeAyahStart = Number(effectiveMem.ayahStart) || 1;
+          payload.memorizeSurahEnd = effectiveMem.surahEnd;
+          payload.memorizeAyahEnd = Number(effectiveMem.ayahEnd) || 1;
+          payload.memorizePages = calcPages(effectiveMem);
+        }
+        if (inputFields.includes("review_near") && !bulkForm.noReviewNear && bulkForm.reviewNear.surahStart && bulkForm.reviewNear.surahEnd) {
+          payload.reviewNearSurahStart = bulkForm.reviewNear.surahStart;
+          payload.reviewNearAyahStart = Number(bulkForm.reviewNear.ayahStart) || 1;
+          payload.reviewNearSurahEnd = bulkForm.reviewNear.surahEnd;
+          payload.reviewNearAyahEnd = Number(bulkForm.reviewNear.ayahEnd) || 1;
+          payload.reviewNearPages = calcPages(bulkForm.reviewNear);
+        }
+        if (inputFields.includes("review_far") && !bulkForm.noReviewFar && bulkForm.reviewFar.surahStart && bulkForm.reviewFar.surahEnd) {
+          payload.reviewFarSurahStart = bulkForm.reviewFar.surahStart;
+          payload.reviewFarAyahStart = Number(bulkForm.reviewFar.ayahStart) || 1;
+          payload.reviewFarSurahEnd = bulkForm.reviewFar.surahEnd;
+          payload.reviewFarAyahEnd = Number(bulkForm.reviewFar.ayahEnd) || 1;
+          payload.reviewFarPages = calcPages(bulkForm.reviewFar);
+        }
+        if (inputFields.includes("review") && !bulkForm.noReview && bulkForm.review.surahStart && bulkForm.review.surahEnd) {
+          payload.reviewSurahStart = bulkForm.review.surahStart;
+          payload.reviewAyahStart = Number(bulkForm.review.ayahStart) || 1;
+          payload.reviewSurahEnd = bulkForm.review.surahEnd;
+          payload.reviewAyahEnd = Number(bulkForm.review.ayahEnd) || 1;
+          payload.reviewPages = calcPages(bulkForm.review);
+        }
+        if (inputFields.includes("listen")) payload.listenedToReciter = bulkForm.listenedToReciter;
+      }
+      return payload;
+    });
+
+    try {
+      const res = await fetch(`${BASE}/api/records/bulk`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payloads),
+      });
+      if (!res.ok) throw new Error("فشل الحفظ");
+      const data = await res.json();
+      toast({ title: `تم حفظ ${data.created} سجل ✓` });
+      invalidateQueries();
+      setBulkDialogOpen(false);
+      setBulkStep(1);
+      setBulkForm(emptyForm());
+      setBulkOverrides({});
+      setBulkEditingStudent(null);
+    } catch (e: any) {
+      toast({ title: "خطأ في الحفظ الجماعي", description: e.message, variant: "destructive" });
+    } finally {
+      setBulkSubmitting(false);
     }
   };
 
@@ -1683,16 +1773,29 @@ export default function DataEntryPage() {
                 <Users className="w-4 h-4 text-primary" />
                 طالبات الحلقة
               </CardTitle>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 h-8 text-xs shrink-0"
-                onClick={handleMarkTeacherAbsent}
-                disabled={markTeacherAbsent.isPending}
-              >
-                <UserX className="w-3.5 h-3.5" />
-                المعلمة غائبة
-              </Button>
+              <div className="flex gap-2">
+                {isBulkEligible && pendingStudents.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100 h-8 text-xs shrink-0"
+                    onClick={() => { setBulkForm(emptyForm()); setBulkStep(1); setBulkDialogOpen(true); }}
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    إدخال جماعي
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 h-8 text-xs shrink-0"
+                  onClick={handleMarkTeacherAbsent}
+                  disabled={markTeacherAbsent.isPending}
+                >
+                  <UserX className="w-3.5 h-3.5" />
+                  المعلمة غائبة
+                </Button>
+              </div>
             </div>
             {studentsProgress.total > 0 && (
               <div className="mt-3">
@@ -2608,6 +2711,235 @@ export default function DataEntryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Bulk Entry Dialog ── */}
+      {isBulkEligible && (
+        <Dialog open={bulkDialogOpen} onOpenChange={(open) => {
+          setBulkDialogOpen(open);
+          if (!open) { setBulkStep(1); setBulkForm(emptyForm()); setBulkOverrides({}); setBulkEditingStudent(null); }
+        }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
+            <DialogHeader>
+              <DialogTitle className="text-right flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-500" />
+                إدخال جماعي — {selectedCircle?.name}
+              </DialogTitle>
+              <p className="text-xs text-muted-foreground text-right">
+                {bulkStep === 1
+                  ? "أدخلي البيانات الموحدة للحلقة"
+                  : `راجعي بيانات ${pendingStudents.length} طالبة — عدّلي أي استثناء قبل الحفظ`}
+              </p>
+            </DialogHeader>
+
+            {/* الخطوة ١: البيانات الموحدة */}
+            {bulkStep === 1 && (
+              <div className="space-y-4 py-2">
+                {inputFields.includes("memorize") && (
+                  <SurahSection
+                    title="الحفظ"
+                    color="border-indigo-200 bg-indigo-100/40"
+                    section={bulkForm.memorize}
+                    onChange={(f, v) => setBulkForm(prev => ({ ...prev, memorize: { ...prev.memorize, [f]: v } }))}
+                  />
+                )}
+                {inputFields.includes("review_near") && (
+                  <SurahSection
+                    title="المراجعة القريبة"
+                    color="border-purple-200 bg-purple-100/40"
+                    section={bulkForm.reviewNear}
+                    onChange={(f, v) => setBulkForm(prev => ({ ...prev, reviewNear: { ...prev.reviewNear, [f]: v } }))}
+                    locked={bulkForm.noReviewNear}
+                    onToggleLock={() => setBulkForm(prev => ({ ...prev, noReviewNear: !prev.noReviewNear, reviewNear: !prev.noReviewNear ? emptySection() : prev.reviewNear }))}
+                  />
+                )}
+                {inputFields.includes("review_far") && (
+                  <SurahSection
+                    title="المراجعة البعيدة"
+                    color="border-teal-200 bg-teal-100/40"
+                    section={bulkForm.reviewFar}
+                    onChange={(f, v) => setBulkForm(prev => ({ ...prev, reviewFar: { ...prev.reviewFar, [f]: v } }))}
+                    locked={bulkForm.noReviewFar}
+                    onToggleLock={() => setBulkForm(prev => ({ ...prev, noReviewFar: !prev.noReviewFar, reviewFar: !prev.noReviewFar ? emptySection() : prev.reviewFar }))}
+                  />
+                )}
+                {inputFields.includes("review") && (
+                  <SurahSection
+                    title="المراجعة"
+                    color="border-blue-200 bg-blue-100/40"
+                    section={bulkForm.review}
+                    onChange={(f, v) => setBulkForm(prev => ({ ...prev, review: { ...prev.review, [f]: v } }))}
+                    locked={bulkForm.noReview}
+                    onToggleLock={() => setBulkForm(prev => ({ ...prev, noReview: !prev.noReview, review: !prev.noReview ? emptySection() : prev.review }))}
+                  />
+                )}
+                {inputFields.includes("listen") && (
+                  <div className="border rounded-xl p-4 border-amber-200 bg-amber-50/40 space-y-3">
+                    <p className="font-semibold text-sm flex items-center gap-2">
+                      <BookOpen className="w-4 h-4" />
+                      سماع القارئ
+                    </p>
+                    <div className="flex gap-2">
+                      <button type="button"
+                        onClick={() => setBulkForm(prev => ({ ...prev, listenedToReciter: true }))}
+                        className={`flex-1 py-2 rounded-lg border text-sm font-semibold transition-colors ${bulkForm.listenedToReciter === true ? "bg-green-500 text-white border-green-500" : "border-input hover:bg-muted"}`}
+                      >نعم</button>
+                      <button type="button"
+                        onClick={() => setBulkForm(prev => ({ ...prev, listenedToReciter: false }))}
+                        className={`flex-1 py-2 rounded-lg border text-sm font-semibold transition-colors ${bulkForm.listenedToReciter === false ? "bg-rose-500 text-white border-rose-500" : "border-input hover:bg-muted"}`}
+                      >لا</button>
+                    </div>
+                  </div>
+                )}
+                <Button
+                  className="w-full"
+                  disabled={inputFields.includes("memorize") && !bulkForm.memorize.surahStart}
+                  onClick={() => {
+                    const overrides: Record<number, BulkOverride> = {};
+                    for (const s of pendingStudents as any[]) {
+                      overrides[s.studentId] = { isAbsent: false };
+                    }
+                    setBulkOverrides(overrides);
+                    setBulkStep(2);
+                  }}
+                >
+                  التالي — مراجعة الطالبات ({pendingStudents.length})
+                </Button>
+              </div>
+            )}
+
+            {/* الخطوة ٢: مراجعة الطالبات */}
+            {bulkStep === 2 && (
+              <div className="space-y-3 py-2">
+                {/* ملخص البيانات الموحدة */}
+                <div className="flex flex-wrap gap-1.5 bg-muted/40 rounded-xl p-3">
+                  <span className="text-xs text-muted-foreground font-medium ml-1">الموحد:</span>
+                  {calcPages(bulkForm.memorize) > 0 && (
+                    <Badge className="bg-indigo-100 text-indigo-700 border-0 text-xs">حفظ {formatPages(calcPages(bulkForm.memorize))} وجه</Badge>
+                  )}
+                  {!bulkForm.noReviewNear && calcPages(bulkForm.reviewNear) > 0 && (
+                    <Badge className="bg-purple-100 text-purple-700 border-0 text-xs">قريبة {formatPages(calcPages(bulkForm.reviewNear))} وجه</Badge>
+                  )}
+                  {!bulkForm.noReviewFar && calcPages(bulkForm.reviewFar) > 0 && (
+                    <Badge className="bg-teal-100 text-teal-700 border-0 text-xs">بعيدة {formatPages(calcPages(bulkForm.reviewFar))} وجه</Badge>
+                  )}
+                  {!bulkForm.noReview && calcPages(bulkForm.review) > 0 && (
+                    <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">مراجعة {formatPages(calcPages(bulkForm.review))} وجه</Badge>
+                  )}
+                  {bulkForm.listenedToReciter !== null && (
+                    <Badge className={`border-0 text-xs ${bulkForm.listenedToReciter ? "bg-green-100 text-green-700" : "bg-rose-100 text-rose-600"}`}>
+                      سماع: {bulkForm.listenedToReciter ? "نعم" : "لا"}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* قائمة الطالبات */}
+                <div className="space-y-2">
+                  {(pendingStudents as any[]).map((student: any) => {
+                    const override = bulkOverrides[student.studentId] ?? { isAbsent: false };
+                    const effectiveMem = override.memorize ?? bulkForm.memorize;
+                    const memPgs = calcPages(effectiveMem);
+                    const isExpanded = bulkEditingStudent === student.studentId;
+                    const hasMemOverride = !!override.memorize;
+
+                    return (
+                      <div key={student.studentId} className={`border rounded-xl p-3 space-y-2 transition-colors ${override.isAbsent ? "border-rose-200 bg-rose-50/40" : "border-input bg-background"}`}>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setBulkOverrides(prev => ({
+                              ...prev,
+                              [student.studentId]: { ...prev[student.studentId], isAbsent: !override.isAbsent },
+                            }))}
+                            className={`shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center text-xs font-bold transition-colors ${override.isAbsent ? "bg-rose-500 text-white border-rose-500" : "bg-green-50 border-green-300 text-green-700 hover:bg-green-100"}`}
+                            title={override.isAbsent ? "اضغطي لتسجيل حضور" : "اضغطي لتسجيل غياب"}
+                          >
+                            {override.isAbsent ? "✗" : "✓"}
+                          </button>
+                          <span className="flex-1 text-sm font-medium truncate">{student.studentName}</span>
+                          {override.isAbsent
+                            ? <Badge className="bg-rose-100 text-rose-600 border-0 text-xs shrink-0">غائبة</Badge>
+                            : memPgs > 0 && (
+                              <Badge className={`border-0 text-xs shrink-0 ${hasMemOverride ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700"}`}>
+                                {formatPages(memPgs)} وجه{hasMemOverride ? " ✏" : ""}
+                              </Badge>
+                            )
+                          }
+                          {!override.isAbsent && inputFields.includes("memorize") && (
+                            <button
+                              type="button"
+                              onClick={() => setBulkEditingStudent(isExpanded ? null : student.studentId)}
+                              className="text-xs text-muted-foreground hover:text-foreground border border-input rounded-lg px-2 py-1 shrink-0"
+                            >
+                              {isExpanded ? "إغلاق" : "تعديل"}
+                            </button>
+                          )}
+                        </div>
+
+                        {isExpanded && !override.isAbsent && (
+                          <div className="pt-2 border-t border-dashed space-y-2">
+                            <p className="text-xs text-muted-foreground">تعديل الحفظ لهذه الطالبة فقط:</p>
+                            <SurahSection
+                              title="الحفظ"
+                              color="border-indigo-200 bg-indigo-100/40"
+                              section={override.memorize ?? bulkForm.memorize}
+                              onChange={(f, v) => setBulkOverrides(prev => ({
+                                ...prev,
+                                [student.studentId]: {
+                                  ...prev[student.studentId],
+                                  memorize: { ...(prev[student.studentId].memorize ?? bulkForm.memorize), [f]: v },
+                                },
+                              }))}
+                            />
+                            {hasMemOverride && (
+                              <button
+                                type="button"
+                                onClick={() => setBulkOverrides(prev => ({
+                                  ...prev,
+                                  [student.studentId]: { ...prev[student.studentId], memorize: undefined },
+                                }))}
+                                className="text-xs text-muted-foreground hover:text-rose-500"
+                              >
+                                ↩ إعادة للبيانات الموحدة
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* ملخص + أزرار */}
+                <div className="flex flex-col gap-2 pt-2 border-t">
+                  <div className="flex gap-3 text-xs justify-center">
+                    <span className="text-green-600 font-semibold">
+                      ✓ {Object.values(bulkOverrides).filter(o => !o.isAbsent).length} حاضرة
+                    </span>
+                    {Object.values(bulkOverrides).filter(o => o.isAbsent).length > 0 && (
+                      <span className="text-rose-500 font-semibold">
+                        ✗ {Object.values(bulkOverrides).filter(o => o.isAbsent).length} غائبة
+                      </span>
+                    )}
+                    {Object.values(bulkOverrides).filter(o => o.memorize).length > 0 && (
+                      <span className="text-amber-600 font-semibold">
+                        ✏ {Object.values(bulkOverrides).filter(o => o.memorize).length} معدّلة
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setBulkStep(1)}>
+                      رجوع
+                    </Button>
+                    <Button className="flex-1" disabled={bulkSubmitting} onClick={handleBulkSave}>
+                      {bulkSubmitting ? "جاري الحفظ..." : `حفظ الكل (${pendingStudents.length} طالبة)`}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
 
     </div>
   );
