@@ -170,7 +170,21 @@ async function migrateAndLinkStudentIds() {
         AND se.is_archived = false
     `));
 
-    // 4. ربط ما تبقى بالاسم (TRIM) فقط — فقط إذا كان الاسم فريداً (لتجنب الربط الخاطئ)
+    // 4. ربط بالجوال — أكثر دقة من الاسم عند التعارض
+    await db.execute(sql.raw(`
+      UPDATE users u
+      SET student_id = s.id
+      FROM students s
+      WHERE u.role = 'student'
+        AND u.student_id IS NULL
+        AND u.is_archived = false
+        AND s.is_archived = false
+        AND u.phone IS NOT NULL AND u.phone != ''
+        AND TRIM(u.phone) = TRIM(s.phone)
+        AND (SELECT COUNT(*) FROM students WHERE TRIM(phone)=TRIM(u.phone) AND is_archived=false) = 1
+    `));
+
+    // 5. ربط ما تبقى بالاسم (TRIM) فقط — فقط إذا كان الاسم فريداً (لتجنب الربط الخاطئ)
     await db.execute(sql.raw(`
       UPDATE users u
       SET student_id = s.id
@@ -189,11 +203,40 @@ async function migrateAndLinkStudentIds() {
         AND TRIM(u.name) = s.trimmed_name
     `));
 
+    // 6. بعد الربط: اكمل circle_id في users من سجل الطالبة (للطالبات القديمات التي circle_id=NULL)
+    await db.execute(sql.raw(`
+      UPDATE users u
+      SET circle_id = s.circle_id
+      FROM students s
+      WHERE u.role = 'student'
+        AND u.student_id = s.id
+        AND u.circle_id IS NULL
+        AND s.circle_id IS NOT NULL
+        AND s.is_archived = false
+        AND u.is_archived = false
+    `));
+
+    // 7. circle_id عبر student_enrollments لمن لا يزال circle_id=NULL
+    await db.execute(sql.raw(`
+      UPDATE users u
+      SET circle_id = se.circle_id
+      FROM student_enrollments se
+      WHERE u.role = 'student'
+        AND u.student_id = se.student_id
+        AND u.circle_id IS NULL
+        AND se.is_archived = false
+        AND u.is_archived = false
+    `));
+
     const result = await db.execute(sql.raw(
-      `SELECT COUNT(*) as linked FROM users WHERE role = 'student' AND student_id IS NOT NULL AND is_archived = false`
+      `SELECT
+         COUNT(*) FILTER (WHERE student_id IS NOT NULL) as linked,
+         COUNT(*) FILTER (WHERE circle_id IS NOT NULL) as with_circle,
+         COUNT(*) as total
+       FROM users WHERE role = 'student' AND is_archived = false`
     ));
-    const linked = (result as any).rows?.[0]?.linked ?? 0;
-    logger.info({ linked }, "student_id migration complete");
+    const row = (result as any).rows?.[0] ?? {};
+    logger.info({ linked: row.linked, with_circle: row.with_circle, total: row.total }, "student_id migration complete");
   } catch (err: any) {
     logger.warn({ msg: err?.message?.slice(0, 200) }, "student_id migration skipped");
   }

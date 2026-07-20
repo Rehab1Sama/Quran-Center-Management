@@ -67,7 +67,18 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       studentId = (res3 as any).rows?.[0]?.id ?? null;
     }
 
-    // رابعاً: بالاسم (TRIM) فقط — فقط إذا كان الاسم فريداً
+    // رابعاً: بالجوال — أكثر دقة عند تعارض الأسماء
+    if (!studentId && user.phone) {
+      const res4b = await db.execute(
+        sql`SELECT id FROM students
+            WHERE TRIM(phone)=TRIM(${user.phone}) AND is_archived=false
+              AND (SELECT COUNT(*) FROM students WHERE TRIM(phone)=TRIM(${user.phone}) AND is_archived=false)=1
+            LIMIT 1`
+      );
+      studentId = (res4b as any).rows?.[0]?.id ?? null;
+    }
+
+    // خامساً: بالاسم (TRIM) فقط — فقط إذا كان الاسم فريداً
     if (!studentId) {
       const res4 = await db.execute(
         sql`SELECT id FROM students
