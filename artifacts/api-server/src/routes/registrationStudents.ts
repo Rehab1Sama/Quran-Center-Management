@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, studentsTable, circlesTable, usersTable, studentEnrollmentsTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
 const router: IRouter = Router();
@@ -50,6 +50,22 @@ router.post("/registration-students/bulk-transfer", authenticate, async (req, re
     await db.insert(studentEnrollmentsTable)
       .values({ studentId: t.studentId, circleId: t.circleId, isArchived: false })
       .onConflictDoNothing();
+
+    // مزامنة circle_id في حساب المستخدمة — أولاً بالرابط المباشر student_id
+    await db.update(usersTable)
+      .set({ circleId: t.circleId })
+      .where(and(eq(usersTable.studentId, t.studentId), eq(usersTable.role, "student")));
+    // ثم بالاسم + الحلقة القديمة للحسابات غير المربوطة بعد
+    const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, t.studentId));
+    if (student) {
+      await db.execute(
+        sql`UPDATE users SET circle_id = ${t.circleId}
+            WHERE role = 'student'
+              AND student_id IS NULL
+              AND TRIM(name) = TRIM(${student.fullName})
+              AND circle_id IS DISTINCT FROM ${t.circleId}`
+      );
+    }
   }
 
   res.json({ ok: true, transferred: transfers.length });

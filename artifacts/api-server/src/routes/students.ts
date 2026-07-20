@@ -337,9 +337,21 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
         });
     }
     // Sync the student's user account circleId to match the new circle
+    // أولاً: بالرابط المباشر student_id (أدق وأأمن)
     await db.update(usersTable)
       .set({ circleId: parsed.data.circleId ?? null })
-      .where(and(eq(usersTable.name, before.fullName), eq(usersTable.role, "student")));
+      .where(and(eq(usersTable.studentId, id), eq(usersTable.role, "student")));
+    // ثانياً: بالاسم + الحلقة القديمة فقط للحسابات غير المربوطة (لتجنب تحديث طالبات بنفس الاسم في حلقات أخرى)
+    if (before.circleId) {
+      await db.update(usersTable)
+        .set({ circleId: parsed.data.circleId ?? null })
+        .where(and(
+          eq(usersTable.role, "student"),
+          isNull(usersTable.studentId),
+          eq(usersTable.name, before.fullName),
+          eq(usersTable.circleId, before.circleId),
+        ));
+    }
   }
 
   res.json(student);

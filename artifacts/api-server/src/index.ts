@@ -170,21 +170,7 @@ async function migrateAndLinkStudentIds() {
         AND se.is_archived = false
     `));
 
-    // 4. ربط بالجوال — أكثر دقة من الاسم عند التعارض
-    await db.execute(sql.raw(`
-      UPDATE users u
-      SET student_id = s.id
-      FROM students s
-      WHERE u.role = 'student'
-        AND u.student_id IS NULL
-        AND u.is_archived = false
-        AND s.is_archived = false
-        AND u.phone IS NOT NULL AND u.phone != ''
-        AND TRIM(u.phone) = TRIM(s.phone)
-        AND (SELECT COUNT(*) FROM students WHERE TRIM(phone)=TRIM(u.phone) AND is_archived=false) = 1
-    `));
-
-    // 5. ربط ما تبقى بالاسم (TRIM) فقط — فقط إذا كان الاسم فريداً (لتجنب الربط الخاطئ)
+    // 4. ربط ما تبقى بالاسم (TRIM) فقط — فقط إذا كان الاسم فريداً (لتجنب الربط الخاطئ)
     await db.execute(sql.raw(`
       UPDATE users u
       SET student_id = s.id
