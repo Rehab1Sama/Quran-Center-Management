@@ -78,12 +78,35 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       studentId = (res4 as any).rows?.[0]?.id ?? null;
     }
 
+    // إذا لم يكن circleId محفوظاً في حساب المستخدمة، نجلبه من سجل الطالبة
+    let resolvedCircleId: number | null = user.circleId ?? null;
+    if (studentId && !resolvedCircleId) {
+      const res5 = await db.execute(
+        sql`SELECT circle_id FROM students WHERE id=${studentId} AND is_archived=false LIMIT 1`
+      );
+      resolvedCircleId = (res5 as any).rows?.[0]?.circle_id ?? null;
+
+      // إذا ما لقينا circle_id مباشرة، نجرب عبر student_enrollments
+      if (!resolvedCircleId) {
+        const res6 = await db.execute(
+          sql`SELECT circle_id FROM student_enrollments
+              WHERE student_id=${studentId} AND is_archived=false
+              ORDER BY id DESC LIMIT 1`
+        );
+        resolvedCircleId = (res6 as any).rows?.[0]?.circle_id ?? null;
+      }
+    }
+
     // احفظ الربط في قاعدة البيانات لتسريع الطلبات القادمة
     if (studentId && !user.studentId) {
       db.execute(sql`UPDATE users SET student_id=${studentId} WHERE id=${user.id}`).catch(() => {});
     }
+    if (resolvedCircleId && !user.circleId) {
+      db.execute(sql`UPDATE users SET circle_id=${resolvedCircleId} WHERE id=${user.id}`).catch(() => {});
+    }
 
     req.userStudentId = studentId;
+    req.userCircleId = resolvedCircleId;
   }
 
   next();
