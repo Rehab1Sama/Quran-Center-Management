@@ -143,6 +143,35 @@ async function migrateAndLinkStudentIds() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id integer REFERENCES students(id)
     `));
 
+    // 1-b. إصلاح circle_id للطالبات اللي نُقلن من حلقة التسجيل لحلقتهن الحقيقية
+    //      المنطق: لو الحساب لا يزال مشيراً لحلقة التسجيل (أو circle_id=NULL)
+    //              ويوجد سجل نقل من تلك الحلقة باسم الطالبة → نحدّث circle_id للحلقة الجديدة
+    await db.execute(sql.raw(`
+      WITH latest_transfers AS (
+        SELECT DISTINCT ON (st.student_id)
+          st.student_id,
+          st.from_circle_id,
+          st.to_circle_id,
+          TRIM(s.full_name) AS full_name
+        FROM student_transfers st
+        JOIN students s ON s.id = st.student_id AND s.is_archived = false
+        JOIN circles from_c ON from_c.id = st.from_circle_id AND from_c.track_type = 'registration'
+        WHERE s.circle_id = st.to_circle_id
+        ORDER BY st.student_id, st.id DESC
+      )
+      UPDATE users u
+      SET circle_id  = lt.to_circle_id,
+          student_id = lt.student_id
+      FROM latest_transfers lt
+      WHERE u.role = 'student'
+        AND u.is_archived = false
+        AND TRIM(u.name) = lt.full_name
+        AND (u.circle_id = lt.from_circle_id OR u.circle_id IS NULL)
+        AND (u.student_id IS NULL OR u.student_id = lt.student_id)
+        -- أمان: اسم الطالبة فريد في سجلات النقل (لا لبس)
+        AND (SELECT COUNT(*) FROM latest_transfers WHERE full_name = TRIM(u.name)) = 1
+    `));
+
     // 2. ربط الحسابات بالاسم (TRIM) + circleId المباشر على جدول students
     await db.execute(sql.raw(`
       UPDATE users u
