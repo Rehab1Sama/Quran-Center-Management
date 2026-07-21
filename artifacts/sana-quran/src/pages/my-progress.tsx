@@ -39,7 +39,8 @@ export default function MyProgressPage() {
 
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const studentId: number | undefined = (user as any)?.studentId ?? undefined;
-
+  // circleId مُعرَّف مبكراً لأنه يُستخدم لفلترة السجلات — يمنع خلط سجلات الحلقات المختلفة
+  const circleId = (user as any)?.circleId as number | undefined;
 
   const { data: myGoals = [] } = useListStudentGoals(studentId!, {
     query: { queryKey: ["studentGoals", studentId], enabled: !!studentId },
@@ -82,9 +83,10 @@ export default function MyProgressPage() {
     });
   }
 
+  // السجلات مفلترة بـ (studentId + circleId) — يعرض فقط سجلات الحلقة النشطة حالياً
   const { data: records } = useListRecords(
-    studentId ? { studentId } : undefined,
-    { query: { queryKey: ["myRecords", studentId], enabled: !!studentId } }
+    studentId ? { studentId, ...(circleId ? { circleId } : {}) } : undefined,
+    { query: { queryKey: ["myRecords", studentId, circleId], enabled: !!studentId } }
   );
 
   const onCircleTab = tab === "circle";
@@ -94,8 +96,6 @@ export default function MyProgressPage() {
   const { data: allUsers = [] } = useListUsers(undefined, { query: { queryKey: ["users"], enabled: onCircleTab } });
   const { data: allBadgeAssignments = [] } = useListBadgeAssignments(undefined, { query: { queryKey: ["badgeAssignments"] } });
   const { data: myMessages = [] } = useGetMyMessages({ query: { queryKey: ["myMessages"], enabled: onCircleTab } });
-
-  const circleId = (user as any)?.circleId as number | undefined;
   const myCircle = allCircles.find((c: any) => c.id === circleId);
   const myTrackType: string = (user as any)?.circleTrackType ?? (myCircle as any)?.trackType ?? "";
   const circleMembers = (allStudents as any[]).filter((s: any) => s.circleId === circleId && s.fullName !== user?.name);

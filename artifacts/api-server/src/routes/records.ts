@@ -10,13 +10,16 @@ const router: IRouter = Router();
 router.get("/records", authenticate, async (req, res): Promise<void> => {
   const { circleId, studentId, date, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
 
-  // الطالبات: يُسمح لهن برؤية سجلاتهن الخاصة فقط — مفلترة بحلقتهن الحالية
+  // الطالبات: يُسمح لهن برؤية سجلاتهن الخاصة — مفلترة بالحلقة النشطة حالياً إذا أُرسلت
   if (req.userRole === "student") {
     const linkedStudentId = req.userStudentId ?? null;
     if (!linkedStudentId) { res.json([]); return; }
 
-    // الطالبة ترى جميع سجلاتها بغض النظر عن الحلقة (قد تكون نُقلت من حلقة لأخرى)
-    const whereClause = eq(recordsTable.studentId, linkedStudentId);
+    // فلترة بـ (studentId + circleId) إذا أرسلت الطالبة circleId — يمنع خلط سجلات الحلقات
+    const activeCircleId = circleId ? parseInt(circleId, 10) : null;
+    const whereClause = activeCircleId
+      ? and(eq(recordsTable.studentId, linkedStudentId), eq(recordsTable.circleId, activeCircleId))
+      : eq(recordsTable.studentId, linkedStudentId);
 
     let studentRecords = await db.select().from(recordsTable).where(whereClause);
     if (date) studentRecords = studentRecords.filter(r => r.date === date);
@@ -58,16 +61,17 @@ router.post("/records/bulk", authenticate, async (req, res): Promise<void> => {
   const date = records[0]?.date as string;
   if (!date) { res.status(400).json({ error: "date is required" }); return; }
 
-  const existing = await db.select({ studentId: recordsTable.studentId })
+  // المفتاح المركب (studentId-circleId) لأن نفس الطالبة قد تكون في حلقتين مختلفتين
+  const existing = await db.select({ studentId: recordsTable.studentId, circleId: recordsTable.circleId })
     .from(recordsTable).where(eq(recordsTable.date, date));
-  const alreadyEntered = new Set(existing.map(r => r.studentId));
+  const alreadyEntered = new Set(existing.map(r => `${r.studentId}-${r.circleId}`));
 
   let created = 0;
   let skipped = 0;
   for (const rec of records) {
     const { studentId, circleId, isAbsent = false, ...rest } = rec;
     if (!studentId || !circleId) { skipped++; continue; }
-    if (alreadyEntered.has(studentId)) { skipped++; continue; }
+    if (alreadyEntered.has(`${studentId}-${circleId}`)) { skipped++; continue; }
     await db.insert(recordsTable).values({
       studentId,
       circleId,
