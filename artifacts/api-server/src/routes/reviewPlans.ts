@@ -125,13 +125,17 @@ function isWithinAutoPlanEditWindow(plan: { planMode: string | null; createdAt: 
   return Date.now() - plan.createdAt.getTime() <= AUTO_PLAN_EDIT_WINDOW_MS;
 }
 
-// Auto-renew a completed girls plan for the new cycle.
+// Auto-renew a girls plan for the new cycle.
 // newCycleStart: the start date of the new cycle (from global settings).
+// overrideEndDate: if provided, use this as the memorization cut-off instead of
+//   the plan's natural/effective end date. Used by bulk-renew so active plans are
+//   closed at newCycleStart-1 rather than their original end date.
 async function autoRenewGirlsPlan(
   oldPlan: typeof reviewPlansTable.$inferSelect,
   studentId: number,
   circleId: number,
-  newCycleStart: string
+  newCycleStart: string,
+  overrideEndDate?: string
 ): Promise<(typeof reviewPlansTable.$inferSelect & { days: typeof reviewPlanDaysTable.$inferSelect[] }) | null> {
   return db.transaction(async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
     // Serialize concurrent renewal attempts for the same student+circle (e.g. two
@@ -161,7 +165,7 @@ async function autoRenewGirlsPlan(
     // Collect new memorization during old plan period (respecting a forced/scheduled
     // cycle-end date if it shortened this plan's cycle, so days after the forced
     // cutoff aren't counted toward the previous cycle's carry-over quota).
-    const oldEndDate = await getEffectiveEndDate(oldPlan);
+    const oldEndDate = overrideEndDate ?? await getEffectiveEndDate(oldPlan);
     const memRows = await tx.select({ memorizePages: recordsTable.memorizePages })
       .from(recordsTable)
       .where(and(
@@ -671,15 +675,26 @@ router.post("/review-plans/renew-all", authenticate, async (req, res): Promise<v
       eq(reviewPlansTable.status, "active")
     ));
 
+  // Compute the day before the new cycle starts — this is the inclusive cut-off
+  // for counting old-cycle memorization, so records on or before that date count
+  // toward the previous cycle's carry-over quota regardless of whether the plan's
+  // natural 21-day window had already elapsed.
+  const dayBeforeNewCycle = (() => {
+    const d = new Date(newCycleStart + "T12:00:00Z");
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+
   let renewed = 0;
   let skipped = 0;
 
   for (const plan of activePlans) {
-    const endDate = await getEffectiveEndDate(plan);
-    const today = getTodayMecca();
-    // Only renew completed plans that haven't been moved to new cycle yet
-    if (today > endDate && plan.startDate !== newCycleStart) {
-      const result = await autoRenewGirlsPlan(plan, plan.studentId, plan.circleId, newCycleStart);
+    // Renew all active plans that haven't been moved to the new cycle yet,
+    // regardless of whether their 21-day window has elapsed. Memorization is
+    // counted up to dayBeforeNewCycle so the new quota is always based on the
+    // correct period.
+    if (plan.startDate !== newCycleStart) {
+      const result = await autoRenewGirlsPlan(plan, plan.studentId, plan.circleId, newCycleStart, dayBeforeNewCycle);
       if (result) renewed++;
       else skipped++;
     } else {

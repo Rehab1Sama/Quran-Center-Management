@@ -608,7 +608,7 @@ function CycleBanner({
             <>
               <div className="space-y-4 py-2">
                 <p className="text-sm text-muted-foreground">
-                  سيتم تجديد جميع خطط مراجعة الفتيات تلقائياً بناءً على نصاب كل طالبة + ما حفظته خلال الـ٢١ يوم الماضية.
+                  سيتم تجديد جميع خطط مراجعة الفتيات تلقائياً بناءً على نصاب كل طالبة + ما حفظته خلال الدور الحالي حتى اليوم السابق لبداية الدور الجديد.
                 </p>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold">تاريخ بداية الدور الجديد</label>
@@ -625,8 +625,8 @@ function CycleBanner({
                     </p>
                   )}
                 </div>
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-                  ⚠️ تأكدي أن اليوم الـ٢١ قد انتهى فعلاً قبل التجديد. الخطط الجارية لن تُجدَّد.
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
+                  ℹ️ ستُجدَّد جميع الخطط — بما فيها الجارية — ويُحسب نصاب الدور الجديد من المحفوظات حتى اليوم السابق لتاريخ البداية المحدد.
                 </div>
               </div>
               <DialogFooter className="flex-row-reverse gap-2">
