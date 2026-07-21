@@ -199,7 +199,8 @@ export default function DailyTasksPage() {
 
   const isLeader = user?.role === "leader";
 
-  const myTrack = tracks?.find(t => t.name === user?.track);
+  const stripPrefix = (s: string) => s.replace(/^مسار\s+/, "").trim();
+  const myTrack = tracks?.find(t => stripPrefix(t.name) === stripPrefix(user?.track ?? ""));
   const trackId = myTrack?.id;
 
   const { data: supervisorNames } = useListSupervisorNames(trackId!, {
