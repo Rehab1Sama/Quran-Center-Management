@@ -15,10 +15,8 @@ router.get("/records", authenticate, async (req, res): Promise<void> => {
     const linkedStudentId = req.userStudentId ?? null;
     if (!linkedStudentId) { res.json([]); return; }
 
-    // فلترة بـ student_id + circle_id معاً: الطالبة في حلقتين ترى بيانات حلقتها فقط
-    const whereClause = req.userCircleId
-      ? and(eq(recordsTable.studentId, linkedStudentId), eq(recordsTable.circleId, req.userCircleId))
-      : eq(recordsTable.studentId, linkedStudentId);
+    // الطالبة ترى جميع سجلاتها بغض النظر عن الحلقة (قد تكون نُقلت من حلقة لأخرى)
+    const whereClause = eq(recordsTable.studentId, linkedStudentId);
 
     let studentRecords = await db.select().from(recordsTable).where(whereClause);
     if (date) studentRecords = studentRecords.filter(r => r.date === date);
