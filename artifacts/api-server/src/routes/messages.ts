@@ -38,7 +38,8 @@ async function circleInTrack(circleId: number, trackName: string): Promise<boole
   const [circle] = await db.select().from(circlesTable).where(eq(circlesTable.id, circleId));
   if (!circle?.trackId) return false;
   const [track] = await db.select().from(tracksTable).where(eq(tracksTable.id, circle.trackId));
-  return track?.name === trackName;
+  const strip = (s: string) => s.replace(/^مسار\s+/, "").trim();
+  return strip(track?.name ?? "") === strip(trackName);
 }
 
 // POST — leader or track_supervisor can send

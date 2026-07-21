@@ -405,7 +405,8 @@ export default function ManageTracksPage() {
       ) : (
         <div className="space-y-3">
           {(tracks ?? []).map(track => {
-            const trackCircles = (circles ?? []).filter(c => (c as any).trackId === track.id || c.track === track.name);
+            const stripPrefix = (s: string) => s.replace(/^مسار\s+/, "").trim();
+          const trackCircles = (circles ?? []).filter(c => (c as any).trackId === track.id || c.track === stripPrefix(track.name));
             const info = DATA_ENTRY_LABELS[track.dataEntryType] ?? DATA_ENTRY_LABELS.girls;
 
             return (

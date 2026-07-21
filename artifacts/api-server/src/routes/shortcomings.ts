@@ -8,6 +8,8 @@ const router: IRouter = Router();
 
 const HOURS_48 = 48 * 60 * 60 * 1000;
 
+const stripPrefix = (s: string) => s.replace(/^مسار\s+/, "").trim();
+
 function computeShortcoming(
   r: typeof recordsTable.$inferSelect,
   trackType?: string | null,
@@ -130,7 +132,7 @@ router.get("/shortcomings", authenticate, async (req, res): Promise<void> => {
     const circle = allCircles.find(c => c.id === cId);
     if (!circle?.trackId) return "";
     const track = allTracks.find(t => t.id === circle.trackId);
-    return track?.name ?? "";
+    return stripPrefix(track?.name ?? "");
   }
 
   if (role === "student") {
@@ -153,7 +155,7 @@ router.get("/shortcomings", authenticate, async (req, res): Promise<void> => {
     const trackCircleIds = allCircles
       .filter(c => {
         const t = allTracks.find(t => t.id === c.trackId);
-        return t?.name === trackName;
+        return stripPrefix(t?.name ?? "") === stripPrefix(trackName);
       })
       .map(c => c.id);
     records = records.filter(r => trackCircleIds.includes(r.circleId));
@@ -230,7 +232,7 @@ router.patch("/records/:id/shortcoming", authenticate, async (req, res): Promise
     const [circle] = await db.select().from(circlesTable).where(eq(circlesTable.id, record.circleId));
     if (!circle?.trackId) { res.status(403).json({ error: "Forbidden" }); return; }
     const [track] = await db.select().from(tracksTable).where(eq(tracksTable.id, circle.trackId));
-    if (track?.name !== myTrack) {
+    if (stripPrefix(track?.name ?? "") !== stripPrefix(myTrack)) {
       res.status(403).json({ error: "Circle not in your track" }); return;
     }
   }
