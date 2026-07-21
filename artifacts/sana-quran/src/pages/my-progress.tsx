@@ -45,6 +45,7 @@ export default function MyProgressPage() {
   
   // تحديد الحلقة النشطة بدقة: الأولوية للرابط، ثم لحساب المستخدم
   const effectiveCircleId = urlCircleId ? parseInt(urlCircleId, 10) : (user as any)?.circleId;
+  const circleId = effectiveCircleId;
   const studentId = (user as any)?.studentId;
 
   const { data: myGoals = [] } = useListStudentGoals(studentId!, {
