@@ -352,15 +352,30 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       const searchCircleId = bodyCircleId ?? currentUser.circleId;
       let ownStudentId: number | null = null;
       if (searchCircleId) {
+        // أولاً: بحث مباشر عبر students.circle_id
         const [s] = await db.select({ id: studentsTable.id })
           .from(studentsTable)
           .where(and(
             eq(studentsTable.circleId, searchCircleId),
             eq(studentsTable.isArchived, false),
-            eq(studentsTable.fullName, currentUser.name)
+            sql`TRIM(${studentsTable.fullName}) = TRIM(${currentUser.name})`
           ))
           .limit(1);
         ownStudentId = s?.id ?? null;
+
+        // ثانياً: بحث عبر student_enrollments (طالبات في حلقتين لهن تسجيل رئيسي في حلقة أخرى)
+        if (!ownStudentId) {
+          const res2 = await db.execute(
+            sql`SELECT s.id FROM students s
+                JOIN student_enrollments se ON se.student_id = s.id
+                  AND se.circle_id = ${searchCircleId}
+                  AND se.is_archived = false
+                WHERE TRIM(s.full_name) = TRIM(${currentUser.name})
+                  AND s.is_archived = false
+                LIMIT 1`
+          );
+          ownStudentId = (res2 as any).rows?.[0]?.id ?? null;
+        }
       }
       if (!ownStudentId || ownStudentId !== studentId) {
         res.status(403).json({ error: "يمكنك إنشاء خطة لنفسك فقط" }); return;
