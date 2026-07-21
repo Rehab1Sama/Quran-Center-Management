@@ -323,6 +323,90 @@ async function ensureRegistrationCircle() {
   }
 }
 
+// استعادة الطالبات اللي اندمجن خطأً (طالبة في حلقتين ≠ نسخة مكررة)
+async function restoreWronglyMergedStudents() {
+  try {
+    // ابحث عن طالبات مؤرشفات لهن نفس الاسم مع طالبة نشطة لكن في حلقة مختلفة
+    // هذا هو بالضبط ما يحدث عندما تكون الطالبة في حلقتين وتدمجهما الدالة القديمة خطأً
+    const result = await db.execute(sql.raw(`
+      SELECT
+        s_arc.id          AS arc_id,
+        TRIM(s_arc.full_name) AS student_name,
+        s_arc.circle_id   AS arc_circle_id,
+        s_act.id          AS act_id,
+        s_act.circle_id   AS act_circle_id
+      FROM students s_arc
+      JOIN students s_act
+        ON  TRIM(s_act.full_name) = TRIM(s_arc.full_name)
+        AND s_act.is_archived = false
+        AND s_act.id != s_arc.id
+      WHERE s_arc.is_archived  = true
+        AND s_arc.circle_id   IS NOT NULL
+        AND s_act.circle_id   IS NOT NULL
+        AND s_arc.circle_id   != s_act.circle_id
+    `));
+
+    const rows = (result as any).rows ?? [];
+    if (rows.length === 0) {
+      logger.info("restoreWronglyMerged: nothing to restore");
+      return;
+    }
+
+    logger.info({ count: rows.length }, "restoreWronglyMerged: restoring multi-circle students");
+
+    for (const row of rows) {
+      const { arc_id, student_name, arc_circle_id, act_id } = row;
+
+      // 1. إلغاء الأرشفة
+      await db.execute(sql.raw(
+        `UPDATE students SET is_archived = false, archived_at = NULL WHERE id = ${arc_id}`
+      ));
+
+      // 2. استعادة التسجيل في الحلقة الأصلية
+      await db.execute(sql.raw(`
+        INSERT INTO student_enrollments (student_id, circle_id, is_archived)
+        VALUES (${arc_id}, ${arc_circle_id}, false)
+        ON CONFLICT (student_id, circle_id) DO UPDATE SET is_archived = false, archived_at = NULL
+      `));
+
+      // 3. إلغاء التسجيل المنسوخ خطأً على السجل الأصيل
+      await db.execute(sql.raw(`
+        UPDATE student_enrollments
+        SET is_archived = true, archived_at = NOW()
+        WHERE student_id = ${act_id} AND circle_id = ${arc_circle_id} AND is_archived = false
+      `));
+
+      // 4. إعادة السجلات (records) إلى الطالبة الصحيحة — يمكن التمييز عبر circle_id
+      await db.execute(sql.raw(`
+        UPDATE records
+        SET student_id = ${arc_id}
+        WHERE student_id = ${act_id} AND circle_id = ${arc_circle_id}
+      `));
+
+      // 5. إعادة خطط المراجعة — لها circle_id أيضاً
+      await db.execute(sql.raw(`
+        UPDATE review_plans
+        SET student_id = ${arc_id}
+        WHERE student_id = ${act_id} AND circle_id = ${arc_circle_id}
+      `));
+
+      // 6. إصلاح ربط حسابات المستخدمين
+      await db.execute(sql.raw(`
+        UPDATE users
+        SET student_id = ${arc_id}
+        WHERE role = 'student'
+          AND is_archived = false
+          AND student_id = ${act_id}
+          AND circle_id = ${arc_circle_id}
+      `));
+
+      logger.info({ arc_id, student_name, arc_circle_id, act_id }, "restoreWronglyMerged: student restored");
+    }
+  } catch (err) {
+    logger.error({ err }, "restoreWronglyMerged: failed");
+  }
+}
+
 // دمج سجلات الطالبات المكررة (نفس الاسم في جدول students)
 // يحتفظ بأقدم سجل (أصغر id) ويُحوّل جميع المراجع إليه، ثم يُؤرشف المكررات
 async function mergeDuplicateStudents() {
@@ -340,6 +424,21 @@ async function mergeDuplicateStudents() {
     let mergedCount = 0;
     for (const group of groups) {
       const ids: number[] = group.ids;
+
+      // *** الحماية الجديدة: لا ندمج إذا كانت الطالبات في حلقات مختلفة ***
+      // طالبة في حلقتين = حسابان شرعيان، ليسا نسخة مكررة
+      const circleCheckResult = await db.execute(sql.raw(
+        `SELECT DISTINCT circle_id FROM students WHERE id = ANY(ARRAY[${ids.join(',')}]) AND circle_id IS NOT NULL`
+      ));
+      const distinctCircles = (circleCheckResult as any).rows ?? [];
+      if (distinctCircles.length > 1) {
+        logger.info(
+          { ids, circles: distinctCircles.map((r: any) => r.circle_id) },
+          "mergeDuplicateStudents: skipped — students are in different circles (multi-enrollment)"
+        );
+        continue;
+      }
+
       const canonicalId = ids[0]; // أقدم سجل = الأصيل
       const dupIds = ids.slice(1);
 
@@ -458,16 +557,24 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  // دوال المخطط والإعدادات — مستقلة، تشتغل معاً
   void migrateGlobalSettings();
   void migrateReviewPlansTable();
   void migrateRecordsUniqueConstraint();
-  void migrateAndLinkStudentIds();
-  void mergeDuplicateStudents();
   void seedLeader();
   void normalizeEmails();
   void repairMissingEnrollments();
   void syncCircleStaff();
   void ensureRegistrationCircle();
+  // دوال بيانات الطالبات — يجب أن تشتغل بالترتيب:
+  // 1) استعادة الطالبات اللي اندمجن خطأً (قبل أي شيء آخر)
+  // 2) ربط student_id
+  // 3) دمج النسخ المكررة الحقيقية فقط (بعد الحماية الجديدة)
+  void (async () => {
+    await restoreWronglyMergedStudents();
+    await migrateAndLinkStudentIds();
+    await mergeDuplicateStudents();
+  })();
 
   cron.schedule("0 2 * * 0", () => {
     logger.info("Starting weekly backup...");

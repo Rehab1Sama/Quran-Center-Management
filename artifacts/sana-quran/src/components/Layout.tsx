@@ -495,15 +495,33 @@ export default function Layout({ user, children }: LayoutProps) {
     setLocation("/login");
   };
 
-  
+  // تبديل الحساب: يحصل على token جديد للحساب المختار ثم يُعيد تحميل الصفحة
+  const handleSwitchAccount = async (targetUserId: number) => {
+    if (switching) return;
+    setSwitching(true);
+    try {
+      const token = getToken();
+      const res = await fetch("/api/auth/switch-account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ targetUserId }),
+      });
+      if (!res.ok) throw new Error("switch failed");
+      const data = await res.json();
+      if (data.token) {
+        setToken(data.token);
+        queryClient.clear();
+        window.location.assign("/");
+      }
+    } catch {
+      setSwitching(false);
+    }
+  };
 
-  const navItems = getNavItems(user.role, unreadCount, user.track, (const handleSwitchAccount = (circleId: string) => {
-  // حفظ رقم الحلقة المختارة فوراً
-  localStorage.setItem('active_circle_id', circleId);
-  
-  // السطر السحري: إعادة تحميل الصفحة لمسح كاش "سنى" وجلب بيانات "وهج"
-  window.location.assign(window.location.pathname + '?circleId=' + circleId);
-};user as any).circleDataEntryType);
+  const navItems = getNavItems(user.role, unreadCount, user.track, (user as any).circleDataEntryType);
 
   return (
     <div className="min-h-screen bg-background flex flex-col" dir="rtl">

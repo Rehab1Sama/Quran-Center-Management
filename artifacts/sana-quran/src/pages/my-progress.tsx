@@ -172,7 +172,8 @@ export default function MyProgressPage() {
     <div className="space-y-5" dir="rtl">
       <div>
         <h1 className="text-2xl font-bold text-foreground">مرحبًا، {user?.name}</h1>
-  <p className="text-muted-foreground text-sm mt-0.5">{user?.circles?.find(c => c.id === effectiveCircleId)?.name || "..."}</p>
+        <p className="text-muted-foreground text-sm mt-0.5">{user?.circles?.find(c => c.id === effectiveCircleId)?.name || "..."}</p>
+      </div>
 
       {/* Leader Messages Banner */}
       {leaderMessages.length > 0 && (
@@ -194,7 +195,7 @@ export default function MyProgressPage() {
       <div className="flex gap-1 bg-muted/60 rounded-2xl p-1">
         {TABS.map(t => (
           <button
-  <p className="text-muted-foreground text-sm mt-0.5">{user?.circles?.find(c => c.id === effectiveCircleId)?.name || "..."}</p>          key={t.id}
+            key={t.id}
             onClick={() => setTab(t.id)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold transition-all ${
               tab === t.id
