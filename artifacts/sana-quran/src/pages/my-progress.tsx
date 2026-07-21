@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { getActiveCircleId } from "@/lib/auth";
 import {
   useGetCurrentUser, useListRecords, useListCircles, useListStudents,
   useListUsers, useListBadgeAssignments, useGetMyMessages,
@@ -39,8 +40,11 @@ export default function MyProgressPage() {
 
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const studentId: number | undefined = (user as any)?.studentId ?? undefined;
-  // circleId مُعرَّف مبكراً لأنه يُستخدم لفلترة السجلات — يمنع خلط سجلات الحلقات المختلفة
-  const circleId = (user as any)?.circleId as number | undefined;
+  // circleId: استخدم الحلقة المختارة من localStorage أولاً، ثم circleId من المستخدم — يمنع خلط سجلات الحلقات
+  const activeCircleIdStr = useMemo(() => getActiveCircleId(), []);
+  const circleId: number | undefined = activeCircleIdStr
+    ? parseInt(activeCircleIdStr, 10)
+    : ((user as any)?.circleId as number | undefined);
 
   const { data: myGoals = [] } = useListStudentGoals(studentId!, {
     query: { queryKey: ["studentGoals", studentId], enabled: !!studentId },
@@ -462,31 +466,38 @@ export default function MyProgressPage() {
                     <thead className="bg-muted/50 border-b border-border">
                       <tr>
                         <th className="text-right py-3 px-4 font-semibold text-muted-foreground">التاريخ</th>
+                        <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الحلقة</th>
                         <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الحفظ</th>
                         <th className="text-right py-3 px-4 font-semibold text-muted-foreground">المراجعة</th>
                         <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الحالة</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedRecords.map(record => (
-                        <tr key={record.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors"
-                          data-testid={`row-record-${record.id}`}>
-                          <td className="py-2.5 px-4 font-medium text-xs">{record.date}</td>
-                          <td className="py-2.5 px-4 text-teal-600 font-semibold">{formatPages(record.memorizePages)}</td>
-                          <td className="py-2.5 px-4 text-blue-600 font-medium">
-                            {formatPages(
-                              (record.reviewNearPages ?? 0) +
-                              (record.reviewFarPages ?? 0) +
-                              ((record as any).reviewPages ?? 0)
-                            )}
-                          </td>
-                          <td className="py-2.5 px-4">
-                            {record.isAbsent
-                              ? <Badge className="bg-rose-100 text-rose-700 border-0 text-xs">غائبة</Badge>
-                              : <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">حاضرة</Badge>}
-                          </td>
-                        </tr>
-                      ))}
+                      {sortedRecords.map(record => {
+                        const recCircle = (allCircles as any[]).find((c: any) => c.id === (record as any).circleId);
+                        return (
+                          <tr key={record.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors"
+                            data-testid={`row-record-${record.id}`}>
+                            <td className="py-2.5 px-4 font-medium text-xs">{record.date}</td>
+                            <td className="py-2.5 px-4 text-xs text-muted-foreground">
+                              {recCircle?.name ?? "—"}
+                            </td>
+                            <td className="py-2.5 px-4 text-teal-600 font-semibold">{formatPages(record.memorizePages)}</td>
+                            <td className="py-2.5 px-4 text-blue-600 font-medium">
+                              {formatPages(
+                                (record.reviewNearPages ?? 0) +
+                                (record.reviewFarPages ?? 0) +
+                                ((record as any).reviewPages ?? 0)
+                              )}
+                            </td>
+                            <td className="py-2.5 px-4">
+                              {record.isAbsent
+                                ? <Badge className="bg-rose-100 text-rose-700 border-0 text-xs">غائبة</Badge>
+                                : <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">حاضرة</Badge>}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

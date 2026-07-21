@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useGetTodayBanner, useLogout, useGetMyMessages, useListStudents } from "@workspace/api-client-react";
-import { clearToken, getToken, setToken } from "@/lib/auth";
+import { clearAuth, getToken, setToken, setActiveCircleId } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { isFeatureEnabled, shouldHideShortcomings } from "@/lib/schoolConfig";
 import {
@@ -489,7 +489,7 @@ export default function Layout({ user, children }: LayoutProps) {
   const unreadCount = useUnreadMessageCount(user.id, user.role, isHome, isMessagesPage);
 
   const handleLogout = () => {
-    clearToken();
+    clearAuth();
     queryClient.clear();
     logout.mutate(undefined);
     setLocation("/login");
@@ -509,6 +509,11 @@ export default function Layout({ user, children }: LayoutProps) {
       if (!res.ok) return;
       const data = await res.json() as { token: string };
       setToken(data.token);
+      // احفظ circleId الحساب المختار في localStorage حتى يعرف الداشبورد أيّ حلقة يعرض
+      const targetAccount = otherAccounts.find(a => a.id === targetUserId);
+      if (targetAccount?.circleId != null) {
+        setActiveCircleId(String(targetAccount.circleId));
+      }
       // مسح الكاش القديم بالكامل ثم إعادة الجلب
       queryClient.clear();
       await queryClient.invalidateQueries();

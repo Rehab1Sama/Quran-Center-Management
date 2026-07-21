@@ -1,4 +1,5 @@
 import { useGetStatsSummary, useGetCirclesStats, useGetCurrentUser, useGetRepeatedAbsences, useGetMonthlyComparison, useGetDailySnapshot, useListStudentsNearCompletion } from "@workspace/api-client-react";
+import { getActiveCircleId } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Users, Calendar, Star, TrendingUp, TrendingDown, Minus, Award, CheckCircle2, AlertTriangle, Plane, ClipboardCheck, AlertCircle, GraduationCap, ShieldCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatPages } from "@/lib/quran";
@@ -141,7 +142,11 @@ function MonthlyHonorBoard({ role }: { role?: string }) {
 export default function DashboardPage() {
   // user أولاً — circleId شرط لكل queryKey لاحق
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
-  const circleId = (user as any)?.circleId as number | null | undefined;
+  // استخدم الحلقة المختارة من localStorage أولاً، ثم حلقة المستخدم كاحتياط
+  const activeCircleIdStr = getActiveCircleId();
+  const circleId: number | null | undefined = activeCircleIdStr
+    ? parseInt(activeCircleIdStr, 10)
+    : ((user as any)?.circleId as number | null | undefined);
 
   const { data: summary } = useGetStatsSummary(undefined, { query: { queryKey: ["statsSummary", circleId] } });
   const { data: circleStats } = useGetCirclesStats(undefined, { query: { queryKey: ["circlesStats", circleId] } });
