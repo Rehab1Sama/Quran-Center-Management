@@ -764,6 +764,11 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
   const role = req.userRole!;
   const userId = req.userId!;
 
+  // Only circles whose track type supports review plans appear in the overview.
+  // Children, mothers, recitation, archive, and registration circles never have
+  // review plans, so including them would just show every student as "بدون خطة".
+  const REVIEW_PLAN_TRACK_TYPES = ["girls", "fixation"];
+
   let circles: Array<{ id: number; name: string; track: string; trackType: string; trackId: number | null }> = [];
 
   if (role === "teacher") {
@@ -774,7 +779,11 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
       trackType: circlesTable.trackType,
       trackId: circlesTable.trackId,
     }).from(circlesTable)
-      .where(and(eq(circlesTable.teacherId, userId), eq(circlesTable.isArchived, false)));
+      .where(and(
+        eq(circlesTable.teacherId, userId),
+        eq(circlesTable.isArchived, false),
+        inArray(circlesTable.trackType, REVIEW_PLAN_TRACK_TYPES),
+      ));
   } else if (role === "supervisor") {
     circles = await db.select({
       id: circlesTable.id,
@@ -783,7 +792,11 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
       trackType: circlesTable.trackType,
       trackId: circlesTable.trackId,
     }).from(circlesTable)
-      .where(and(eq(circlesTable.supervisorId, userId), eq(circlesTable.isArchived, false)));
+      .where(and(
+        eq(circlesTable.supervisorId, userId),
+        eq(circlesTable.isArchived, false),
+        inArray(circlesTable.trackType, REVIEW_PLAN_TRACK_TYPES),
+      ));
   } else if (role === "track_supervisor") {
     const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
     if (!currentUser?.track) { res.json([]); return; }
@@ -794,7 +807,11 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
       trackType: circlesTable.trackType,
       trackId: circlesTable.trackId,
     }).from(circlesTable)
-      .where(and(eq(circlesTable.track, currentUser.track), eq(circlesTable.isArchived, false)));
+      .where(and(
+        eq(circlesTable.track, currentUser.track),
+        eq(circlesTable.isArchived, false),
+        inArray(circlesTable.trackType, REVIEW_PLAN_TRACK_TYPES),
+      ));
   } else {
     circles = await db.select({
       id: circlesTable.id,
@@ -803,7 +820,10 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
       trackType: circlesTable.trackType,
       trackId: circlesTable.trackId,
     }).from(circlesTable)
-      .where(eq(circlesTable.isArchived, false))
+      .where(and(
+        eq(circlesTable.isArchived, false),
+        inArray(circlesTable.trackType, REVIEW_PLAN_TRACK_TYPES),
+      ))
       .orderBy(circlesTable.track, circlesTable.name);
   }
 
