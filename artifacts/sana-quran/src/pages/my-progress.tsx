@@ -38,12 +38,14 @@ export default function MyProgressPage() {
   const [newGoalNotes, setNewGoalNotes] = useState("");
 
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
-  const studentId: number | undefined = (user as any)?.studentId ?? undefined;
-  // circleId من الرابط هو مصدر الحقيقة — يمنع خلط سجلات الحلقات
-  const urlCircleIdStr = useMemo(() => new URLSearchParams(window.location.search).get('circleId'), []);
-  const circleId: number | undefined = urlCircleIdStr
-    ? parseInt(urlCircleIdStr, 10)
-    : ((user as any)?.circleId as number | undefined);
+  
+  // جلب رقم الحلقة من الرابط العلوي (URL) فوراً
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlCircleId = urlParams.get('circleId');
+  
+  // تحديد الحلقة النشطة بدقة: الأولوية للرابط، ثم لحساب المستخدم
+  const effectiveCircleId = urlCircleId ? parseInt(urlCircleId, 10) : (user as any)?.circleId;
+  const studentId = (user as any)?.studentId;
 
   const { data: myGoals = [] } = useListStudentGoals(studentId!, {
     query: { queryKey: ["studentGoals", studentId], enabled: !!studentId },
@@ -88,8 +90,8 @@ export default function MyProgressPage() {
 
   // السجلات مفلترة بـ (studentId + circleId) — يعرض فقط سجلات الحلقة النشطة حالياً
   const { data: records } = useListRecords(
-    studentId ? { studentId, ...(circleId ? { circleId } : {}) } : undefined,
-    { query: { queryKey: ["myRecords", studentId, circleId], enabled: !!studentId } }
+    studentId ? { studentId, circleId: effectiveCircleId } : undefined,
+    { query: { queryKey: ["myRecords", studentId, effectiveCircleId], enabled: !!studentId } }
   );
 
   const onCircleTab = tab === "circle";
@@ -109,7 +111,7 @@ export default function MyProgressPage() {
   const circleMessages = (myMessages as any[]).filter((m: any) => m.targetType === "circle");
 
   // Progress data
-  const sortedRecords = (records ?? []).slice().sort((a: any, b: any) => b.date.localeCompare(a.date));
+  const sortedRecords = (records ?? []).filter(r => (r as any).circleId === effectiveCircleId).slice().sort((a: any, b: any) => b.date.localeCompare(a.date));
   const totalMemorize = Math.round(sortedRecords.reduce((s, r) => s + (r.memorizePages ?? 0), 0) * 2) / 2;
   const totalAbsences = sortedRecords.filter(r => r.isAbsent).length;
   const latestRecord = sortedRecords.find(r => !r.isAbsent);
@@ -170,8 +172,7 @@ export default function MyProgressPage() {
     <div className="space-y-5" dir="rtl">
       <div>
         <h1 className="text-2xl font-bold text-foreground">مرحبًا، {user?.name}</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">{(myCircle as any)?.name ?? "..."}</p>
-      </div>
+  <p className="text-muted-foreground text-sm mt-0.5">{user?.circles?.find(c => c.id === effectiveCircleId)?.name || "..."}</p>
 
       {/* Leader Messages Banner */}
       {leaderMessages.length > 0 && (
@@ -193,7 +194,7 @@ export default function MyProgressPage() {
       <div className="flex gap-1 bg-muted/60 rounded-2xl p-1">
         {TABS.map(t => (
           <button
-            key={t.id}
+  <p className="text-muted-foreground text-sm mt-0.5">{user?.circles?.find(c => c.id === effectiveCircleId)?.name || "..."}</p>          key={t.id}
             onClick={() => setTab(t.id)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold transition-all ${
               tab === t.id
@@ -472,7 +473,7 @@ export default function MyProgressPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedRecords.map(record => {
+                      {sortedRecords.filter(r => (r as any).circleId === effectiveCircleId).map(record => {
                         const recCircle = (allCircles as any[]).find((c: any) => c.id === (record as any).circleId);
                         return (
                           <tr key={record.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors"
