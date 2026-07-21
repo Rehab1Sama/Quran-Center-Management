@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, boolean, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, real, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -44,7 +44,10 @@ export const recordsTable = pgTable("records", {
   shortcomingOverride: boolean("shortcoming_override"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (t) => [
+  // مفتاح فريد مركب: طالبة + حلقة + تاريخ — يمنع تكرار السجل من أي مسار
+  unique("records_student_circle_date_unique").on(t.studentId, t.circleId, t.date),
+]);
 
 export const insertRecordSchema = createInsertSchema(recordsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertRecord = z.infer<typeof insertRecordSchema>;

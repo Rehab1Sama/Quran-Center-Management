@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, recordsTable, studentsTable, usersTable, circlesTable } from "@workspace/db";
+import { db, recordsTable, studentsTable, usersTable, circlesTable, studentEnrollmentsTable } from "@workspace/db";
 import { eq, and, gte, lte, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateRecordBody, UpdateRecordBody } from "@workspace/api-zod";
@@ -113,27 +113,33 @@ router.post("/records/thursday-bulk", authenticate, async (req, res): Promise<vo
   const dateFrom = sundayDate.toISOString().slice(0, 10);
   const dateTo = wednesdayDate.toISOString().slice(0, 10);
 
-  // جلب جميع الطالبات النشطات
-  const students = await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false));
+  // المصدر الصحيح: التسجيلات النشطة — لأن الطالبة قد تكون في أكثر من حلقة
+  const activeEnrollments = await db
+    .select({ studentId: studentEnrollmentsTable.studentId, circleId: studentEnrollmentsTable.circleId })
+    .from(studentEnrollmentsTable)
+    .where(eq(studentEnrollmentsTable.isArchived, false));
+
   // سجلات الأسبوع (الأحد–الأربعاء)
   const weekRecords = await db.select().from(recordsTable).where(
     and(gte(recordsTable.date, dateFrom), lte(recordsTable.date, dateTo))
   );
-  // سجلات الخميس الموجودة مسبقًا
-  const existingThursday = await db.select().from(recordsTable).where(eq(recordsTable.date, date));
-  const alreadyEntered = new Set(existingThursday.map(r => r.studentId));
+  // سجلات الخميس الموجودة — المفتاح المركب (studentId-circleId) لأن الطالبة قد تكون في حلقتين
+  const existingThursday = await db.select({ studentId: recordsTable.studentId, circleId: recordsTable.circleId })
+    .from(recordsTable).where(eq(recordsTable.date, date));
+  const alreadyEntered = new Set(existingThursday.map(r => `${r.studentId}-${r.circleId}`));
 
   let created = 0;
   let skipped = 0;
 
-  for (const student of students) {
-    if (!student.circleId) { skipped++; continue; }
-    if (alreadyEntered.has(student.id)) { skipped++; continue; }
+  for (const enrollment of activeEnrollments) {
+    const { studentId, circleId } = enrollment;
+    if (alreadyEntered.has(`${studentId}-${circleId}`)) { skipped++; continue; }
 
-    // سجلات الطالبة التي تحتوي على حفظ جديد هذا الأسبوع
+    // سجلات الطالبة من نفس الحلقة التي تحتوي على حفظ جديد هذا الأسبوع
     const memRecords = weekRecords
       .filter(r =>
-        r.studentId === student.id &&
+        r.studentId === studentId &&
+        r.circleId === circleId &&
         !r.isAbsent &&
         r.memorizeSurahStart != null &&
         (r.memorizePages ?? 0) > 0
@@ -147,8 +153,8 @@ router.post("/records/thursday-bulk", authenticate, async (req, res): Promise<vo
     const totalPages = memRecords.reduce((s, r) => s + (r.memorizePages ?? 0), 0);
 
     await db.insert(recordsTable).values({
-      studentId: student.id,
-      circleId: student.circleId,
+      studentId,
+      circleId,
       enteredById: req.userId!,
       date,
       isAbsent: false,

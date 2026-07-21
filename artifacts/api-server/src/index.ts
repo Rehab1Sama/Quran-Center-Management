@@ -58,6 +58,25 @@ async function migrateReviewPlansTable() {
   logger.info({ steps: ok }, "review_plans migration complete");
 }
 
+async function migrateRecordsUniqueConstraint() {
+  try {
+    // يضمن عدم وجود سجلين لنفس الطالبة في نفس الحلقة في نفس اليوم — حماية على مستوى قاعدة البيانات
+    await db.execute(sql.raw(`
+      ALTER TABLE records
+        ADD CONSTRAINT records_student_circle_date_unique
+        UNIQUE (student_id, circle_id, date)
+    `));
+    logger.info("records unique constraint (student+circle+date) applied");
+  } catch (err: any) {
+    // يُتجاهل إذا كان القيد موجوداً مسبقاً
+    if (err?.message?.includes("already exists")) {
+      logger.info("records unique constraint already exists — skipped");
+    } else {
+      logger.warn({ msg: err?.message?.slice(0, 200) }, "records unique constraint migration skipped");
+    }
+  }
+}
+
 if (!process.env.SESSION_SECRET) {
   logger.warn("[SECURITY] SESSION_SECRET is not set — using insecure fallback. Set it before going to production!");
 }
@@ -426,6 +445,7 @@ app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
   void migrateGlobalSettings();
   void migrateReviewPlansTable();
+  void migrateRecordsUniqueConstraint();
   void migrateAndLinkStudentIds();
   void mergeDuplicateStudents();
   void seedLeader();
