@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, studentsTable, circlesTable, recordsTable, studentGoalsTable, studentNotesTable, studentTransfersTable, examRecordsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, usersTable, studentsTable, circlesTable, recordsTable, studentGoalsTable, studentNotesTable, studentTransfersTable, examRecordsTable, studentEnrollmentsTable } from "@workspace/db";
+import { eq, and, sql } from "drizzle-orm";
 import { hashPassword } from "../lib/auth";
 import { authenticate, requireRole } from "../middlewares/authenticate";
 import { CreateUserBody, UpdateUserBody, ResetUserPasswordBody } from "@workspace/api-zod";
@@ -122,15 +122,59 @@ router.post("/users", authenticate, async (req, res): Promise<void> => {
   }).returning();
 
   if (rest.role === "student") {
-    const [newStudent] = await db.insert(studentsTable).values({
-      fullName: rest.name,
-      circleId: rest.circleId ?? null,
-      phone: rest.phone ?? null,
-      country: rest.country ?? null,
-      isArchived: false,
-    }).returning({ id: studentsTable.id });
-    if (newStudent) {
-      await db.update(usersTable).set({ studentId: newStudent.id }).where(eq(usersTable.id, user.id));
+    // أولاً: ابحث عن سجل طالبة موجود بنفس الاسم في نفس الحلقة قبل إنشاء سجل جديد
+    // هذا يمنع تكرار السجلات للطالبات الموجودات في أكثر من حلقة
+    let linkedStudentId: number | null = null;
+
+    if (rest.circleId) {
+      // بحث مباشر بالاسم + circleId على جدول students
+      const directMatch = await db
+        .select({ id: studentsTable.id })
+        .from(studentsTable)
+        .where(
+          and(
+            sql`TRIM(${studentsTable.fullName}) = TRIM(${rest.name})`,
+            eq(studentsTable.circleId, rest.circleId),
+            eq(studentsTable.isArchived, false),
+          ),
+        )
+        .limit(1);
+      linkedStudentId = directMatch[0]?.id ?? null;
+
+      if (!linkedStudentId) {
+        // بحث عبر student_enrollments
+        const enrollMatch = await db
+          .select({ id: studentEnrollmentsTable.studentId })
+          .from(studentEnrollmentsTable)
+          .innerJoin(studentsTable, eq(studentsTable.id, studentEnrollmentsTable.studentId))
+          .where(
+            and(
+              sql`TRIM(${studentsTable.fullName}) = TRIM(${rest.name})`,
+              eq(studentEnrollmentsTable.circleId, rest.circleId),
+              eq(studentEnrollmentsTable.isArchived, false),
+              eq(studentsTable.isArchived, false),
+            ),
+          )
+          .limit(1);
+        linkedStudentId = enrollMatch[0]?.id ?? null;
+      }
+    }
+
+    if (linkedStudentId) {
+      // ربط الحساب الجديد بالسجل الموجود — لا تنشئ سجلاً مكرراً
+      await db.update(usersTable).set({ studentId: linkedStudentId }).where(eq(usersTable.id, user.id));
+    } else {
+      // إنشاء سجل جديد فقط إذا لم يُعثر على سجل موجود
+      const [newStudent] = await db.insert(studentsTable).values({
+        fullName: rest.name,
+        circleId: rest.circleId ?? null,
+        phone: rest.phone ?? null,
+        country: rest.country ?? null,
+        isArchived: false,
+      }).returning({ id: studentsTable.id });
+      if (newStudent) {
+        await db.update(usersTable).set({ studentId: newStudent.id }).where(eq(usersTable.id, user.id));
+      }
     }
   }
 
@@ -196,7 +240,21 @@ router.patch("/users/:id", authenticate, requireRole("leader"), async (req, res)
       }
     } else {
       if (circleId !== null) {
-        await db.update(studentsTable).set({ circleId }).where(eq(studentsTable.id, studentRef[0].id));
+        // لا تكتب فوق circleId إذا كانت الطالبة مسجّلة في أكثر من حلقة
+        // (تعديل circleId يُدار عبر نظام التسجيلات student_enrollments)
+        const enrollCount = await db
+          .select({ cnt: sql<number>`COUNT(*)` })
+          .from(studentEnrollmentsTable)
+          .where(
+            and(
+              eq(studentEnrollmentsTable.studentId, studentRef[0].id),
+              eq(studentEnrollmentsTable.isArchived, false),
+            ),
+          );
+        const isMultiCircle = Number(enrollCount[0]?.cnt ?? 0) > 1;
+        if (!isMultiCircle) {
+          await db.update(studentsTable).set({ circleId }).where(eq(studentsTable.id, studentRef[0].id));
+        }
       }
       // ضمان الرابط المباشر
       if (!user.studentId) {
@@ -284,20 +342,75 @@ router.patch("/users/:id/set-role", authenticate, async (req, res): Promise<void
   // عند تحويل حساب إلى طالبة — ضمان وجود سجل student وربطه مباشرةً
   if (role === "student" && user.name) {
     if (user.studentId) {
-      // الرابط موجود — فقط حدّث circleId إذا تغيّر
+      // الرابط موجود — حدّث circleId فقط إذا كانت الطالبة في حلقة واحدة
       if (circleId !== undefined) {
-        await db.update(studentsTable).set({ circleId: circleId ?? null }).where(eq(studentsTable.id, user.studentId));
+        const enrollCount = await db
+          .select({ cnt: sql<number>`COUNT(*)` })
+          .from(studentEnrollmentsTable)
+          .where(
+            and(
+              eq(studentEnrollmentsTable.studentId, user.studentId),
+              eq(studentEnrollmentsTable.isArchived, false),
+            ),
+          );
+        const isMultiCircle = Number(enrollCount[0]?.cnt ?? 0) > 1;
+        if (!isMultiCircle) {
+          await db.update(studentsTable).set({ circleId: circleId ?? null }).where(eq(studentsTable.id, user.studentId));
+        }
       }
     } else {
-      // ابحث عن سجل طالبة مطابق أو أنشئ واحداً جديداً
-      const existing = await db.select({ id: studentsTable.id })
-        .from(studentsTable)
-        .where(and(eq(studentsTable.fullName, user.name), eq(studentsTable.isArchived, false)))
-        .limit(1);
-      if (existing.length > 0) {
-        await db.update(usersTable).set({ studentId: existing[0].id }).where(eq(usersTable.id, id));
+      // ابحث عن سجل طالبة مطابق بالاسم + الحلقة أو أنشئ واحداً جديداً
+      let foundId: number | null = null;
+
+      if (circleId) {
+        // بحث مباشر بالاسم + circleId
+        const direct = await db.select({ id: studentsTable.id })
+          .from(studentsTable)
+          .where(and(
+            sql`TRIM(${studentsTable.fullName}) = TRIM(${user.name})`,
+            eq(studentsTable.circleId, circleId),
+            eq(studentsTable.isArchived, false),
+          ))
+          .limit(1);
+        foundId = direct[0]?.id ?? null;
+
+        if (!foundId) {
+          // بحث عبر student_enrollments
+          const enroll = await db.select({ id: studentEnrollmentsTable.studentId })
+            .from(studentEnrollmentsTable)
+            .innerJoin(studentsTable, eq(studentsTable.id, studentEnrollmentsTable.studentId))
+            .where(and(
+              sql`TRIM(${studentsTable.fullName}) = TRIM(${user.name})`,
+              eq(studentEnrollmentsTable.circleId, circleId),
+              eq(studentEnrollmentsTable.isArchived, false),
+              eq(studentsTable.isArchived, false),
+            ))
+            .limit(1);
+          foundId = enroll[0]?.id ?? null;
+        }
+      }
+
+      if (!foundId) {
+        // بحث بالاسم فقط (إذا لم يُحدَّد circleId)
+        const byName = await db.select({ id: studentsTable.id })
+          .from(studentsTable)
+          .where(and(eq(studentsTable.fullName, user.name), eq(studentsTable.isArchived, false)))
+          .limit(1);
+        foundId = byName[0]?.id ?? null;
+      }
+
+      if (foundId) {
+        await db.update(usersTable).set({ studentId: foundId }).where(eq(usersTable.id, id));
+        // حدّث circleId فقط للطالبات في حلقة واحدة
         if (circleId !== undefined) {
-          await db.update(studentsTable).set({ circleId: circleId ?? null }).where(eq(studentsTable.id, existing[0].id));
+          const enrollCount = await db
+            .select({ cnt: sql<number>`COUNT(*)` })
+            .from(studentEnrollmentsTable)
+            .where(and(eq(studentEnrollmentsTable.studentId, foundId), eq(studentEnrollmentsTable.isArchived, false)));
+          const isMultiCircle = Number(enrollCount[0]?.cnt ?? 0) > 1;
+          if (!isMultiCircle) {
+            await db.update(studentsTable).set({ circleId: circleId ?? null }).where(eq(studentsTable.id, foundId));
+          }
         }
       } else {
         const [newStudent] = await db.insert(studentsTable).values({

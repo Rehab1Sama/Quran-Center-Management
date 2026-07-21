@@ -219,6 +219,7 @@ async function migrateAndLinkStudentIds() {
     `));
 
     // 6. بعد الربط: اكمل circle_id في users من سجل الطالبة (للطالبات القديمات التي circle_id=NULL)
+    //    تنبيه: لا تكتب فوق circle_id إذا كانت الطالبة مسجّلة في أكثر من حلقة (لتجنب الربط الخاطئ)
     await db.execute(sql.raw(`
       UPDATE users u
       SET circle_id = s.circle_id
@@ -229,9 +230,17 @@ async function migrateAndLinkStudentIds() {
         AND s.circle_id IS NOT NULL
         AND s.is_archived = false
         AND u.is_archived = false
+        -- فقط للطالبات في حلقة واحدة (لا غموض في الربط)
+        AND (
+          SELECT COUNT(*)
+          FROM student_enrollments se_check
+          WHERE se_check.student_id = s.id AND se_check.is_archived = false
+        ) <= 1
     `));
 
     // 7. circle_id عبر student_enrollments لمن لا يزال circle_id=NULL
+    //    استخدام DISTINCT ON لضمان اختيار حدّد واحد فقط لكل حساب
+    //    تنبيه: لا تعيّن إذا كانت الطالبة في أكثر من حلقة (circle_id يبقى NULL ويُصحَّح يدوياً)
     await db.execute(sql.raw(`
       UPDATE users u
       SET circle_id = se.circle_id
@@ -241,7 +250,13 @@ async function migrateAndLinkStudentIds() {
         AND u.circle_id IS NULL
         AND se.is_archived = false
         AND u.is_archived = false
-    `));
+        -- فقط إذا كان للطالبة تسجيل في حلقة واحدة فقط (لتجنب الربط العشوائي)
+        AND (
+          SELECT COUNT(*)
+          FROM student_enrollments se2
+          WHERE se2.student_id = u.student_id AND se2.is_archived = false
+        ) = 1
+    `))
 
     const result = await db.execute(sql.raw(
       `SELECT
