@@ -82,6 +82,7 @@ type UserRow = {
   role: string;
   track?: string | null;
   circleId?: number | null;
+  circleName?: string | null;
   isArchived?: boolean;
 };
 
@@ -462,6 +463,11 @@ export default function AccountsPage() {
                             </Badge>
                             {acc.track && (
                               <span className="text-xs text-muted-foreground">{acc.track}</span>
+                            )}
+                            {acc.role === "student" && (
+                              acc.circleName
+                                ? <span className="text-xs font-medium text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5">{acc.circleName}</span>
+                                : <span className="text-xs text-amber-600 bg-amber-50 rounded px-1.5 py-0.5">بدون حلقة ⚠</span>
                             )}
                             {acc.isArchived && <span className="text-xs text-gray-500">معطّل</span>}
                             {/* أزرار الإجراءات — مخفية لمسؤولة المسار */}

@@ -289,6 +289,91 @@ async function ensureRegistrationCircle() {
   }
 }
 
+// دمج سجلات الطالبات المكررة (نفس الاسم في جدول students)
+// يحتفظ بأقدم سجل (أصغر id) ويُحوّل جميع المراجع إليه، ثم يُؤرشف المكررات
+async function mergeDuplicateStudents() {
+  try {
+    const dupsResult = await db.execute(sql.raw(`
+      SELECT TRIM(full_name) AS name, array_agg(id ORDER BY id) AS ids
+      FROM students
+      WHERE is_archived = false
+      GROUP BY TRIM(full_name)
+      HAVING COUNT(*) > 1
+    `));
+    const groups = (dupsResult as any).rows ?? [];
+    if (groups.length === 0) return;
+
+    let mergedCount = 0;
+    for (const group of groups) {
+      const ids: number[] = group.ids;
+      const canonicalId = ids[0]; // أقدم سجل = الأصيل
+      const dupIds = ids.slice(1);
+
+      for (const dupId of dupIds) {
+        // أولاً: احفظ circleId للسجل المكرر قبل دمجه (لاستعادة circle_id للحسابات المرتبطة)
+        const dupResult = await db.execute(sql.raw(
+          `SELECT circle_id FROM students WHERE id = ${dupId}`
+        ));
+        const dupCircleId: number | null = (dupResult as any).rows?.[0]?.circle_id ?? null;
+
+        // (أ) دمج التسجيلات — ON CONFLICT DO NOTHING لأن (student_id, circle_id) فريد
+        await db.execute(sql.raw(`
+          INSERT INTO student_enrollments (student_id, circle_id, is_archived, archived_at, leave_start, leave_end, created_at, updated_at)
+          SELECT ${canonicalId}, circle_id, is_archived, archived_at, leave_start, leave_end, created_at, updated_at
+          FROM student_enrollments WHERE student_id = ${dupId}
+          ON CONFLICT (student_id, circle_id) DO NOTHING
+        `));
+
+        // (ب) تحويل مراجع الجداول الأخرى
+        const refUpdates = [
+          `UPDATE student_notes SET student_id = ${canonicalId} WHERE student_id = ${dupId}`,
+          `UPDATE student_transfers SET student_id = ${canonicalId} WHERE student_id = ${dupId}`,
+          `UPDATE student_archive_events SET student_id = ${canonicalId} WHERE student_id = ${dupId}`,
+          `UPDATE student_leave_history SET student_id = ${canonicalId} WHERE student_id = ${dupId}`,
+          `UPDATE records SET student_id = ${canonicalId} WHERE student_id = ${dupId}`,
+          `UPDATE review_plans SET student_id = ${canonicalId} WHERE student_id = ${dupId}`,
+          `UPDATE student_goals SET student_id = ${canonicalId} WHERE student_id = ${dupId}`,
+          `UPDATE messages SET target_id = '${canonicalId}' WHERE target_type = 'student' AND target_id = '${dupId}'`,
+        ];
+        for (const stmt of refUpdates) {
+          try { await db.execute(sql.raw(stmt)); } catch { /* جدول غير موجود أو عمود مختلف — تجاوز */ }
+        }
+
+        // (ج) تصحيح حسابات المستخدمين:
+        //   - student_id → canonical
+        //   - circle_id → يُستعاد من السجل المكرر (يمثل حلقة هذا الحساب الحقيقية)
+        if (dupCircleId !== null) {
+          await db.execute(sql.raw(`
+            UPDATE users
+            SET student_id = ${canonicalId},
+                circle_id  = ${dupCircleId}
+            WHERE student_id = ${dupId}
+          `));
+        } else {
+          await db.execute(sql.raw(`
+            UPDATE users SET student_id = ${canonicalId} WHERE student_id = ${dupId}
+          `));
+        }
+
+        // (د) أرشفة السجل المكرر
+        await db.execute(sql.raw(`
+          UPDATE students SET is_archived = true, archived_at = NOW() WHERE id = ${dupId}
+        `));
+
+        mergedCount++;
+      }
+    }
+
+    if (mergedCount > 0) {
+      logger.info({ mergedCount, groups: groups.length }, "Merged duplicate student records");
+    } else {
+      logger.info("No duplicate student records found");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to merge duplicate students");
+  }
+}
+
 async function seedLeader() {
   try {
     const hash = hashPassword("mnbvcxzrr");
@@ -342,6 +427,7 @@ app.listen(port, (err) => {
   void migrateGlobalSettings();
   void migrateReviewPlansTable();
   void migrateAndLinkStudentIds();
+  void mergeDuplicateStudents();
   void seedLeader();
   void normalizeEmails();
   void repairMissingEnrollments();

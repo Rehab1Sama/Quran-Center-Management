@@ -57,6 +57,15 @@ router.get("/users/unlinked-staff", authenticate, async (req, res): Promise<void
 });
 
 router.get("/users", authenticate, async (req, res): Promise<void> => {
+  // جلب أسماء الحلقات لإضافتها لكل مستخدم
+  const allCircles = await db.select({ id: circlesTable.id, name: circlesTable.name }).from(circlesTable);
+  const circleMap = new Map(allCircles.map(c => [c.id, c.name]));
+  const withMeta = (users: any[]) =>
+    users.map(({ passwordHash: _ph, ...u }) => ({
+      ...u,
+      circleName: u.circleId ? (circleMap.get(u.circleId) ?? null) : null,
+    }));
+
   // مسؤولة المسار ترى الطالبات والمعلمات والمشرفات في مسارها فقط
   if (req.userRole === "track_supervisor") {
     const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
@@ -65,7 +74,7 @@ router.get("/users", authenticate, async (req, res): Promise<void> => {
     const filtered = all.filter(u =>
       u.track === myTrack && ["student", "teacher", "supervisor"].includes(u.role)
     );
-    res.json(filtered.map(({ passwordHash: _ph, ...u }) => u));
+    res.json(withMeta(filtered));
     return;
   }
   if (req.userRole !== "leader" && req.userRole !== "deputy") {
@@ -74,7 +83,7 @@ router.get("/users", authenticate, async (req, res): Promise<void> => {
   const roleFilter = req.query.role as string | undefined;
   const users = await db.select().from(usersTable);
   const filtered = roleFilter ? users.filter(u => u.role === roleFilter) : users;
-  res.json(filtered.map(({ passwordHash: _ph, ...u }) => u));
+  res.json(withMeta(filtered));
 });
 
 router.get("/users/by-email", authenticate, async (req, res): Promise<void> => {
