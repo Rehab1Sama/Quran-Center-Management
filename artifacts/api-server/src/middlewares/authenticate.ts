@@ -94,15 +94,18 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       studentId = (res5 as any).rows?.[0]?.id ?? null;
     }
 
-    // إذا لم يكن circleId محفوظاً في حساب المستخدمة، نجلبه من سجل الطالبة
+    // جلب حلقة الطالبة الفعلية من سجل الطالبة (دائماً عند وجود studentId)
     let resolvedCircleId: number | null = user.circleId ?? null;
-    if (studentId && !resolvedCircleId) {
+    if (studentId) {
       const res6 = await db.execute(
         sql`SELECT circle_id FROM students WHERE id=${studentId} AND is_archived=false LIMIT 1`
       );
-      resolvedCircleId = (res6 as any).rows?.[0]?.circle_id ?? null;
+      const actualCircleId: number | null = (res6 as any).rows?.[0]?.circle_id ?? null;
 
-      if (!resolvedCircleId) {
+      if (actualCircleId) {
+        resolvedCircleId = actualCircleId;
+      } else if (!resolvedCircleId) {
+        // لا حلقة في students → نحاول student_enrollments
         const res7 = await db.execute(
           sql`SELECT circle_id FROM student_enrollments
               WHERE student_id=${studentId} AND is_archived=false
@@ -112,11 +115,11 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       }
     }
 
-    // احفظ الربط في قاعدة البيانات فقط إذا كان يطابق حلقة المستخدمة
+    // احفظ الربط في قاعدة البيانات وصحّح الحلقة إذا كانت مختلفة
     if (studentId && !user.studentId) {
       db.execute(sql`UPDATE users SET student_id=${studentId} WHERE id=${user.id}`).catch(() => {});
     }
-    if (resolvedCircleId && !user.circleId) {
+    if (resolvedCircleId && resolvedCircleId !== user.circleId) {
       db.execute(sql`UPDATE users SET circle_id=${resolvedCircleId} WHERE id=${user.id}`).catch(() => {});
     }
 
