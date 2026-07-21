@@ -60,7 +60,16 @@ async function migrateReviewPlansTable() {
 
 async function migrateRecordsUniqueConstraint() {
   try {
-    // يضمن عدم وجود سجلين لنفس الطالبة في نفس الحلقة في نفس اليوم — حماية على مستوى قاعدة البيانات
+    // خطوة 1: حذف السجلات المكررة (student_id + circle_id + date) — الاحتفاظ بالسجل الأحدث
+    await db.execute(sql.raw(`
+      DELETE FROM records
+      WHERE id NOT IN (
+        SELECT MAX(id)
+        FROM records
+        GROUP BY student_id, circle_id, date
+      )
+    `));
+    // خطوة 2: إضافة القيد الفريد المركب
     await db.execute(sql.raw(`
       ALTER TABLE records
         ADD CONSTRAINT records_student_circle_date_unique
@@ -68,11 +77,11 @@ async function migrateRecordsUniqueConstraint() {
     `));
     logger.info("records unique constraint (student+circle+date) applied");
   } catch (err: any) {
-    // يُتجاهل إذا كان القيد موجوداً مسبقاً
-    if (err?.message?.includes("already exists")) {
+    const errMsg = String(err?.message ?? err ?? "").slice(0, 300);
+    if (errMsg.includes("already exists")) {
       logger.info("records unique constraint already exists — skipped");
     } else {
-      logger.warn({ msg: err?.message?.slice(0, 200) }, "records unique constraint migration skipped");
+      logger.warn("records unique constraint migration skipped: " + errMsg);
     }
   }
 }
