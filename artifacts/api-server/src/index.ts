@@ -96,6 +96,84 @@ if (!process.env.SESSION_SECRET) {
   logger.warn("[SECURITY] SESSION_SECRET is not set — using insecure fallback. Set it before going to production!");
 }
 
+// مزامنة users.circle_id مع students.circle_id لجميع الطالبات
+// ويصلح كذلك students.circle_id=NULL إذا كان للطالبة enrollment نشط في حلقة حقيقية
+async function syncStudentUserCircleIds() {
+  try {
+    // الخطوة أ: ملء students.circle_id الفارغ من أفضل enrollment نشط
+    const stepA = await db.execute(sql.raw(`
+      WITH ranked AS (
+        SELECT se.student_id, se.circle_id,
+          ROW_NUMBER() OVER (
+            PARTITION BY se.student_id
+            ORDER BY
+              CASE c.track_type
+                WHEN 'girls'         THEN 1
+                WHEN 'fixation'      THEN 2
+                WHEN 'simple_review' THEN 3
+                ELSE 4
+              END,
+              se.id DESC
+          ) AS rn
+        FROM student_enrollments se
+        JOIN circles c ON c.id = se.circle_id AND c.track_type != 'registration'
+        JOIN students s ON s.id = se.student_id AND s.is_archived = false AND s.circle_id IS NULL
+        WHERE se.is_archived = false
+      )
+      UPDATE students s SET circle_id = r.circle_id
+      FROM ranked r WHERE s.id = r.student_id AND r.rn = 1
+    `));
+    const fixedStudents = (stepA as any).rowCount ?? 0;
+
+    // الخطوة ب: ملء students.circle_id=registration من أفضل enrollment في حلقة حقيقية
+    const stepB = await db.execute(sql.raw(`
+      WITH ranked AS (
+        SELECT se.student_id, se.circle_id,
+          ROW_NUMBER() OVER (
+            PARTITION BY se.student_id
+            ORDER BY
+              CASE c.track_type
+                WHEN 'girls'         THEN 1
+                WHEN 'fixation'      THEN 2
+                WHEN 'simple_review' THEN 3
+                ELSE 4
+              END,
+              se.id DESC
+          ) AS rn
+        FROM student_enrollments se
+        JOIN circles c ON c.id = se.circle_id AND c.track_type != 'registration'
+        JOIN students s ON s.id = se.student_id AND s.is_archived = false
+        JOIN circles reg ON reg.id = s.circle_id AND reg.track_type = 'registration'
+        WHERE se.is_archived = false
+      )
+      UPDATE students s SET circle_id = r.circle_id
+      FROM ranked r WHERE s.id = r.student_id AND r.rn = 1
+    `));
+    const fixedRegStudents = (stepB as any).rowCount ?? 0;
+
+    // الخطوة ج: مزامنة users.circle_id = students.circle_id
+    const stepC = await db.execute(sql.raw(`
+      UPDATE users u SET circle_id = s.circle_id
+      FROM students s
+      WHERE u.student_id = s.id
+        AND u.role = 'student'
+        AND s.is_archived = false
+        AND s.circle_id IS NOT NULL
+        AND (u.circle_id IS NULL OR u.circle_id != s.circle_id)
+    `));
+    const fixedUsers = (stepC as any).rowCount ?? 0;
+
+    if (fixedStudents + fixedRegStudents + fixedUsers > 0) {
+      logger.info(
+        { fixedStudents, fixedRegStudents, fixedUsers },
+        "Synced student→user circle_id links"
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to sync student user circle IDs");
+  }
+}
+
 async function repairMissingEnrollments() {
   try {
     const studentsWithCircle = await db
@@ -565,6 +643,7 @@ app.listen(port, (err) => {
   void normalizeEmails();
   void repairMissingEnrollments();
   void syncCircleStaff();
+  void syncStudentUserCircleIds();
   void ensureRegistrationCircle();
   // دوال بيانات الطالبات — يجب أن تشتغل بالترتيب:
   // 1) استعادة الطالبات اللي اندمجن خطأً (قبل أي شيء آخر)
