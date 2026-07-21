@@ -128,6 +128,13 @@ router.get("/auth/my-accounts", authenticate, async (req, res): Promise<void> =>
   const all = await db.select().from(usersTable).where(eq(usersTable.email, currentUser.email));
   const active = all.filter(u => !u.isArchived);
 
+  // جلب أسماء الحلقات دفعة واحدة
+  const circleIds = [...new Set(active.map(u => u.circleId).filter(Boolean))] as number[];
+  const circleRows = circleIds.length > 0
+    ? await db.select({ id: circlesTable.id, name: circlesTable.name }).from(circlesTable)
+    : [];
+  const circleMap = new Map(circleRows.map(c => [c.id, c.name]));
+
   res.json(active.map(u => ({
     id: u.id,
     name: u.name,
@@ -135,6 +142,7 @@ router.get("/auth/my-accounts", authenticate, async (req, res): Promise<void> =>
     roleLabel: ROLE_LABELS[u.role] ?? u.role,
     track: u.track ?? null,
     circleId: u.circleId ?? null,
+    circleName: u.circleId ? (circleMap.get(u.circleId) ?? null) : null,
     isCurrent: u.id === req.userId,
   })));
 });

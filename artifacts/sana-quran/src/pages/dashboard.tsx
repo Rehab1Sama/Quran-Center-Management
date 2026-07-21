@@ -19,9 +19,10 @@ type WeeklyData = {
   changes: Record<string, number | null>;
 };
 
-function useWeeklyDash() {
+function useWeeklyDash(circleId?: number | null) {
   const [data, setData] = useState<WeeklyData | null>(null);
   useEffect(() => {
+    setData(null);
     const token = localStorage.getItem("sana_auth_token");
     fetch(`${BASE}/api/stats/weekly-comparison`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -29,7 +30,7 @@ function useWeeklyDash() {
       .then(r => r.ok ? r.json() : null)
       .then(setData)
       .catch(() => {});
-  }, []);
+  }, [circleId]);
   return data;
 }
 
@@ -138,17 +139,20 @@ function MonthlyHonorBoard({ role }: { role?: string }) {
 }
 
 export default function DashboardPage() {
-  const { data: summary } = useGetStatsSummary(undefined, { query: { queryKey: ["statsSummary"] } });
-  const { data: circleStats } = useGetCirclesStats(undefined, { query: { queryKey: ["circlesStats"] } });
+  // user أولاً — circleId شرط لكل queryKey لاحق
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
-  const { data: monthly } = useGetMonthlyComparison({ query: { queryKey: ["monthlyComparison"] } });
-  const weekly = useWeeklyDash();
+  const circleId = (user as any)?.circleId as number | null | undefined;
+
+  const { data: summary } = useGetStatsSummary(undefined, { query: { queryKey: ["statsSummary", circleId] } });
+  const { data: circleStats } = useGetCirclesStats(undefined, { query: { queryKey: ["circlesStats", circleId] } });
+  const { data: monthly } = useGetMonthlyComparison({ query: { queryKey: ["monthlyComparison", circleId] } });
+  const weekly = useWeeklyDash(circleId);
   const { data: repeatedAbsences } = useGetRepeatedAbsences(
     { minAbsences: 3 },
-    { query: { queryKey: ["repeatedAbsences"] } }
+    { query: { queryKey: ["repeatedAbsences", circleId] } }
   );
-  const { data: snapshot } = useGetDailySnapshot({ query: { queryKey: ["dailySnapshot"] } });
-  const { data: nearCompletion = [] } = useListStudentsNearCompletion({ query: { queryKey: ["nearCompletion"] } });
+  const { data: snapshot } = useGetDailySnapshot({ query: { queryKey: ["dailySnapshot", circleId] } });
+  const { data: nearCompletion = [] } = useListStudentsNearCompletion({ query: { queryKey: ["nearCompletion", circleId] } });
 
   const stats = [
     {

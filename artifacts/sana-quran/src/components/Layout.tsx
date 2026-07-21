@@ -42,6 +42,8 @@ interface AccountInfo {
   role: string;
   roleLabel: string;
   track: string | null;
+  circleId: number | null;
+  circleName: string | null;
   isCurrent: boolean;
 }
 
@@ -479,6 +481,7 @@ export default function Layout({ user, children }: LayoutProps) {
   const logout = useLogout();
   const [location, setLocation] = useLocation();
   const allAccounts = useMyAccounts(user.id);
+  const currentAccount = allAccounts.find(a => a.isCurrent);
   const otherAccounts = allAccounts.filter(a => !a.isCurrent);
 
   const isHome = location === "/";
@@ -506,7 +509,9 @@ export default function Layout({ user, children }: LayoutProps) {
       if (!res.ok) return;
       const data = await res.json() as { token: string };
       setToken(data.token);
+      // مسح الكاش القديم بالكامل ثم إعادة الجلب
       queryClient.clear();
+      await queryClient.invalidateQueries();
       setSidebarOpen(false);
       setLocation("/");
       window.location.reload();
@@ -553,6 +558,9 @@ export default function Layout({ user, children }: LayoutProps) {
             <div className="bg-white/10 rounded-xl p-3">
               <p className="text-white font-semibold text-sm truncate">{user.name}</p>
               <p className="text-white/60 text-xs mt-0.5">{getRoleLabel(user.role)}</p>
+              {currentAccount?.circleName && (
+                <p className="text-white/50 text-[11px] mt-0.5 truncate">{currentAccount.circleName}</p>
+              )}
               {user.track && (
                 <Badge className="mt-1 bg-white/20 text-white text-xs border-0">
                   مسار {user.track}
@@ -584,7 +592,7 @@ export default function Layout({ user, children }: LayoutProps) {
                       <div className="text-right flex-1 min-w-0">
                         <p className="text-sm font-medium text-white/90 truncate leading-tight">{acc.name}</p>
                         <p className="text-white/50 text-[11px] leading-tight">
-                          {acc.roleLabel}{acc.track ? ` — ${acc.track}` : ""}
+                          {acc.circleName ?? acc.roleLabel}{acc.track ? ` — ${acc.track}` : ""}
                         </p>
                       </div>
                     </button>

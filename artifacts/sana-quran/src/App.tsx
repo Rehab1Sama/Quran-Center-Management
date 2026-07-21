@@ -134,8 +134,8 @@ function AppRoutes() {
     <Layout user={user}>
       <Switch>
         {(isVolunteer || isExamSupervisor)
-          ? <Route path="/"><VolunteerPage userRole={user.role} /></Route>
-          : <Route path="/" component={HomePage} />}
+          ? <Route path="/"><VolunteerPage key={String((user as any).circleId ?? user.id)} userRole={user.role} /></Route>
+          : <Route path="/">{() => <HomePage key={String((user as any).circleId ?? user.id)} />}</Route>}
 
         <Route path="/register" component={RegisterPage} />
         <Route path="/register-existing" component={RegisterExistingPage} />
