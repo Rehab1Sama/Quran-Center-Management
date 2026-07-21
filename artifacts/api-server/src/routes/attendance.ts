@@ -107,6 +107,16 @@ router.get("/attendance/repeated-absences", authenticate, async (req, res): Prom
     filtered = result.filter(r => r.track.startsWith(req.userTrack!));
   }
 
+  // فلترة صارمة بـ circleId من الرابط
+  const circleIdParam = req.query.circleId as string | undefined;
+  if (circleIdParam) {
+    const cid = parseInt(circleIdParam, 10);
+    filtered = filtered.filter(r => {
+      const student = students.find(s => s.id === r.studentId);
+      return student?.circleId === cid;
+    });
+  }
+
   res.json(filtered);
 });
 

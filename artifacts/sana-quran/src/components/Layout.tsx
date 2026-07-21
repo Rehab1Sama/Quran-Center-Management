@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useGetTodayBanner, useLogout, useGetMyMessages, useListStudents } from "@workspace/api-client-react";
-import { clearAuth, getToken, setToken, setActiveCircleId } from "@/lib/auth";
+import { clearAuth, getToken, setToken } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { isFeatureEnabled, shouldHideShortcomings } from "@/lib/schoolConfig";
 import {
@@ -506,22 +506,16 @@ export default function Layout({ user, children }: LayoutProps) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ targetUserId }),
       });
-      if (!res.ok) return;
+      if (!res.ok) { setSwitching(false); return; }
       const data = await res.json() as { token: string };
       setToken(data.token);
-      // احفظ circleId الحساب المختار في localStorage حتى يعرف الداشبورد أيّ حلقة يعرض
+      // انتقل عبر الرابط مع circleId — هذا هو مصدر الحقيقة الوحيد لمنع خلط البيانات
       const targetAccount = otherAccounts.find(a => a.id === targetUserId);
-      if (targetAccount?.circleId != null) {
-        setActiveCircleId(String(targetAccount.circleId));
-      }
-      // مسح الكاش القديم بالكامل ثم إعادة الجلب
-      queryClient.clear();
-      await queryClient.invalidateQueries();
-      setSidebarOpen(false);
-      setLocation("/");
-      window.location.reload();
+      const targetCircleId = targetAccount?.circleId;
+      window.location.href = targetCircleId != null
+        ? `/?circleId=${targetCircleId}`
+        : '/';
     } catch {
-    } finally {
       setSwitching(false);
     }
   };

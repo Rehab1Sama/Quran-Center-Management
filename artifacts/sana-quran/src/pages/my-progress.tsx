@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import { getActiveCircleId } from "@/lib/auth";
 import {
   useGetCurrentUser, useListRecords, useListCircles, useListStudents,
   useListUsers, useListBadgeAssignments, useGetMyMessages,
@@ -40,10 +39,10 @@ export default function MyProgressPage() {
 
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const studentId: number | undefined = (user as any)?.studentId ?? undefined;
-  // circleId: استخدم الحلقة المختارة من localStorage أولاً، ثم circleId من المستخدم — يمنع خلط سجلات الحلقات
-  const activeCircleIdStr = useMemo(() => getActiveCircleId(), []);
-  const circleId: number | undefined = activeCircleIdStr
-    ? parseInt(activeCircleIdStr, 10)
+  // circleId من الرابط هو مصدر الحقيقة — يمنع خلط سجلات الحلقات
+  const urlCircleIdStr = useMemo(() => new URLSearchParams(window.location.search).get('circleId'), []);
+  const circleId: number | undefined = urlCircleIdStr
+    ? parseInt(urlCircleIdStr, 10)
     : ((user as any)?.circleId as number | undefined);
 
   const { data: myGoals = [] } = useListStudentGoals(studentId!, {

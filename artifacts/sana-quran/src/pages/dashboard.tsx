@@ -1,5 +1,4 @@
 import { useGetStatsSummary, useGetCirclesStats, useGetCurrentUser, useGetRepeatedAbsences, useGetMonthlyComparison, useGetDailySnapshot, useListStudentsNearCompletion } from "@workspace/api-client-react";
-import { getActiveCircleId } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Users, Calendar, Star, TrendingUp, TrendingDown, Minus, Award, CheckCircle2, AlertTriangle, Plane, ClipboardCheck, AlertCircle, GraduationCap, ShieldCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatPages } from "@/lib/quran";
@@ -25,7 +24,8 @@ function useWeeklyDash(circleId?: number | null) {
   useEffect(() => {
     setData(null);
     const token = localStorage.getItem("sana_auth_token");
-    fetch(`${BASE}/api/stats/weekly-comparison`, {
+    const qs = circleId ? `?circleId=${circleId}` : '';
+    fetch(`${BASE}/api/stats/weekly-comparison${qs}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then(r => r.ok ? r.json() : null)
@@ -140,24 +140,28 @@ function MonthlyHonorBoard({ role }: { role?: string }) {
 }
 
 export default function DashboardPage() {
-  // user أولاً — circleId شرط لكل queryKey لاحق
-  const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
-  // استخدم الحلقة المختارة من localStorage أولاً، ثم حلقة المستخدم كاحتياط
-  const activeCircleIdStr = getActiveCircleId();
-  const circleId: number | null | undefined = activeCircleIdStr
-    ? parseInt(activeCircleIdStr, 10)
-    : ((user as any)?.circleId as number | null | undefined);
+  // circleId من الرابط هو مصدر الحقيقة الوحيد — يمنع خلط بيانات الحلقات
+  const urlCircleId = new URLSearchParams(window.location.search).get('circleId');
+  const circleId: number | null | undefined = urlCircleId
+    ? parseInt(urlCircleId, 10)
+    : undefined;
 
-  const { data: summary } = useGetStatsSummary(undefined, { query: { queryKey: ["statsSummary", circleId] } });
-  const { data: circleStats } = useGetCirclesStats(undefined, { query: { queryKey: ["circlesStats", circleId] } });
-  const { data: monthly } = useGetMonthlyComparison({ query: { queryKey: ["monthlyComparison", circleId] } });
-  const weekly = useWeeklyDash(circleId);
+  const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
+  // إذا لم يكن في الرابط، استخدم circleId المستخدم من الـ JWT
+  const effectiveCircleId: number | null | undefined = circleId ?? ((user as any)?.circleId as number | null | undefined);
+
+  const circleParam = effectiveCircleId ? { circleId: effectiveCircleId } : {};
+
+  const { data: summary } = useGetStatsSummary(circleParam as any, { query: { queryKey: ["statsSummary", effectiveCircleId] } });
+  const { data: circleStats } = useGetCirclesStats(circleParam as any, { query: { queryKey: ["circlesStats", effectiveCircleId] } });
+  const { data: monthly } = useGetMonthlyComparison({ query: { queryKey: ["monthlyComparison", effectiveCircleId], ...(effectiveCircleId ? {} : {}) } });
+  const weekly = useWeeklyDash(effectiveCircleId);
   const { data: repeatedAbsences } = useGetRepeatedAbsences(
-    { minAbsences: 3 },
-    { query: { queryKey: ["repeatedAbsences", circleId] } }
+    { minAbsences: 3, ...(circleParam as any) },
+    { query: { queryKey: ["repeatedAbsences", effectiveCircleId] } }
   );
-  const { data: snapshot } = useGetDailySnapshot({ query: { queryKey: ["dailySnapshot", circleId] } });
-  const { data: nearCompletion = [] } = useListStudentsNearCompletion({ query: { queryKey: ["nearCompletion", circleId] } });
+  const { data: snapshot } = useGetDailySnapshot({ query: { queryKey: ["dailySnapshot", effectiveCircleId] } });
+  const { data: nearCompletion = [] } = useListStudentsNearCompletion({ query: { queryKey: ["nearCompletion", effectiveCircleId] } });
 
   const stats = [
     {

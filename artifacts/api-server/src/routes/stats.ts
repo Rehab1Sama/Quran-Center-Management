@@ -16,7 +16,7 @@ function getDateRange(dateFrom?: string, dateTo?: string): { from: string; to: s
 }
 
 router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
-  const { dateFrom, dateTo } = req.query as Record<string, string | undefined>;
+  const { dateFrom, dateTo, circleId: circleIdParam } = req.query as Record<string, string | undefined>;
   const range = getDateRange(dateFrom, dateTo);
   const userRole = req.userRole;
   const userId = req.userId;
@@ -53,6 +53,13 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
       records = allRecords.filter(r => r.circleId === circleId && r.studentId === userId);
       students = students.filter(s => s.id === userId);
     }
+  }
+
+  // فلترة صارمة بـ circleId من الرابط — يتجاوز الفلترة بالدور ويعزل بيانات الحلقة تماماً
+  if (circleIdParam) {
+    const cid = parseInt(circleIdParam, 10);
+    records = records.filter(r => r.circleId === cid);
+    students = students.filter(s => s.circleId === cid);
   }
 
   const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
@@ -322,16 +329,23 @@ router.get("/stats/my-progress", authenticate, async (req, res): Promise<void> =
 });
 
 router.get("/stats/monthly-comparison", authenticate, async (req, res): Promise<void> => {
+  const { circleId: circleIdParam } = req.query as Record<string, string | undefined>;
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10);
   const todayStr = getMakkahDay();
 
-  const thisMonthRecords = await db.select().from(recordsTable)
+  let thisMonthRecords = await db.select().from(recordsTable)
     .where(and(gte(recordsTable.date, thisMonthStart), lte(recordsTable.date, todayStr)));
-  const lastMonthRecords = await db.select().from(recordsTable)
+  let lastMonthRecords = await db.select().from(recordsTable)
     .where(and(gte(recordsTable.date, lastMonthStart), lte(recordsTable.date, lastMonthEnd)));
+
+  if (circleIdParam) {
+    const cid = parseInt(circleIdParam, 10);
+    thisMonthRecords = thisMonthRecords.filter(r => r.circleId === cid);
+    lastMonthRecords = lastMonthRecords.filter(r => r.circleId === cid);
+  }
 
   const calcStats = (records: typeof thisMonthRecords) => {
     const absences = records.filter(r => r.isAbsent).length;
@@ -777,6 +791,7 @@ router.get("/stats/weekly-comparison", authenticate, async (req, res): Promise<v
   const userRole = req.userRole;
   const userId   = req.userId;
 
+  const { circleId: circleIdParam } = req.query as Record<string, string | undefined>;
   const allCircles  = await db.select().from(circlesTable);
   const allUsers    = await db.select().from(usersTable).where(eq(usersTable.isArchived, false));
 
@@ -787,6 +802,10 @@ router.get("/stats/weekly-comparison", authenticate, async (req, res): Promise<v
   } else if (userRole === "teacher" || userRole === "supervisor") {
     const u = allUsers.find(u => u.id === userId);
     circleIds = u?.circleId ? [u.circleId] : [];
+  }
+  // فلترة صارمة بـ circleId من الرابط — تتجاوز الفلترة بالدور
+  if (circleIdParam) {
+    circleIds = [parseInt(circleIdParam, 10)];
   }
 
   const thisRecs = await db.select().from(recordsTable)

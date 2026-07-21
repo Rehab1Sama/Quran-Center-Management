@@ -125,14 +125,18 @@ router.get("/volunteer/near-completion", authenticate, async (req, res): Promise
     return;
   }
 
-  // For teacher: filter to their circle
-  let studentFilter = eq(studentsTable.isArchived, false);
+  // فلترة بـ circleId من الرابط إن وُجد، وإلا فلترة بالدور
+  const circleIdParam = req.query.circleId as string | undefined;
   let allStudents;
-  if (role === "teacher" && req.userCircleId) {
+  if (circleIdParam) {
+    const cid = parseInt(circleIdParam, 10);
+    allStudents = await db.select().from(studentsTable)
+      .where(and(eq(studentsTable.isArchived, false), eq(studentsTable.circleId, cid)));
+  } else if (role === "teacher" && req.userCircleId) {
     allStudents = await db.select().from(studentsTable)
       .where(and(eq(studentsTable.isArchived, false), eq(studentsTable.circleId, req.userCircleId)));
   } else {
-    allStudents = await db.select().from(studentsTable).where(studentFilter);
+    allStudents = await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false));
   }
 
   const allRecords = await db.select().from(recordsTable);
