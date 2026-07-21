@@ -44,15 +44,26 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   if (user.role === "student") {
     let studentId: number | null = null;
 
-    // أولاً: الرابط المباشر في جدول المستخدمين (الأولوية القصوى)
-    if (user.studentId) {
+    // أولاً: الرابط المحفوظ في users.student_id — لكن فقط إذا كانت الطالبة في نفس حلقة المستخدمة
+    // (الشخص في حلقتين = حسابان منفصلان، كل حساب يجب أن يرتبط بطالبة حلقته لا الأخرى)
+    if (user.studentId && user.circleId) {
+      const res1 = await db.execute(
+        sql`SELECT id FROM students
+            WHERE id=${user.studentId} AND circle_id=${user.circleId} AND is_archived=false LIMIT 1`
+      );
+      if ((res1 as any).rows?.[0]?.id) {
+        studentId = user.studentId;
+      }
+    } else if (user.studentId && !user.circleId) {
+      // لا حلقة محددة → نقبل الرابط المباشر كما هو
       studentId = user.studentId;
     }
 
-    // ثانياً: بالاسم (TRIM) + circleId المباشر على جدول الطالبات
+    // ثانياً: بالاسم (TRIM) + circleId في جدول students
     if (!studentId && user.circleId) {
       const res2 = await db.execute(
-        sql`SELECT id FROM students WHERE TRIM(full_name)=TRIM(${user.name}) AND circle_id=${user.circleId} AND is_archived=false LIMIT 1`
+        sql`SELECT id FROM students
+            WHERE TRIM(full_name)=TRIM(${user.name}) AND circle_id=${user.circleId} AND is_archived=false LIMIT 1`
       );
       studentId = (res2 as any).rows?.[0]?.id ?? null;
     }
@@ -67,37 +78,41 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       studentId = (res3 as any).rows?.[0]?.id ?? null;
     }
 
-    // رابعاً: بالاسم (TRIM) فقط — فقط إذا كان الاسم فريداً
+    // رابعاً: users.student_id بغض النظر عن الحلقة — كشبكة أمان أخيرة (حلقة واحدة فقط)
+    if (!studentId && user.studentId) {
+      studentId = user.studentId;
+    }
+
+    // خامساً: بالاسم (TRIM) فقط — فقط إذا كان الاسم فريداً عبر كل الحلقات
     if (!studentId) {
-      const res4 = await db.execute(
+      const res5 = await db.execute(
         sql`SELECT id FROM students
             WHERE TRIM(full_name)=TRIM(${user.name}) AND is_archived=false
               AND (SELECT COUNT(*) FROM students WHERE TRIM(full_name)=TRIM(${user.name}) AND is_archived=false)=1
             LIMIT 1`
       );
-      studentId = (res4 as any).rows?.[0]?.id ?? null;
+      studentId = (res5 as any).rows?.[0]?.id ?? null;
     }
 
     // إذا لم يكن circleId محفوظاً في حساب المستخدمة، نجلبه من سجل الطالبة
     let resolvedCircleId: number | null = user.circleId ?? null;
     if (studentId && !resolvedCircleId) {
-      const res5 = await db.execute(
+      const res6 = await db.execute(
         sql`SELECT circle_id FROM students WHERE id=${studentId} AND is_archived=false LIMIT 1`
       );
-      resolvedCircleId = (res5 as any).rows?.[0]?.circle_id ?? null;
+      resolvedCircleId = (res6 as any).rows?.[0]?.circle_id ?? null;
 
-      // إذا ما لقينا circle_id مباشرة، نجرب عبر student_enrollments
       if (!resolvedCircleId) {
-        const res6 = await db.execute(
+        const res7 = await db.execute(
           sql`SELECT circle_id FROM student_enrollments
               WHERE student_id=${studentId} AND is_archived=false
               ORDER BY id DESC LIMIT 1`
         );
-        resolvedCircleId = (res6 as any).rows?.[0]?.circle_id ?? null;
+        resolvedCircleId = (res7 as any).rows?.[0]?.circle_id ?? null;
       }
     }
 
-    // احفظ الربط في قاعدة البيانات لتسريع الطلبات القادمة
+    // احفظ الربط في قاعدة البيانات فقط إذا كان يطابق حلقة المستخدمة
     if (studentId && !user.studentId) {
       db.execute(sql`UPDATE users SET student_id=${studentId} WHERE id=${user.id}`).catch(() => {});
     }
