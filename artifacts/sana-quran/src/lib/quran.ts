@@ -303,6 +303,48 @@ export function computeDayRanges(
   });
 }
 
+// حدود الأجزاء الثلاثين (بداية ونهاية كل جزء بالسورة والآية)
+export const JUZ_RANGES: Array<{ surahStart: string; ayahStart: number; surahEnd: string; ayahEnd: number }> = [
+  { surahStart: "الفاتحة",    ayahStart: 1,   surahEnd: "البقرة",      ayahEnd: 141 },
+  { surahStart: "البقرة",     ayahStart: 142,  surahEnd: "البقرة",      ayahEnd: 252 },
+  { surahStart: "البقرة",     ayahStart: 253,  surahEnd: "آل عمران",    ayahEnd: 92  },
+  { surahStart: "آل عمران",   ayahStart: 93,   surahEnd: "النساء",      ayahEnd: 23  },
+  { surahStart: "النساء",     ayahStart: 24,   surahEnd: "النساء",      ayahEnd: 147 },
+  { surahStart: "النساء",     ayahStart: 148,  surahEnd: "المائدة",     ayahEnd: 81  },
+  { surahStart: "المائدة",    ayahStart: 82,   surahEnd: "الأنعام",     ayahEnd: 110 },
+  { surahStart: "الأنعام",    ayahStart: 111,  surahEnd: "الأعراف",     ayahEnd: 87  },
+  { surahStart: "الأعراف",    ayahStart: 88,   surahEnd: "الأنفال",     ayahEnd: 40  },
+  { surahStart: "الأنفال",    ayahStart: 41,   surahEnd: "التوبة",      ayahEnd: 92  },
+  { surahStart: "التوبة",     ayahStart: 93,   surahEnd: "هود",         ayahEnd: 5   },
+  { surahStart: "هود",        ayahStart: 6,    surahEnd: "يوسف",        ayahEnd: 52  },
+  { surahStart: "يوسف",       ayahStart: 53,   surahEnd: "إبراهيم",     ayahEnd: 52  },
+  { surahStart: "الحجر",      ayahStart: 1,    surahEnd: "النحل",       ayahEnd: 128 },
+  { surahStart: "الإسراء",    ayahStart: 1,    surahEnd: "الكهف",       ayahEnd: 74  },
+  { surahStart: "الكهف",      ayahStart: 75,   surahEnd: "طه",          ayahEnd: 135 },
+  { surahStart: "الأنبياء",   ayahStart: 1,    surahEnd: "الحج",        ayahEnd: 78  },
+  { surahStart: "المؤمنون",   ayahStart: 1,    surahEnd: "الفرقان",     ayahEnd: 20  },
+  { surahStart: "الفرقان",    ayahStart: 21,   surahEnd: "النمل",       ayahEnd: 55  },
+  { surahStart: "النمل",      ayahStart: 56,   surahEnd: "العنكبوت",    ayahEnd: 45  },
+  { surahStart: "العنكبوت",   ayahStart: 46,   surahEnd: "الأحزاب",     ayahEnd: 30  },
+  { surahStart: "الأحزاب",    ayahStart: 31,   surahEnd: "يس",          ayahEnd: 27  },
+  { surahStart: "يس",         ayahStart: 28,   surahEnd: "الزمر",       ayahEnd: 31  },
+  { surahStart: "الزمر",      ayahStart: 32,   surahEnd: "فصلت",        ayahEnd: 46  },
+  { surahStart: "فصلت",       ayahStart: 47,   surahEnd: "الجاثية",     ayahEnd: 37  },
+  { surahStart: "الأحقاف",    ayahStart: 1,    surahEnd: "الذاريات",    ayahEnd: 30  },
+  { surahStart: "الذاريات",   ayahStart: 31,   surahEnd: "الحديد",      ayahEnd: 29  },
+  { surahStart: "المجادلة",   ayahStart: 1,    surahEnd: "التحريم",     ayahEnd: 12  },
+  { surahStart: "الملك",      ayahStart: 1,    surahEnd: "المرسلات",    ayahEnd: 50  },
+  { surahStart: "النبأ",      ayahStart: 1,    surahEnd: "الناس",       ayahEnd: 6   },
+];
+
+/** تحويل قائمة أرقام الأجزاء (1-30) إلى نطاقات DayQuotaRange */
+export function juzListToQuotaRanges(juzNumbers: number[]): DayQuotaRange[] {
+  const sorted = [...juzNumbers].sort((a, b) => a - b);
+  return sorted
+    .filter(n => n >= 1 && n <= 30)
+    .map(n => ({ ...JUZ_RANGES[n - 1]! }));
+}
+
 export function formatPages(pages: number | null | undefined): string {
   if (!pages && pages !== 0) return "-";
   // Use Arabic comma for decimal

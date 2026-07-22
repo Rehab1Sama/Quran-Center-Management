@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { SURAHS, calculatePages, computeDayRanges, type DayQuotaRange, type DayRangeSegment } from "@/lib/quran";
+import { SURAHS, calculatePages, computeDayRanges, juzListToQuotaRanges, type DayQuotaRange, type DayRangeSegment } from "@/lib/quran";
 import { BookOpen, Plus, Trash2, RefreshCw, Loader2, AlertCircle, ChevronRight, ChevronLeft, CalendarDays, CheckCircle2, X, Lock, Printer } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -293,10 +293,19 @@ function printPlan(plan: ReviewPlan, totalDays: number, planMode: "girls" | "fix
 
   const hasSurahData = plan.days.some(d => d.surahStart);
   const _quotaRangesPrint: DayQuotaRange[] = [];
-  if (!hasSurahData && plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
-    _quotaRangesPrint.push({ surahStart: plan.quotaSurahStart, ayahStart: plan.quotaAyahStart, surahEnd: plan.quotaSurahEnd, ayahEnd: plan.quotaAyahEnd });
-    if (plan.extraRanges) {
-      try { _quotaRangesPrint.push(...(JSON.parse(plan.extraRanges) as DayQuotaRange[])); } catch {}
+  if (!hasSurahData) {
+    if (plan.quotaType === "juz" && plan.extraRanges) {
+      try {
+        const juzList = JSON.parse(plan.extraRanges) as number[];
+        if (Array.isArray(juzList) && juzList.length > 0 && typeof juzList[0] === "number") {
+          _quotaRangesPrint.push(...juzListToQuotaRanges(juzList));
+        }
+      } catch {}
+    } else if (plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
+      _quotaRangesPrint.push({ surahStart: plan.quotaSurahStart, ayahStart: plan.quotaAyahStart, surahEnd: plan.quotaSurahEnd, ayahEnd: plan.quotaAyahEnd });
+      if (plan.extraRanges) {
+        try { _quotaRangesPrint.push(...(JSON.parse(plan.extraRanges) as DayQuotaRange[])); } catch {}
+      }
     }
   }
   const computedRanges = _quotaRangesPrint.length > 0 ? computeDayRanges(_quotaRangesPrint, plan.days) : null;
@@ -341,10 +350,19 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
 
   const hasSurahData = plan.days.some(d => d.surahStart);
   const _quotaRanges: DayQuotaRange[] = [];
-  if (!hasSurahData && plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
-    _quotaRanges.push({ surahStart: plan.quotaSurahStart, ayahStart: plan.quotaAyahStart, surahEnd: plan.quotaSurahEnd, ayahEnd: plan.quotaAyahEnd });
-    if (plan.extraRanges) {
-      try { _quotaRanges.push(...(JSON.parse(plan.extraRanges) as DayQuotaRange[])); } catch {}
+  if (!hasSurahData) {
+    if (plan.quotaType === "juz" && plan.extraRanges) {
+      try {
+        const juzList = JSON.parse(plan.extraRanges) as number[];
+        if (Array.isArray(juzList) && juzList.length > 0 && typeof juzList[0] === "number") {
+          _quotaRanges.push(...juzListToQuotaRanges(juzList));
+        }
+      } catch {}
+    } else if (plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
+      _quotaRanges.push({ surahStart: plan.quotaSurahStart, ayahStart: plan.quotaAyahStart, surahEnd: plan.quotaSurahEnd, ayahEnd: plan.quotaAyahEnd });
+      if (plan.extraRanges) {
+        try { _quotaRanges.push(...(JSON.parse(plan.extraRanges) as DayQuotaRange[])); } catch {}
+      }
     }
   }
   const computedRanges = _quotaRanges.length > 0 ? computeDayRanges(_quotaRanges, plan.days) : null;
@@ -819,6 +837,8 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
         body.quotaType = quotaType;
         if (quotaType === "juz") {
           body.quotaJuz = selectedJuz.size;
+          // حفظ قائمة الأجزاء المختارة لاستخدامها في عرض النطاقات
+          body.extraRanges = JSON.stringify(Array.from(selectedJuz).sort((a, b) => a - b));
         } else {
           const firstRange = surahRanges[0];
           if (firstRange) {
