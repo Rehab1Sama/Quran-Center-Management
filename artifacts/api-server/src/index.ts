@@ -152,6 +152,7 @@ async function syncStudentUserCircleIds() {
     const fixedRegStudents = (stepB as any).rowCount ?? 0;
 
     // الخطوة ج: مزامنة users.circle_id = students.circle_id
+    // استثناء: إذا كان للمستخدم enrollment نشط في حلقته الحالية → لا نبدّل (يعني التصحيح اليدوي محفوظ)
     const stepC = await db.execute(sql.raw(`
       UPDATE users u SET circle_id = s.circle_id
       FROM students s
@@ -160,6 +161,12 @@ async function syncStudentUserCircleIds() {
         AND s.is_archived = false
         AND s.circle_id IS NOT NULL
         AND (u.circle_id IS NULL OR u.circle_id != s.circle_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM student_enrollments se
+          WHERE se.student_id = u.student_id
+            AND se.circle_id = u.circle_id
+            AND se.is_archived = false
+        )
     `));
     const fixedUsers = (stepC as any).rowCount ?? 0;
 
