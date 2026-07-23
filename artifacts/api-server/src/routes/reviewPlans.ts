@@ -518,10 +518,10 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       }
     }
 
-    // ── Girls: use global cycle start date, fall back to provided date ────────
+    // ── Use global cycle start date for all lockable plan types ──────────────
     let startDate: string;
-    if (planType === "girls_review") {
-      const cycleStart = await getGlobalCycleStartDate();
+    const cycleStart = await getGlobalCycleStartDate();
+    if (planType === "girls_review" || planType === "fixation") {
       startDate = cycleStart ?? req.body?.startDate ?? getTodayMecca();
     } else {
       startDate = req.body?.startDate ?? getTodayMecca();
@@ -662,8 +662,11 @@ router.get("/circles/:circleId/review-plans", authenticate, async (req, res): Pr
 
 // ─── GET: review-plan settings ────────────────────────────────────────────────
 router.get("/review-plans/settings", authenticate, async (_req, res): Promise<void> => {
-  const studentCanEditPlan = await getStudentCanEditPlan();
-  res.json({ studentCanEditPlan });
+  const [studentCanEditPlan, cycleStartDate] = await Promise.all([
+    getStudentCanEditPlan(),
+    getGlobalCycleStartDate(),
+  ]);
+  res.json({ studentCanEditPlan, cycleStartDate: cycleStartDate ?? null });
 });
 
 // ─── POST: update review-plan settings (leader only) ─────────────────────────

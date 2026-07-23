@@ -140,6 +140,7 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
   const [plan, setPlan] = useState<ReviewPlan | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [cycleStartDate, setCycleStartDate] = useState<string | null>(null);
   const { toast } = useToast();
 
   const isGirls = trackType === "girls";
@@ -151,10 +152,15 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
   const fetchPlan = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${BASE}/api/students/${studentId}/review-plan?circleId=${circleId}`, { headers: authHeader() });
-      if (!res.ok) { setPlan(null); return; }
-      const data = await res.json();
-      setPlan(data);
+      const [planRes, settingsRes] = await Promise.all([
+        fetch(`${BASE}/api/students/${studentId}/review-plan?circleId=${circleId}`, { headers: authHeader() }),
+        fetch(`${BASE}/api/review-plans/settings`, { headers: authHeader() }),
+      ]);
+      if (!planRes.ok) { setPlan(null); } else { setPlan(await planRes.json()); }
+      if (settingsRes.ok) {
+        const s = await settingsRes.json();
+        setCycleStartDate(s.cycleStartDate ?? null);
+      }
     } catch { setPlan(null); }
     finally { setLoading(false); }
   }, [studentId, circleId]);
@@ -249,6 +255,7 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
         totalDays={totalDays}
         planMode={planMode}
         planTitle={planTitle}
+        cycleStartDate={cycleStartDate}
       />
     </>
   );
@@ -729,10 +736,11 @@ function SurahRangesEditor({ ranges, onChange }: {
 }
 
 // ─── Wizard ────────────────────────────────────────────────────────────────────
-function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, totalDays, planMode, planTitle }: {
+function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, totalDays, planMode, planTitle, cycleStartDate }: {
   open: boolean; onClose: () => void; onSaved: () => void;
   studentId: number; circleId: number; isFixation: boolean;
   totalDays: number; planMode: "girls" | "fixation"; planTitle: string;
+  cycleStartDate?: string | null;
 }) {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
@@ -752,10 +760,15 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
   const [wizardMode, setWizardMode] = useState<"auto" | "manual">("auto");
   const [daysInitMode, setDaysInitMode] = useState<"none" | "auto" | "manual">("none");
   const [quantity, setQuantity] = useState<"full" | "half">("full");
-  const [startDate, setStartDate] = useState(today);
+  const [startDate, setStartDate] = useState(cycleStartDate ?? today);
   const [themeColor, setThemeColor] = useState(PLAN_COLORS[1].color);
   const [days, setDays] = useState<DayEntry[]>([]);
   const [totalPages, setTotalPages] = useState(0);
+
+  // If cycleStartDate changes (after fetch), sync it into the wizard state
+  useEffect(() => {
+    if (cycleStartDate) setStartDate(cycleStartDate);
+  }, [cycleStartDate]);
 
   const computedPages = quotaType === "juz"
     ? selectedJuz.size * 20
@@ -769,7 +782,7 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
       setStep(1);
       setDays([]);
       setDaysInitMode("none");
-      setStartDate(today);
+      setStartDate(cycleStartDate ?? today);
       setThemeColor(PLAN_COLORS[1].color);
       setQuotaType("juz");
       setSelectedJuz(new Set());
@@ -813,14 +826,15 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
 
   const canGoNext = (): boolean => {
     if (isFixation) {
-      if (step === 2) return startDate >= today;
+      // Date step is always valid when cycleStartDate is locked, or when user picked a valid date
+      if (step === 2) return cycleStartDate ? true : startDate >= today;
       return true;
     }
     if (step === 1) {
       if (quotaType === "juz") return selectedJuz.size > 0;
       return computedPages > 0;
     }
-    if (step === 4) return startDate >= today;
+    if (step === 4) return cycleStartDate ? true : startDate >= today;
     return true;
   };
 
@@ -893,14 +907,29 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
           return (
             <div className="space-y-5">
               <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">اختاري تاريخ بداية الخطة</p>
-                <Label className="text-sm">تاريخ البداية</Label>
-                <Input type="date" value={startDate} min={today} onChange={e => setStartDate(e.target.value)} className="mt-1 text-right" />
-                {startDate >= today && (
-                  <div className="bg-muted/40 rounded-xl p-3 text-sm mt-2">
-                    <p className="text-muted-foreground text-xs mb-0.5">التاريخ المختار</p>
-                    <p className="font-semibold">{formatArDate(startDate)}</p>
-                  </div>
+                {cycleStartDate ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">تاريخ بداية الخطة محدد تلقائياً حسب بداية دورة المراجعة</p>
+                    <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex items-center gap-2">
+                      <CalendarDays className="w-4 h-4 text-violet-500 shrink-0" />
+                      <div>
+                        <p className="text-xs text-violet-600 font-semibold">تاريخ البداية (مقفول)</p>
+                        <p className="font-bold text-foreground">{formatArDate(cycleStartDate)}</p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground">اختاري تاريخ بداية الخطة</p>
+                    <Label className="text-sm">تاريخ البداية</Label>
+                    <Input type="date" value={startDate} min={today} onChange={e => setStartDate(e.target.value)} className="mt-1 text-right" />
+                    {startDate >= today && (
+                      <div className="bg-muted/40 rounded-xl p-3 text-sm mt-2">
+                        <p className="text-muted-foreground text-xs mb-0.5">التاريخ المختار</p>
+                        <p className="font-semibold">{formatArDate(startDate)}</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
               <ColorPicker themeColor={themeColor} setThemeColor={setThemeColor} />
@@ -984,14 +1013,29 @@ function PlanWizard({ open, onClose, onSaved, studentId, circleId, isFixation, t
           return (
             <div className="space-y-5">
               <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">اختاري تاريخ بداية الخطة</p>
-                <Label className="text-sm">تاريخ البداية</Label>
-                <Input type="date" value={startDate} min={today} onChange={e => setStartDate(e.target.value)} className="mt-1 text-right" />
-                {startDate >= today && (
-                  <div className="bg-muted/40 rounded-xl p-3 text-sm mt-2">
-                    <p className="text-muted-foreground text-xs mb-0.5">التاريخ المختار</p>
-                    <p className="font-semibold">{formatArDate(startDate)}</p>
-                  </div>
+                {cycleStartDate ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">تاريخ بداية الخطة محدد تلقائياً حسب بداية دورة المراجعة</p>
+                    <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex items-center gap-2">
+                      <CalendarDays className="w-4 h-4 text-violet-500 shrink-0" />
+                      <div>
+                        <p className="text-xs text-violet-600 font-semibold">تاريخ البداية (مقفول)</p>
+                        <p className="font-bold text-foreground">{formatArDate(cycleStartDate)}</p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground">اختاري تاريخ بداية الخطة</p>
+                    <Label className="text-sm">تاريخ البداية</Label>
+                    <Input type="date" value={startDate} min={today} onChange={e => setStartDate(e.target.value)} className="mt-1 text-right" />
+                    {startDate >= today && (
+                      <div className="bg-muted/40 rounded-xl p-3 text-sm mt-2">
+                        <p className="text-muted-foreground text-xs mb-0.5">التاريخ المختار</p>
+                        <p className="font-semibold">{formatArDate(startDate)}</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
               <ColorPicker themeColor={themeColor} setThemeColor={setThemeColor} />
