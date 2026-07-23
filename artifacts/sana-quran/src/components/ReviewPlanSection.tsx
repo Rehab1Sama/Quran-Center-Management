@@ -216,6 +216,11 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
                     <Lock className="w-3 h-3" />
                     <span>مقفلة حتى {formatArDate(plan!.cycleInfo!.cycleEndDate)}</span>
                   </div>
+                  {effectiveCanCreate && (
+                    <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1" onClick={handleCancel}>
+                      <Trash2 className="w-3.5 h-3.5" />إلغاء
+                    </Button>
+                  )}
                   {canForceDelete && (
                     <Button variant="ghost" size="sm" className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 gap-1" onClick={handleCancel}>
                       <Trash2 className="w-3.5 h-3.5" />حذف
@@ -269,7 +274,7 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
 }
 
 function buildQuotaLabel(plan: ReviewPlan): string {
-  if (plan.quotaType === "juz") return `${plan.quotaJuz} جزء`;
+  if (plan.quotaType === "juz" && plan.quotaJuz != null) return `${plan.quotaJuz} جزء`;
   if (plan.quotaType === "surah" && plan.quotaSurahStart) {
     const fmtRange = (s: string, as_: number | undefined, e: string | undefined, ae: number | undefined) =>
       `من ${s}${as_ ? ` آية ${as_}` : ""} إلى ${e ?? s}${ae ? ` آية ${ae}` : ""}`;

@@ -24,7 +24,12 @@ function getPlanTypeForTrack(trackType: string): "girls_review" | "fixation" | n
 }
 
 function getTodayMecca(): string {
-  return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const meccaMs = Date.now() + 3 * 60 * 60 * 1000;
+  const d = new Date(meccaMs);
+  // Before 5:00 AM UTC (= before 8:00 AM Mecca), treat it as still the previous Islamic day
+  // so the day counter aligns with the frontend's getMeccaToday() function.
+  if (d.getUTCHours() < 5) d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 // Validates a "YYYY-MM-DD" string is both well-formed AND a real calendar date
@@ -265,11 +270,27 @@ router.get("/students/:id/review-plan", authenticate, async (req, res): Promise<
         const renewed = await autoRenewGirlsPlan(plan, studentId, circleId, newCycleStart);
         if (renewed) {
           const { days, ...planData } = renewed;
+          // Build cycleInfo for the newly created plan
+          const renewedToday = getTodayMecca();
+          const renewedCycleDates = getCycleDates(planData.startDate!, 21);
+          const renewedCycleEndDate = renewedCycleDates[renewedCycleDates.length - 1] ?? planData.startDate!;
+          const renewedDayIdx = renewedCycleDates.indexOf(renewedToday);
+          const renewedCurrentDay = renewedDayIdx >= 0 ? renewedDayIdx + 1 : renewedToday < renewedCycleDates[0]! ? 0 : 22;
+          const renewedIsCompleted = renewedToday > renewedCycleEndDate;
+          const renewedCycleInfo = {
+            cycleStartDate: planData.startDate!,
+            cycleEndDate: renewedCycleEndDate,
+            currentDay: renewedCurrentDay,
+            isCompleted: renewedIsCompleted,
+            isLocked: !renewedIsCompleted && renewedToday >= planData.startDate!,
+          };
           res.json({
             ...planData,
             createdAt: planData.createdAt.toISOString(),
             updatedAt: planData.updatedAt?.toISOString(),
             days,
+            cycleInfo: renewedCycleInfo,
+            dayRecords: {},
           });
           return;
         }
