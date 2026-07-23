@@ -219,6 +219,7 @@ export default function MyProgressPage() {
               circleId={circleId}
               trackType={myTrackType}
               canCreate={true}
+              studentSelf={true}
             />
           ) : (
             <div className="text-center py-12 text-muted-foreground text-sm">

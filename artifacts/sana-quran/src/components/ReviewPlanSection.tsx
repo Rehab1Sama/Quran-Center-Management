@@ -144,6 +144,9 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
   const [wizardOpen, setWizardOpen] = useState(false);
   const [cycleStartDate, setCycleStartDate] = useState<string | null>(null);
   const [studentCanEditPlan, setStudentCanEditPlan] = useState(false);
+
+  // When the viewer is the student herself, gate create/cancel on the global toggle
+  const effectiveCanCreate = studentSelf ? studentCanEditPlan : canCreate;
   const { toast } = useToast();
 
   const isGirls = trackType === "girls";
@@ -221,12 +224,12 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
                 </div>
               ) : (
                 <>
-                  {plan && (canCreate || canForceDelete) && (
+                  {plan && (effectiveCanCreate || canForceDelete) && (
                     <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1" onClick={handleCancel}>
                       <Trash2 className="w-3.5 h-3.5" />إلغاء
                     </Button>
                   )}
-                  {canCreate && (
+                  {effectiveCanCreate && (
                     <Button size="sm" variant={plan ? "outline" : "default"} className="text-xs gap-1" onClick={() => setWizardOpen(true)}>
                       {plan ? <><RefreshCw className="w-3.5 h-3.5" />تجديد</> : <><Plus className="w-3.5 h-3.5" />إنشاء خطة</>}
                     </Button>
@@ -241,7 +244,7 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
             <div className="text-center py-6 text-muted-foreground">
               <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
               <p className="text-sm">لا توجد خطة نشطة</p>
-              {canCreate && <p className="text-xs mt-1 opacity-70">اضغطي "إنشاء خطة" للبدء</p>}
+              {effectiveCanCreate && <p className="text-xs mt-1 opacity-70">اضغطي "إنشاء خطة" للبدء</p>}
             </div>
           ) : (
             <PlanDisplay plan={plan} totalDays={totalDays} planMode={planMode} />
