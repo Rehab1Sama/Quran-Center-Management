@@ -210,36 +210,24 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
               {planTitle}
             </CardTitle>
             <div className="flex gap-2 items-center">
-              {isLocked ? (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
-                    <Lock className="w-3 h-3" />
-                    <span>مقفلة حتى {formatArDate(plan!.cycleInfo!.cycleEndDate)}</span>
-                  </div>
-                  {effectiveCanCreate && (
-                    <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1" onClick={handleCancel}>
-                      <Trash2 className="w-3.5 h-3.5" />إلغاء
-                    </Button>
-                  )}
-                  {canForceDelete && (
-                    <Button variant="ghost" size="sm" className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 gap-1" onClick={handleCancel}>
-                      <Trash2 className="w-3.5 h-3.5" />حذف
-                    </Button>
-                  )}
+              {/* Lock badge when plan is locked */}
+              {isLocked && plan?.cycleInfo && (
+                <div className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
+                  <Lock className="w-3 h-3" />
+                  <span>مقفلة حتى {formatArDate(plan.cycleInfo.cycleEndDate)}</span>
                 </div>
-              ) : (
-                <>
-                  {plan && (effectiveCanCreate || canForceDelete) && (
-                    <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1" onClick={handleCancel}>
-                      <Trash2 className="w-3.5 h-3.5" />إلغاء
-                    </Button>
-                  )}
-                  {effectiveCanCreate && (
-                    <Button size="sm" variant={plan ? "outline" : "default"} className="text-xs gap-1" onClick={() => setWizardOpen(true)}>
-                      {plan ? <><RefreshCw className="w-3.5 h-3.5" />تجديد</> : <><Plus className="w-3.5 h-3.5" />إنشاء خطة</>}
-                    </Button>
-                  )}
-                </>
+              )}
+              {/* Create / renew button — only when not locked */}
+              {!isLocked && effectiveCanCreate && (
+                <Button size="sm" variant={plan ? "outline" : "default"} className="text-xs gap-1" onClick={() => setWizardOpen(true)}>
+                  {plan ? <><RefreshCw className="w-3.5 h-3.5" />تجديد</> : <><Plus className="w-3.5 h-3.5" />إنشاء خطة</>}
+                </Button>
+              )}
+              {/* Force-delete (admin only) */}
+              {plan && canForceDelete && (
+                <Button variant="ghost" size="sm" className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 gap-1" onClick={handleCancel}>
+                  <Trash2 className="w-3.5 h-3.5" />حذف
+                </Button>
               )}
             </div>
           </div>
@@ -252,7 +240,14 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
               {effectiveCanCreate && <p className="text-xs mt-1 opacity-70">اضغطي "إنشاء خطة" للبدء</p>}
             </div>
           ) : (
-            <PlanDisplay plan={plan} totalDays={totalDays} planMode={planMode} />
+            <PlanDisplay
+              plan={plan}
+              totalDays={totalDays}
+              planMode={planMode}
+              canCancel={effectiveCanCreate}
+              onCancel={handleCancel}
+              isLocked={isLocked}
+            />
           )}
         </CardContent>
       </Card>
@@ -310,21 +305,30 @@ function printPlan(plan: ReviewPlan, totalDays: number, planMode: "girls" | "fix
   const quotaLabel = buildQuotaLabel(plan);
   const endDate = dates[dates.length - 1] ?? plan.startDate;
 
-  const hasSurahData = plan.days.some(d => d.surahStart);
+  // Build quota ranges for print — always, used as fallback for days without explicit surah data
   const _quotaRangesPrint: DayQuotaRange[] = [];
-  if (!hasSurahData) {
-    if (plan.quotaType === "juz" && plan.extraRanges) {
+  if (plan.quotaType === "juz") {
+    if (plan.extraRanges) {
       try {
         const juzList = JSON.parse(plan.extraRanges) as number[];
         if (Array.isArray(juzList) && juzList.length > 0 && typeof juzList[0] === "number") {
           _quotaRangesPrint.push(...juzListToQuotaRanges(juzList));
         }
       } catch {}
-    } else if (plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
-      _quotaRangesPrint.push({ surahStart: plan.quotaSurahStart, ayahStart: plan.quotaAyahStart, surahEnd: plan.quotaSurahEnd, ayahEnd: plan.quotaAyahEnd });
-      if (plan.extraRanges) {
-        try { _quotaRangesPrint.push(...(JSON.parse(plan.extraRanges) as DayQuotaRange[])); } catch {}
-      }
+    }
+    if (_quotaRangesPrint.length === 0 && plan.quotaJuz && plan.quotaJuz > 0) {
+      const firstN = Array.from({ length: Math.min(plan.quotaJuz, 30) }, (_, i) => i + 1);
+      _quotaRangesPrint.push(...juzListToQuotaRanges(firstN));
+    }
+  } else if (plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
+    _quotaRangesPrint.push({ surahStart: plan.quotaSurahStart, ayahStart: plan.quotaAyahStart, surahEnd: plan.quotaSurahEnd, ayahEnd: plan.quotaAyahEnd });
+    if (plan.extraRanges) {
+      try {
+        const extraParsed = JSON.parse(plan.extraRanges) as DayQuotaRange[];
+        if (Array.isArray(extraParsed) && extraParsed.length > 0 && typeof extraParsed[0] === "object") {
+          _quotaRangesPrint.push(...extraParsed);
+        }
+      } catch {}
     }
   }
   const computedRanges = _quotaRangesPrint.length > 0 ? computeDayRanges(_quotaRangesPrint, plan.days) : null;
@@ -352,7 +356,10 @@ function printPlan(plan: ReviewPlan, totalDays: number, planMode: "girls" | "fix
   if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400); }
 }
 
-function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDays: number; planMode: "girls" | "fixation" }) {
+function PlanDisplay({ plan, totalDays, planMode, canCancel, onCancel, isLocked }: {
+  plan: ReviewPlan; totalDays: number; planMode: "girls" | "fixation";
+  canCancel?: boolean; onCancel?: () => void; isLocked?: boolean;
+}) {
   const today = getMeccaToday();
   const dates = getDayDates(plan.startDate, totalDays, planMode);
   const currentDay = getCurrentPlanDay(plan.startDate, totalDays, planMode);
@@ -367,23 +374,34 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
     ? `${plan.totalPages} صفحة`
     : plan.quantity === "half" ? "نصف وجه/يوم" : plan.quantity === "full" ? "وجه/يوم" : "";
 
-  const hasSurahData = plan.days.some(d => d.surahStart);
+  // Build quota ranges from plan metadata — always, used as fallback when days lack explicit surah data
   const _quotaRanges: DayQuotaRange[] = [];
-  if (!hasSurahData) {
-    if (plan.quotaType === "juz" && plan.extraRanges) {
+  if (plan.quotaType === "juz") {
+    // First try extraRanges (specific juz list), then fall back to first N juz
+    if (plan.extraRanges) {
       try {
         const juzList = JSON.parse(plan.extraRanges) as number[];
         if (Array.isArray(juzList) && juzList.length > 0 && typeof juzList[0] === "number") {
           _quotaRanges.push(...juzListToQuotaRanges(juzList));
         }
       } catch {}
-    } else if (plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
-      _quotaRanges.push({ surahStart: plan.quotaSurahStart, ayahStart: plan.quotaAyahStart, surahEnd: plan.quotaSurahEnd, ayahEnd: plan.quotaAyahEnd });
-      if (plan.extraRanges) {
-        try { _quotaRanges.push(...(JSON.parse(plan.extraRanges) as DayQuotaRange[])); } catch {}
-      }
+    }
+    if (_quotaRanges.length === 0 && plan.quotaJuz && plan.quotaJuz > 0) {
+      const firstN = Array.from({ length: Math.min(plan.quotaJuz, 30) }, (_, i) => i + 1);
+      _quotaRanges.push(...juzListToQuotaRanges(firstN));
+    }
+  } else if (plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
+    _quotaRanges.push({ surahStart: plan.quotaSurahStart, ayahStart: plan.quotaAyahStart, surahEnd: plan.quotaSurahEnd, ayahEnd: plan.quotaAyahEnd });
+    if (plan.extraRanges) {
+      try {
+        const extraParsed = JSON.parse(plan.extraRanges) as DayQuotaRange[];
+        if (Array.isArray(extraParsed) && extraParsed.length > 0 && typeof extraParsed[0] === "object") {
+          _quotaRanges.push(...extraParsed);
+        }
+      } catch {}
     }
   }
+  // computedRanges is used as fallback for days that don't have explicit surah fields stored
   const computedRanges = _quotaRanges.length > 0 ? computeDayRanges(_quotaRanges, plan.days) : null;
 
   const [expanded, setExpanded] = useState(false);
@@ -391,18 +409,44 @@ function PlanDisplay({ plan, totalDays, planMode }: { plan: ReviewPlan; totalDay
 
   return (
     <div className="space-y-3">
+      {/* ─── Metadata grid ──────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-2">
-        {[
-          { label: "بداية الخطة", value: formatArDate(plan.startDate) },
-          { label: "نهاية الخطة", value: formatArDate(endDate) },
-          ...(quotaLabel ? [{ label: "النصاب", value: quotaLabel }] : []),
-          ...(totalLabel ? [{ label: "الكمية", value: totalLabel }] : []),
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-muted/40 rounded-xl p-2.5">
-            <p className="text-[10px] text-muted-foreground mb-0.5">{label}</p>
-            <p className="font-semibold text-xs">{value}</p>
+        {/* Start date */}
+        <div className="bg-muted/40 rounded-xl p-2.5">
+          <p className="text-[10px] text-muted-foreground mb-0.5">بداية الخطة</p>
+          <p className="font-semibold text-xs">{formatArDate(plan.startDate)}</p>
+        </div>
+
+        {/* End date — cancel button for students lives here */}
+        <div className="bg-muted/40 rounded-xl p-2.5 relative">
+          <p className="text-[10px] text-muted-foreground mb-0.5">نهاية الخطة</p>
+          <div className="flex items-center justify-between gap-1">
+            <p className="font-semibold text-xs">{formatArDate(endDate)}</p>
+            {canCancel && onCancel && (
+              <button
+                onClick={onCancel}
+                className="flex items-center gap-0.5 text-[10px] text-rose-500 hover:text-rose-700 transition-colors shrink-0"
+                title="إلغاء الخطة"
+              >
+                <Trash2 className="w-3 h-3" />
+                {isLocked ? "إلغاء (مقفلة)" : "إلغاء"}
+              </button>
+            )}
           </div>
-        ))}
+        </div>
+
+        {quotaLabel && (
+          <div className="bg-muted/40 rounded-xl p-2.5">
+            <p className="text-[10px] text-muted-foreground mb-0.5">النصاب</p>
+            <p className="font-semibold text-xs">{quotaLabel}</p>
+          </div>
+        )}
+        {totalLabel && (
+          <div className="bg-muted/40 rounded-xl p-2.5">
+            <p className="text-[10px] text-muted-foreground mb-0.5">الكمية</p>
+            <p className="font-semibold text-xs">{totalLabel}</p>
+          </div>
+        )}
       </div>
 
       {isCompleted ? (
