@@ -486,55 +486,63 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
             ))
             .orderBy(recordsTable.date);
 
-          // Map day N → review at day N+10
-          const newcomerDays = day1to10.map((date, i) => {
-            const rec = memRecords.find(r => r.date === date);
-            return {
-              dayNumber: i + 11,
-              surahStart: rec?.memorizeSurahStart ?? null,
-              ayahStart: rec?.memorizeAyahStart ?? null,
-              surahEnd: rec?.memorizeSurahEnd ?? null,
-              ayahEnd: rec?.memorizeAyahEnd ?? null,
-              pages: rec?.memorizePages ?? null,
-            };
-          });
+          // Only use newcomer path if at least one memorization record exists.
+          // If no records yet (e.g. plan created on day 1), fall through to normal plan creation
+          // so the student can pick her quota via the wizard.
+          const hasAnyRecord = memRecords.some(r => r.memorizePages != null && r.memorizePages > 0);
 
-          const totalNewcomerPages = newcomerDays.reduce((s, d) => s + (d.pages ?? 0), 0);
+          if (hasAnyRecord) {
+            // Map day N → review at day N+10
+            const newcomerDays = day1to10.map((date, i) => {
+              const rec = memRecords.find(r => r.date === date);
+              return {
+                dayNumber: i + 11,
+                surahStart: rec?.memorizeSurahStart ?? null,
+                ayahStart: rec?.memorizeAyahStart ?? null,
+                surahEnd: rec?.memorizeSurahEnd ?? null,
+                ayahEnd: rec?.memorizeAyahEnd ?? null,
+                pages: rec?.memorizePages ?? null,
+              };
+            });
 
-          // Cancel any previous plan
-          await db.update(reviewPlansTable)
-            .set({ status: "cancelled" })
-            .where(and(
-              eq(reviewPlansTable.studentId, studentId),
-              eq(reviewPlansTable.circleId, circleId),
-              eq(reviewPlansTable.status, "active")
-            ));
+            const totalNewcomerPages = newcomerDays.reduce((s, d) => s + (d.pages ?? 0), 0);
 
-          const [plan] = await db.insert(reviewPlansTable).values({
-            studentId, circleId,
-            planType: "girls_review",
-            status: "active",
-            quotaType: "surah",
-            planMode: "manual",
-            totalPages: totalNewcomerPages || null,
-            startDate: day11Date,
-            themeColor: themeColor ?? "#E8D5F5",
-          }).returning();
+            // Cancel any previous plan
+            await db.update(reviewPlansTable)
+              .set({ status: "cancelled" })
+              .where(and(
+                eq(reviewPlansTable.studentId, studentId),
+                eq(reviewPlansTable.circleId, circleId),
+                eq(reviewPlansTable.status, "active")
+              ));
 
-          const savedDays = newcomerDays.length > 0
-            ? await db.insert(reviewPlanDaysTable).values(
-                newcomerDays.map(d => ({ planId: plan.id!, ...d }))
-              ).returning()
-            : [];
+            const [plan] = await db.insert(reviewPlansTable).values({
+              studentId, circleId,
+              planType: "girls_review",
+              status: "active",
+              quotaType: "surah",
+              planMode: "manual",
+              totalPages: totalNewcomerPages || null,
+              startDate: cycleStartDate, // use cycle start date so UI shows القائدة's date
+              themeColor: themeColor ?? "#E8D5F5",
+            }).returning();
 
-          res.status(201).json({
-            ...plan,
-            createdAt: plan.createdAt.toISOString(),
-            updatedAt: plan.updatedAt?.toISOString(),
-            days: savedDays,
-            isNewcomerPlan: true,
-          });
-          return;
+            const savedDays = newcomerDays.length > 0
+              ? await db.insert(reviewPlanDaysTable).values(
+                  newcomerDays.map(d => ({ planId: plan.id!, ...d }))
+                ).returning()
+              : [];
+
+            res.status(201).json({
+              ...plan,
+              createdAt: plan.createdAt.toISOString(),
+              updatedAt: plan.updatedAt?.toISOString(),
+              days: savedDays,
+              isNewcomerPlan: true,
+            });
+            return;
+          }
+          // else: no records yet → fall through to normal plan creation below
         }
       }
     }
