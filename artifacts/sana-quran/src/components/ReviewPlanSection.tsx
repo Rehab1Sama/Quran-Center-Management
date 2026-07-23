@@ -214,7 +214,7 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
                     <Lock className="w-3 h-3" />
-                    <span>مقفلة حتى {plan!.cycleInfo!.cycleEndDate}</span>
+                    <span>مقفلة حتى {formatArDate(plan!.cycleInfo!.cycleEndDate)}</span>
                   </div>
                   {canForceDelete && (
                     <Button variant="ghost" size="sm" className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 gap-1" onClick={handleCancel}>
