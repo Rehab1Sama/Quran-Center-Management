@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { BookOpen, CheckCircle2, XCircle, ChevronDown, ChevronUp, Users, Loader2, RefreshCw, CalendarDays, RotateCcw, Clock } from "lucide-react";
+import { BookOpen, CheckCircle2, XCircle, ChevronDown, ChevronUp, Users, Loader2, RefreshCw, CalendarDays, RotateCcw, Clock, Settings2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { getCurrentPlanDay, getDayDates, formatArDate } from "@/components/ReviewPlanSection";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -796,26 +797,51 @@ export default function ReviewPlansOverviewPage({ userRole }: Props) {
   const [filter, setFilter] = useState<"all" | "with" | "without">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "behind" | "ontrack" | "ahead">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [studentCanEditPlan, setStudentCanEditPlan] = useState(false);
+  const [togglingEdit, setTogglingEdit] = useState(false);
   const canSeeStatusTabs = userRole === "leader" || userRole === "deputy" || userRole === "track_supervisor";
 
   const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${BASE}/api/review-plans/overview`, { headers: authHeader() });
-      if (!res.ok) throw new Error("فشل تحميل البيانات");
-      const json = await res.json();
-      // API returns { circles: [...], cycleInfo: {...} }
+      const [overviewRes, settingsRes] = await Promise.all([
+        fetch(`${BASE}/api/review-plans/overview`, { headers: authHeader() }),
+        fetch(`${BASE}/api/review-plans/settings`, { headers: authHeader() }),
+      ]);
+      if (!overviewRes.ok) throw new Error("فشل تحميل البيانات");
+      const json = await overviewRes.json();
       if (Array.isArray(json)) {
         setCircles(json);
       } else {
         setCircles(json.circles ?? []);
         setCycleInfo(json.cycleInfo ?? null);
       }
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json();
+        setStudentCanEditPlan(settings.studentCanEditPlan ?? false);
+      }
     } catch {
       setError("تعذّر تحميل خطط المراجعة");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleStudentEdit = async (value: boolean) => {
+    setTogglingEdit(true);
+    try {
+      const res = await fetch(`${BASE}/api/review-plans/settings`, {
+        method: "POST",
+        headers: authHeader(),
+        body: JSON.stringify({ studentCanEditPlan: value }),
+      });
+      if (!res.ok) throw new Error("فشل تحديث الإعداد");
+      setStudentCanEditPlan(value);
+    } catch (e: any) {
+      alert("خطأ: " + e.message);
+    } finally {
+      setTogglingEdit(false);
     }
   };
 
@@ -889,6 +915,34 @@ export default function ReviewPlansOverviewPage({ userRole }: Props) {
           تحديث
         </button>
       </div>
+
+      {/* Student edit/delete permission toggle — leader only */}
+      {!loading && !error && userRole === "leader" && (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-muted">
+                  <Settings2 className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">السماح للطالبات بتعديل خططهن وحذفها</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {studentCanEditPlan
+                      ? "مفعّل — الطالبات يستطعن حذف خططهن أو استبدالها حتى لو كانت الخطة لم تنتهِ بعد"
+                      : "موقوف — الخطط مقفولة طوال الدورة ولا يمكن للطالبات تعديلها أو حذفها"}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={studentCanEditPlan}
+                onCheckedChange={handleToggleStudentEdit}
+                disabled={togglingEdit}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cycle management banner — girls only */}
       {!loading && !error && hasCycleData && (

@@ -104,6 +104,12 @@ async function getGlobalCycleEndDate(): Promise<string | null> {
   return row?.value ?? null;
 }
 
+async function getStudentCanEditPlan(): Promise<boolean> {
+  const [row] = await db.select().from(globalSettingsTable)
+    .where(eq(globalSettingsTable.key, "student_can_edit_plan"));
+  return row?.value === "true";
+}
+
 // Effective end date for a plan: the scheduled forced cycle-end date if it applies
 // to this plan (plan started on/before it, and it actually shortens the cycle),
 // otherwise the plan's own natural start+21 end date.
@@ -411,11 +417,28 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       const endDate = await getEffectiveEndDate(activePlan);
       const today = getTodayMecca();
       if (today <= endDate) {
-        res.status(403).json({
-          error: `لا يمكن إنشاء خطة جديدة قبل انتهاء الخطة الحالية (تنتهي ${endDate})`,
-          lockedUntil: endDate,
-        });
-        return;
+        // Non-admin students may be granted permission by the leader to edit/replace their plan
+        const nonAdmin = !["leader", "deputy", "track_supervisor"].includes(req.userRole!);
+        const planTypeLockable = activePlan.planType === "girls_review" || activePlan.planType === "fixation";
+        if (nonAdmin && planTypeLockable) {
+          const studentCanEdit = await getStudentCanEditPlan();
+          if (!studentCanEdit) {
+            res.status(403).json({
+              error: `لا يمكن إنشاء خطة جديدة قبل انتهاء الخطة الحالية (تنتهي ${endDate})`,
+              lockedUntil: endDate,
+            });
+            return;
+          }
+          // Permission granted — fall through to replace the plan
+        } else if (!nonAdmin) {
+          // Admin roles: always allowed, fall through
+        } else {
+          res.status(403).json({
+            error: `لا يمكن إنشاء خطة جديدة قبل انتهاء الخطة الحالية (تنتهي ${endDate})`,
+            lockedUntil: endDate,
+          });
+          return;
+        }
       }
     }
 
@@ -575,20 +598,26 @@ router.delete("/students/:id/review-plan/:planId", authenticate, async (req, res
     .limit(1);
 
   const adminRoles = ["leader", "deputy", "track_supervisor"];
+  const isAdminRole = adminRoles.includes(req.userRole!);
+  const planTypeLockable = planToDelete?.planType === "girls_review" || planToDelete?.planType === "fixation";
   if (
-    !adminRoles.includes(req.userRole!) &&
-    planToDelete?.planType === "girls_review" &&
-    planToDelete.startDate &&
+    !isAdminRole &&
+    planTypeLockable &&
+    planToDelete?.startDate &&
     !isWithinAutoPlanEditWindow(planToDelete)
   ) {
-    const endDate = await getEffectiveEndDate(planToDelete);
-    const today = getTodayMecca();
-    if (today <= endDate) {
-      res.status(403).json({
-        error: "لا يمكن حذف خطة المراجعة قبل انتهاء الـ21 يوم",
-        lockedUntil: endDate,
-      });
-      return;
+    // Check if leader has granted students permission to edit/delete their plans
+    const studentCanEdit = await getStudentCanEditPlan();
+    if (!studentCanEdit) {
+      const endDate = await getEffectiveEndDate(planToDelete);
+      const today = getTodayMecca();
+      if (today <= endDate) {
+        res.status(403).json({
+          error: "لا يمكن حذف خطة المراجعة قبل انتهاء الـ21 يوم",
+          lockedUntil: endDate,
+        });
+        return;
+      }
     }
   }
 
@@ -629,6 +658,23 @@ router.get("/circles/:circleId/review-plans", authenticate, async (req, res): Pr
   }));
 
   res.json(result);
+});
+
+// ─── GET: review-plan settings ────────────────────────────────────────────────
+router.get("/review-plans/settings", authenticate, async (_req, res): Promise<void> => {
+  const studentCanEditPlan = await getStudentCanEditPlan();
+  res.json({ studentCanEditPlan });
+});
+
+// ─── POST: update review-plan settings (leader only) ─────────────────────────
+router.post("/review-plans/settings", authenticate, async (req, res): Promise<void> => {
+  if (req.userRole !== "leader") { res.status(403).json({ error: "Forbidden" }); return; }
+  const { studentCanEditPlan } = req.body ?? {};
+  if (typeof studentCanEditPlan !== "boolean") {
+    res.status(400).json({ error: "studentCanEditPlan (boolean) مطلوب" }); return;
+  }
+  await upsertSetting("student_can_edit_plan", studentCanEditPlan ? "true" : "false");
+  res.json({ studentCanEditPlan });
 });
 
 // ─── POST: bulk renew all girls plans (leader/deputy only) ────────────────────
