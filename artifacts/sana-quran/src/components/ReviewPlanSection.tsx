@@ -217,8 +217,10 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
                   <span>مقفلة حتى {formatArDate(plan.cycleInfo.cycleEndDate)}</span>
                 </div>
               )}
-              {/* Create / renew button — only when not locked */}
-              {!isLocked && effectiveCanCreate && (
+              {/* Create / renew button:
+                  - Staff (canCreate, not studentSelf): only when plan is not locked
+                  - Student on her own page (studentSelf): whenever the leader has granted permission (effectiveCanCreate = studentCanEditPlan), even if locked */}
+              {effectiveCanCreate && (!isLocked || studentSelf) && (
                 <Button size="sm" variant={plan ? "outline" : "default"} className="text-xs gap-1" onClick={() => setWizardOpen(true)}>
                   {plan ? <><RefreshCw className="w-3.5 h-3.5" />تجديد</> : <><Plus className="w-3.5 h-3.5" />إنشاء خطة</>}
                 </Button>
