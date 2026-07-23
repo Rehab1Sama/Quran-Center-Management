@@ -134,13 +134,16 @@ interface Props {
   trackType: string;
   canCreate: boolean;
   canForceDelete?: boolean;
+  /** true only on the student's own "خطتي" page (my-progress) */
+  studentSelf?: boolean;
 }
 
-export default function ReviewPlanSection({ studentId, circleId, trackType, canCreate, canForceDelete }: Props) {
+export default function ReviewPlanSection({ studentId, circleId, trackType, canCreate, canForceDelete, studentSelf }: Props) {
   const [plan, setPlan] = useState<ReviewPlan | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [cycleStartDate, setCycleStartDate] = useState<string | null>(null);
+  const [studentCanEditPlan, setStudentCanEditPlan] = useState(false);
   const { toast } = useToast();
 
   const isGirls = trackType === "girls";
@@ -160,6 +163,7 @@ export default function ReviewPlanSection({ studentId, circleId, trackType, canC
       if (settingsRes.ok) {
         const s = await settingsRes.json();
         setCycleStartDate(s.cycleStartDate ?? null);
+        setStudentCanEditPlan(s.studentCanEditPlan === true);
       }
     } catch { setPlan(null); }
     finally { setLoading(false); }
