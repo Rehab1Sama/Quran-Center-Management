@@ -1063,6 +1063,9 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
       const dateStr = cycleDates[dayNumber - 1];
       const rec = dateStr ? dayRecords[dateStr] : undefined;
       if (rec?.isAbsent) return;
+      // Saturday (getUTCDay() === 6): no data entry at the Maqra'a on Saturdays.
+      // If there's no record, skip silently — don't count it as a miss.
+      if (!rec && dateStr && new Date(dateStr + "T12:00:00Z").getUTCDay() === 6) return;
       const quota = day?.pages ?? 0;
       if (rec && rec.reviewFarPages != null) {
         const done = rec.reviewFarPages;

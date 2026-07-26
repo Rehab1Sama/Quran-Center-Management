@@ -241,6 +241,8 @@ router.get("/stats/stumbling", authenticate, async (req, res): Promise<void> => 
       const day = planDays.find(pd => pd.dayNumber === d);
       const dateStr = cycleDates[d - 1];
       const rec = dateStr ? dayRecords[dateStr] : undefined;
+      // Saturday: no data entry at the Maqra'a — skip if no record exists
+      if (!rec && dateStr && new Date(dateStr + "T12:00:00Z").getUTCDay() === 6) continue;
       if (rec?.isAbsent) { missed++; continue; }
       const quota = day?.pages ?? 0;
       if (quota <= 0) continue;

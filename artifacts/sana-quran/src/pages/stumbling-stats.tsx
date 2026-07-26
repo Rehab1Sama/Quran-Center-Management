@@ -22,7 +22,7 @@ type TeacherAlert = {
 };
 type StudentAlert = {
   studentId: number; studentName: string; circleName: string; track: string;
-  absenceCount: number; shortcomingCount: number;
+  absenceCount: number; shortcomingCount: number; planMissedDays?: number;
 };
 type CycleCompleted = {
   studentId: number; studentName: string; circleName: string; track: string;
@@ -535,6 +535,9 @@ export default function StumblingStatsPage() {
                         <div className="flex items-center justify-between gap-2">
                           <p className="font-semibold text-sm text-foreground">{a.studentName}</p>
                           <div className="flex gap-1 flex-shrink-0 flex-wrap justify-end">
+                            {(a.planMissedDays ?? 0) >= 3 && (
+                              <Badge className="bg-yellow-100 text-yellow-800 border-0 text-xs">{a.planMissedDays} أيام تأخير بالخطة</Badge>
+                            )}
                             {a.absenceCount >= 3 && (
                               <Badge className="bg-rose-100 text-rose-800 border-0 text-xs">{a.absenceCount} غياب</Badge>
                             )}
