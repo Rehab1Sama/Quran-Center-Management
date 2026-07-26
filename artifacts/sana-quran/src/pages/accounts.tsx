@@ -161,6 +161,8 @@ export default function AccountsPage() {
   const [permDeleteOpen, setPermDeleteOpen] = useState(false);
   const [permDeleteTarget, setPermDeleteTarget] = useState<{ id: number; label: string } | null>(null);
   const [permDeleting, setPermDeleting] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<{ id: number; label: string } | null>(null);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [assignTarget, setAssignTarget] = useState<{ userId: number; userName: string } | null>(null);
   const [selectedAssignCircles, setSelectedAssignCircles] = useState<number[]>([]);
@@ -296,13 +298,20 @@ export default function AccountsPage() {
   };
 
   const handleArchiveAccount = (userId: number, label: string) => {
-    if (!confirm(`هل تريدين أرشفة "${label}"؟ ستنتقل بياناته للأرشيف وتبقى إحصائياته محفوظة.`)) return;
+    setArchiveTarget({ id: userId, label });
+    setArchiveOpen(true);
+  };
+
+  const confirmArchive = () => {
+    if (!archiveTarget) return;
     deleteUser.mutate(
-      { id: userId },
+      { id: archiveTarget.id },
       {
         onSuccess: () => {
           toast({ title: "تمت الأرشفة", description: "الحساب في الأرشيف وبياناته محفوظة" });
           queryClient.invalidateQueries({ queryKey: ["users"] });
+          setArchiveOpen(false);
+          setArchiveTarget(null);
         },
         onError: () => toast({ title: "خطأ في الأرشفة", variant: "destructive" }),
       }
@@ -897,6 +906,37 @@ export default function AccountsPage() {
               className="gap-1.5"
             >
               {assignSaving ? "جاري الحفظ..." : `حفظ (${selectedAssignCircles.length} حلقة)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* نافذة تأكيد الأرشفة */}
+      <Dialog open={archiveOpen} onOpenChange={v => { if (!v) { setArchiveOpen(false); setArchiveTarget(null); } }}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Archive className="w-4 h-4 text-amber-600" />
+              أرشفة الحساب
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
+              <p className="text-sm text-amber-800">
+                سيتم أرشفة حساب <span className="font-bold">{archiveTarget?.label}</span>.
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground">تبقى جميع البيانات والإحصائيات محفوظة في النظام.</p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setArchiveOpen(false); setArchiveTarget(null); }}>إلغاء</Button>
+            <Button
+              onClick={confirmArchive}
+              disabled={deleteUser.isPending}
+              className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+            >
+              <Archive className="w-3.5 h-3.5" />
+              {deleteUser.isPending ? "جاري الأرشفة..." : "تأكيد الأرشفة"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1756,12 +1756,16 @@ export default function DataEntryPage() {
                           </p>
                         )}
                       </div>
-                      {!hasRecord && !isOnLeave && (
+                      {!isOnLeave && (
                         <div className="flex gap-1.5 shrink-0">
                           <Button
                             size="sm"
                             variant="outline"
-                            className="gap-1 text-rose-600 border-rose-200 hover:bg-rose-50 h-8 px-3"
+                            className={`gap-1 h-8 px-3 ${
+                              hasRecord && recordForEdit?.isAbsent
+                                ? "border-rose-400 text-rose-700 bg-rose-50"
+                                : "text-rose-600 border-rose-200 hover:bg-rose-50"
+                            }`}
                             onClick={() => handleThursdayDecision(student, false)}
                             disabled={createRecord.isPending || updateRecord.isPending}
                           >
@@ -1770,7 +1774,11 @@ export default function DataEntryPage() {
                           </Button>
                           <Button
                             size="sm"
-                            className="gap-1 h-8 px-3 bg-emerald-600 hover:bg-emerald-700"
+                            className={`gap-1 h-8 px-3 ${
+                              hasRecord && !recordForEdit?.isAbsent
+                                ? "bg-emerald-700 hover:bg-emerald-800"
+                                : "bg-emerald-600 hover:bg-emerald-700"
+                            }`}
                             onClick={() => handleThursdayDecision(student, true)}
                             disabled={createRecord.isPending || updateRecord.isPending}
                           >
