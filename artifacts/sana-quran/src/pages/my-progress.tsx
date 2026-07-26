@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { TrendingUp, Calendar, Users, ExternalLink, Volume2, MessageSquare, AlertTriangle, Target, Plus, CheckCircle2, Circle, BookOpen, Loader2, Trash2 } from "lucide-react";
+import { TrendingUp, Calendar, Users, ExternalLink, Volume2, MessageSquare, AlertTriangle, Target, Plus, CheckCircle2, Circle, BookOpen, Loader2, Trash2, Clock } from "lucide-react";
 import { formatPages } from "@/lib/quran";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import AudioContent from "@/pages/audio";
@@ -99,7 +99,7 @@ export default function MyProgressPage() {
   // Circles always fetched (needed for trackType in shortcomings computation)
   const { data: allCircles = [] } = useListCircles(undefined, { query: { queryKey: ["circles"], enabled: !!user?.id } });
   const { data: allStudents = [] } = useListStudents(undefined, { query: { queryKey: ["allStudents"], enabled: onCircleTab } });
-  const { data: allUsers = [] } = useListUsers(undefined, { query: { queryKey: ["users"], enabled: onCircleTab } });
+  const { data: allUsers = [] } = useListUsers(undefined, { query: { queryKey: ["users"], enabled: !!user?.id } });
   const { data: allBadgeAssignments = [] } = useListBadgeAssignments(undefined, { query: { queryKey: ["badgeAssignments"] } });
   const { data: myMessages = [] } = useGetMyMessages({ query: { queryKey: ["myMessages"], enabled: onCircleTab } });
   const myCircle = allCircles.find((c: any) => c.id === circleId);

@@ -360,16 +360,24 @@ export default function LeaderCirclesPage() {
     !search || c.name.includes(search) || (c.teacherName ?? "").includes(search) || (c.supervisorName ?? "").includes(search)
   );
 
-  const tracks = Array.from(new Set(filtered.map(c => c.track))).sort();
+  const naturalSort = (a: string, b: string) => a.localeCompare(b, 'ar', { numeric: true, sensitivity: 'base' });
+
+  const tracks = Array.from(new Set(filtered.map(c => c.track))).sort(naturalSort);
   const grouped: Record<string, EnrichedCircle[]> = {};
   filtered.forEach(c => {
     if (!grouped[c.track]) grouped[c.track] = [];
     grouped[c.track].push(c);
   });
+  // Sort circles within each track ascending by name (وهج 1, وهج 2, وهج 10 ...)
+  Object.keys(grouped).forEach(track => {
+    grouped[track].sort((a, b) => naturalSort(a.name, b.name));
+  });
 
   // Deputy view: group by time period
   const isFixationCircle = (c: EnrichedCircle) =>
     c.trackType === "fixation" || c.track.includes("تثبيت") || c.track.includes("fixation");
+
+  const sortCircles = (arr: EnrichedCircle[]) => [...arr].sort((a, b) => naturalSort(a.name, b.name));
 
   const deputyPeriods = isDeputy ? (() => {
     const fixation = filtered.filter(isFixationCircle);
@@ -379,11 +387,11 @@ export default function LeaderCirclesPage() {
     const evening = regular.filter(c => c.meetingTime && c.meetingTime >= "16:00");
     const noTime = regular.filter(c => !c.meetingTime);
     return [
-      { key: "morning", label: "الفترة الصباحية", emoji: "🌅", colorClass: "bg-amber-50 border-amber-200 text-amber-800", circles: morning },
-      { key: "afternoon", label: "الفترة الظهيرة", emoji: "☀️", colorClass: "bg-orange-50 border-orange-200 text-orange-800", circles: afternoon },
-      { key: "evening", label: "الفترة المسائية", emoji: "🌙", colorClass: "bg-indigo-50 border-indigo-200 text-indigo-800", circles: evening },
-      { key: "notime", label: "غير محدد الوقت", emoji: "🕐", colorClass: "bg-gray-50 border-gray-200 text-gray-700", circles: noTime },
-      { key: "fixation", label: "حلقات التثبيت", emoji: "📚", colorClass: "bg-emerald-50 border-emerald-200 text-emerald-800", circles: fixation, isFixation: true },
+      { key: "morning", label: "الفترة الصباحية", emoji: "🌅", colorClass: "bg-amber-50 border-amber-200 text-amber-800", circles: sortCircles(morning) },
+      { key: "afternoon", label: "الفترة الظهيرة", emoji: "☀️", colorClass: "bg-orange-50 border-orange-200 text-orange-800", circles: sortCircles(afternoon) },
+      { key: "evening", label: "الفترة المسائية", emoji: "🌙", colorClass: "bg-indigo-50 border-indigo-200 text-indigo-800", circles: sortCircles(evening) },
+      { key: "notime", label: "غير محدد الوقت", emoji: "🕐", colorClass: "bg-gray-50 border-gray-200 text-gray-700", circles: sortCircles(noTime) },
+      { key: "fixation", label: "حلقات التثبيت", emoji: "📚", colorClass: "bg-emerald-50 border-emerald-200 text-emerald-800", circles: sortCircles(fixation), isFixation: true },
     ].filter(p => p.circles.length > 0);
   })() : [];
 

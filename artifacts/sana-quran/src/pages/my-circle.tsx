@@ -247,6 +247,9 @@ export default function MyCirclePage() {
                     <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الحفظ</th>
                     <th className="text-right py-3 px-4 font-semibold text-muted-foreground">المراجعة</th>
                     <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الدرجة</th>
+                    {(trackType === "girls" || trackType === "fixation") && (
+                      <th className="text-right py-3 px-4 font-semibold text-muted-foreground text-violet-700">النصاب</th>
+                    )}
                     <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الحالة</th>
                   </tr>
                 </thead>
@@ -256,12 +259,15 @@ export default function MyCirclePage() {
                     const onLeave = isOnLeave(student);
                     const studentPlan = circlePlans.find((p: any) => p.studentId === student.id);
                     let planBadge: React.ReactNode = null;
+                    let todayQuota: number | null = null;
                     if (studentPlan) {
                       const pMode: "girls" | "fixation" = studentPlan.planType === "fixation" ? "fixation" : "girls";
                       const totalDays = studentPlan.planType === "fixation" ? 24 : 21;
                       const todayDay = getCurrentPlanDay(studentPlan.startDate, totalDays, pMode);
                       if (todayDay > 0 && todayDay <= totalDays) {
                         planBadge = <Badge className="bg-violet-100 text-violet-700 border-0 text-[10px] px-1.5 py-0">يوم {todayDay}</Badge>;
+                        const dayEntry = (studentPlan.days ?? []).find((d: any) => d.dayNumber === todayDay);
+                        todayQuota = dayEntry?.pages ?? null;
                       } else if (todayDay > totalDays) {
                         planBadge = <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px] px-1.5 py-0">✓ اكتملت</Badge>;
                       }
@@ -301,6 +307,11 @@ export default function MyCirclePage() {
                         <td className="py-3 px-4 text-muted-foreground text-xs">
                           {record?.grade ?? "—"}
                         </td>
+                        {(trackType === "girls" || trackType === "fixation") && (
+                          <td className="py-3 px-4 font-semibold text-violet-700">
+                            {todayQuota ? formatPages(todayQuota) : "—"}
+                          </td>
+                        )}
                         <td className="py-3 px-4">
                           {onLeave ? (
                             <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">في إجازة</Badge>
