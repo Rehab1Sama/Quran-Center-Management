@@ -1075,8 +1075,26 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
       }
     };
 
-    for (let d = 1; d < currentDay; d++) evaluateDay(d);
-    // Also factor in today's entry if it has already been recorded
+    // Pass 1: find the last day the student fully completed their quota.
+    // Any missed days BEFORE that catch-up day are permanently forgiven —
+    // even if today's data hasn't been entered yet.
+    let lastCompletedDay = 0;
+    for (let d = 1; d <= currentDay; d++) {
+      const dateStr = cycleDates[d - 1];
+      const rec = dateStr ? dayRecords[dateStr] : undefined;
+      if (!rec || rec.isAbsent || rec.reviewFarPages == null) continue;
+      const day = planDays.find((pd: typeof allDays[0]) => pd.dayNumber === d);
+      const quota = day?.pages ?? 0;
+      const done = rec.reviewFarPages;
+      if (quota <= 0 || done >= quota) lastCompletedDay = d;
+    }
+
+    // Pass 2: evaluate only days AFTER the last catch-up (genuine unresolved misses).
+    // If any catch-up exists, the forgiven period counts as ontrack at minimum.
+    if (lastCompletedDay > 0) hasOntrack = true;
+    for (let d = lastCompletedDay + 1; d < currentDay; d++) evaluateDay(d);
+
+    // Also factor in today's entry for today's contribution to the status.
     const todayDateStr = cycleDates[currentDay - 1];
     const todayRec = todayDateStr ? dayRecords[todayDateStr] : undefined;
     if (todayRec && !todayRec.isAbsent && todayRec.reviewFarPages != null) evaluateDay(currentDay);

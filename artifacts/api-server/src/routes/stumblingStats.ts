@@ -2,11 +2,23 @@ import { Router, type IRouter } from "express";
 import {
   db, usersTable, circlesTable, studentsTable, recordsTable,
   teacherAbsencesTable, dailyCircleTasksTable, trackSupervisorNamesTable, tracksTable,
-  deputyTasksTable,
+  deputyTasksTable, reviewPlansTable, reviewPlanDaysTable,
 } from "@workspace/db";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { getMakkahDay, getMakkahDaysAgo } from "../lib/date";
+
+/** Returns all non-Friday dates from startDate up to totalDays count */
+function getCycleDates(startDate: string, totalDays: number): string[] {
+  const dates: string[] = [];
+  const cur = new Date(startDate + "T12:00:00Z");
+  if (cur.getUTCDay() !== 5) dates.push(cur.toISOString().slice(0, 10));
+  while (dates.length < totalDays) {
+    cur.setDate(cur.getDate() + 1);
+    if (cur.getUTCDay() !== 5) dates.push(cur.toISOString().slice(0, 10));
+  }
+  return dates;
+}
 
 const router: IRouter = Router();
 
@@ -136,6 +148,108 @@ router.get("/stats/stumbling", authenticate, async (req, res): Promise<void> => 
   }
 
   // ── Student Alerts ──
+  // Fetch active girls_review plans and their days for students in filtered circles
+  const filteredStudentIds = allStudents.filter(s => s.circleId && filteredCircleIds.has(s.circleId)).map(s => s.id);
+  let activePlans: { id: number; studentId: number; circleId: number; startDate: string }[] = [];
+  let allPlanDays: { planId: number; dayNumber: number; pages: number }[] = [];
+  if (filteredStudentIds.length > 0) {
+    const plansRaw = await db.select({
+      id: reviewPlansTable.id,
+      studentId: reviewPlansTable.studentId,
+      circleId: reviewPlansTable.circleId,
+      startDate: reviewPlansTable.startDate,
+    }).from(reviewPlansTable).where(and(
+      eq(reviewPlansTable.status, "active"),
+      eq(reviewPlansTable.planType, "girls_review"),
+      inArray(reviewPlansTable.studentId, filteredStudentIds),
+    ));
+    activePlans = plansRaw;
+
+    if (plansRaw.length > 0) {
+      const planIds = plansRaw.map(p => p.id);
+      const daysRaw = await db.select({
+        planId: reviewPlanDaysTable.planId,
+        dayNumber: reviewPlanDaysTable.dayNumber,
+        pages: reviewPlanDaysTable.pages,
+      }).from(reviewPlanDaysTable).where(inArray(reviewPlanDaysTable.planId, planIds));
+      allPlanDays = daysRaw;
+    }
+  }
+
+  // Build plan records index: studentId:circleId -> date -> { reviewFarPages, isAbsent }
+  const planStudentIds = activePlans.map(p => p.studentId);
+  const planDatesSet = new Set<string>();
+  const planDatesMap = new Map<number, string[]>(); // planId -> cycle dates
+  for (const plan of activePlans) {
+    const dates = getCycleDates(plan.startDate, 21);
+    planDatesMap.set(plan.id, dates);
+    dates.forEach(d => planDatesSet.add(d));
+  }
+  const planRecordsByStudentCircle = new Map<string, Record<string, { reviewFarPages: number | null; isAbsent: boolean }>>();
+  if (planStudentIds.length > 0 && planDatesSet.size > 0) {
+    const planRecsRaw = await db.select({
+      studentId: recordsTable.studentId,
+      circleId: recordsTable.circleId,
+      date: recordsTable.date,
+      reviewFarPages: recordsTable.reviewFarPages,
+      isAbsent: recordsTable.isAbsent,
+    }).from(recordsTable).where(and(
+      inArray(recordsTable.studentId, planStudentIds),
+      inArray(recordsTable.date, [...planDatesSet]),
+    )).orderBy(recordsTable.studentId, recordsTable.date, desc(recordsTable.updatedAt));
+    for (const r of planRecsRaw) {
+      const key = `${r.studentId}:${r.circleId}`;
+      let m = planRecordsByStudentCircle.get(key);
+      if (!m) { m = {}; planRecordsByStudentCircle.set(key, m); }
+      if (!m[r.date]) m[r.date] = { reviewFarPages: r.reviewFarPages, isAbsent: r.isAbsent };
+    }
+  }
+
+  /**
+   * Counts unresolved missed plan days for a student using a cumulative catch-up rule:
+   * the last day the student fully completed their quota permanently forgives all prior misses.
+   * Only days AFTER that last catch-up point are counted as genuine delays.
+   */
+  function computePlanMissedDays(studentId: number, circleId: number): number {
+    const plan = activePlans.find(p => p.studentId === studentId && p.circleId === circleId);
+    if (!plan) return 0;
+    const cycleDates = planDatesMap.get(plan.id);
+    if (!cycleDates) return 0;
+    const planDays = allPlanDays.filter(d => d.planId === plan.id);
+    const dayRecords = planRecordsByStudentCircle.get(`${studentId}:${circleId}`) ?? {};
+
+    const dayIdx = cycleDates.indexOf(today);
+    const currentDay = dayIdx >= 0 ? dayIdx + 1 : today < cycleDates[0]! ? 0 : 22;
+    if (currentDay <= 0) return 0;
+
+    // Pass 1: find the last day the student completed their quota (catch-up checkpoint).
+    // Scans all days up to and including today so today's entry also counts as a catch-up.
+    let lastCompletedDay = 0;
+    for (let d = 1; d <= currentDay; d++) {
+      const dateStr = cycleDates[d - 1];
+      const rec = dateStr ? dayRecords[dateStr] : undefined;
+      if (!rec || rec.isAbsent || rec.reviewFarPages == null) continue;
+      const day = planDays.find(pd => pd.dayNumber === d);
+      const quota = day?.pages ?? 0;
+      const done = rec.reviewFarPages;
+      if (quota <= 0 || done >= quota) lastCompletedDay = d;
+    }
+
+    // Pass 2: count missed days only AFTER the last catch-up (genuinely unresolved).
+    let missed = 0;
+    for (let d = lastCompletedDay + 1; d < currentDay; d++) {
+      const day = planDays.find(pd => pd.dayNumber === d);
+      const dateStr = cycleDates[d - 1];
+      const rec = dateStr ? dayRecords[dateStr] : undefined;
+      if (rec?.isAbsent) { missed++; continue; }
+      const quota = day?.pages ?? 0;
+      if (quota <= 0) continue;
+      const done = rec?.reviewFarPages ?? null;
+      if (done == null || done < quota) missed++;
+    }
+    return missed;
+  }
+
   const studentAlerts: any[] = [];
 
   for (const s of allStudents) {
@@ -147,11 +261,12 @@ router.get("/stats/stumbling", authenticate, async (req, res): Promise<void> => 
     const absenceCount = studentRecs.filter(r => r.isAbsent).length;
     const shortcomingRecs = studentRecs.filter(r => !r.isAbsent && r.reviewFarPages === 0 && r.memorizePages === 0);
     const shortcomingCount = shortcomingRecs.length;
+    const planMissedDays = computePlanMissedDays(s.id, s.circleId);
 
-    if (absenceCount >= 3 || shortcomingCount >= 3) {
+    if (absenceCount >= 3 || shortcomingCount >= 3 || planMissedDays >= 3) {
       studentAlerts.push({
         studentId: s.id, studentName: s.fullName, circleName: circle.name, track: circle.track ?? "",
-        absenceCount, shortcomingCount, planMissedDays: 0, issueLabel: undefined, isLongStumbling: false,
+        absenceCount, shortcomingCount, planMissedDays, issueLabel: undefined, isLongStumbling: false,
       });
     }
   }
