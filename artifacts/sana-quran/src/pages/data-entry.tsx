@@ -981,6 +981,22 @@ export default function DataEntryPage() {
     }
   }, [isMothersEntry]);
 
+  // Plan day quotas for Thursday far review (reviewFarPages = خطة المراجعة)
+  const [planDayQuotas, setPlanDayQuotas] = useState<Record<number, { pages: number; dayNumber: number }>>({});
+  useEffect(() => {
+    if (!isThursdayQuotaCircle || !selectedCircleId || !selectedDate) {
+      setPlanDayQuotas({});
+      return;
+    }
+    const token = getToken();
+    fetch(`${BASE}/api/review-plans/circle-day-quota?circleId=${selectedCircleId}&date=${selectedDate}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.ok ? r.json() : { quotas: {} })
+      .then(d => setPlanDayQuotas(d.quotas ?? {}))
+      .catch(() => setPlanDayQuotas({}));
+  }, [isThursdayQuotaCircle, selectedCircleId, selectedDate]);
+
   // Last-10-days memorization records for Thursday quota review
   const quotaDateFrom = useMemo(() => {
     if (!selectedDate) return "";
@@ -1103,6 +1119,7 @@ export default function DataEntryPage() {
 
   const handleThursdayDecision = (student: any, passed: boolean) => {
     const summary = quotaByStudent[student.studentId];
+    const planQuota = planDayQuotas[student.studentId];
     const payload: any = {
       studentId: student.studentId,
       circleId: student.circleId,
@@ -1120,6 +1137,10 @@ export default function DataEntryPage() {
       payload.reviewSurahEnd = summary.lastRec.memorizeSurahEnd;
       payload.reviewAyahEnd = summary.lastRec.memorizeAyahEnd;
       payload.reviewPages = summary.totalPages;
+    }
+    // صح + لها خطة → تُحسب المراجعة البعيدة تلقائياً بنصاب يوم الخطة
+    if (passed && planQuota && planQuota.pages > 0) {
+      payload.reviewFarPages = planQuota.pages;
     }
     const existing = (circleRecords as any[]).find((r: any) => r.studentId === student.studentId);
     const onDone = () => {
@@ -1729,6 +1750,9 @@ export default function DataEntryPage() {
                         {!hasRecord && !isOnLeave && (
                           <p className="text-xs text-muted-foreground mt-0.5">
                             محفوظ آخر ١٠ أيام: {summary ? `${formatPages(summary.totalPages)} وجه` : "لا يوجد"}
+                            {planDayQuotas[student.studentId] && (
+                              <span className="text-amber-600 font-medium"> · نصاب الخطة: {formatPages(planDayQuotas[student.studentId].pages)} وجه</span>
+                            )}
                           </p>
                         )}
                       </div>

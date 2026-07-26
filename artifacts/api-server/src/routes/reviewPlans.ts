@@ -1062,10 +1062,10 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
       const day = planDays.find((d: typeof allDays[0]) => d.dayNumber === dayNumber);
       const dateStr = cycleDates[dayNumber - 1];
       const rec = dateStr ? dayRecords[dateStr] : undefined;
-      if (rec?.isAbsent) return;
-      // Saturday (getUTCDay() === 6): no data entry at the Maqra'a on Saturdays.
-      // If there's no record, skip silently — don't count it as a miss.
+      // Saturday: no data entry — skip if no record
       if (!rec && dateStr && new Date(dateStr + "T12:00:00Z").getUTCDay() === 6) return;
+      // Absence counts as a plan delay (forgiven by catching up later)
+      if (rec?.isAbsent) { hasBehind = true; return; }
       const quota = day?.pages ?? 0;
       if (rec && rec.reviewFarPages != null) {
         const done = rec.reviewFarPages;
@@ -1147,6 +1147,52 @@ router.get("/review-plans/overview", authenticate, async (req, res): Promise<voi
   });
 
   res.json({ circles: result, cycleInfo });
+});
+
+// GET /api/review-plans/circle-day-quota?circleId=X&date=Y
+// Returns plan day quota (pages) per student for a given circle + date.
+// Used by Thursday data entry to populate reviewFarPages automatically.
+router.get("/review-plans/circle-day-quota", authenticate, async (req, res): Promise<void> => {
+  const circleId = Number(req.query.circleId);
+  const date = req.query.date as string;
+  if (!circleId || !date || !isValidIsoDate(date)) {
+    res.status(400).json({ error: "circleId and valid date required" }); return;
+  }
+
+  const plans = await db.select({
+    id: reviewPlansTable.id,
+    studentId: reviewPlansTable.studentId,
+    startDate: reviewPlansTable.startDate,
+  }).from(reviewPlansTable).where(and(
+    eq(reviewPlansTable.circleId, circleId),
+    eq(reviewPlansTable.status, "active"),
+    eq(reviewPlansTable.planType, "girls_review"),
+    isNotNull(reviewPlansTable.startDate),
+  ));
+
+  if (plans.length === 0) { res.json({ quotas: {} }); return; }
+
+  const planIds = plans.map(p => p.id);
+  const allDays = await db.select({
+    planId: reviewPlanDaysTable.planId,
+    dayNumber: reviewPlanDaysTable.dayNumber,
+    pages: reviewPlanDaysTable.pages,
+  }).from(reviewPlanDaysTable).where(inArray(reviewPlanDaysTable.planId, planIds));
+
+  const quotas: Record<number, { pages: number; dayNumber: number }> = {};
+  for (const plan of plans) {
+    if (!plan.startDate) continue;
+    const cycleDates = getCycleDates(plan.startDate, 21);
+    const dayIdx = cycleDates.indexOf(date);
+    if (dayIdx < 0) continue;
+    const dayNumber = dayIdx + 1;
+    const planDay = allDays.find(d => d.planId === plan.id && d.dayNumber === dayNumber);
+    if (planDay && planDay.pages > 0) {
+      quotas[plan.studentId] = { pages: planDay.pages, dayNumber };
+    }
+  }
+
+  res.json({ quotas });
 });
 
 export default router;
