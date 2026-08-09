@@ -6,8 +6,9 @@ import {
   db, studentsTable, usersTable, circlesTable, recordsTable,
   studentTransfersTable, studentArchiveEventsTable,
   teacherAbsencesTable, dailyCircleTasksTable, trackSupervisorNamesTable,
+  studentEnrollmentsTable,
 } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { authenticate, requireRole } from "../middlewares/authenticate";
 import { runWeeklyBackup, listBackups, getBackupPath } from "../lib/backup";
 
@@ -72,6 +73,203 @@ function formatDate(d: Date | string | null | undefined): string {
   const dt = typeof d === "string" ? new Date(d) : d;
   return dt.toLocaleDateString("ar-SA", { year: "numeric", month: "short", day: "numeric" });
 }
+
+function formatExtraValue(value: unknown): string {
+  if (value == null) return "";
+  if (Array.isArray(value)) return value.join("، ");
+  if (typeof value === "object") {
+    try { return JSON.stringify(value); } catch { return ""; }
+  }
+  return String(value);
+}
+
+function parseExtraData(value: string | null): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function formatPortion(
+  startSurah: string | null,
+  startAyah: number | null,
+  endSurah: string | null,
+  endAyah: number | null,
+  pages: number | null,
+): string {
+  const range = startSurah || endSurah
+    ? `${startSurah ?? ""}${startAyah != null ? ` آية ${startAyah}` : ""} — ${endSurah ?? ""}${endAyah != null ? ` آية ${endAyah}` : ""}`.trim()
+    : "";
+  const pageText = pages != null ? `${pages} وجه` : "";
+  return [range, pageText].filter(Boolean).join(" · ");
+}
+
+// ─── Export: track supervisor's complete track report ─────────────────────────
+// The track is always taken from the authenticated user on the server. It is
+// intentionally not accepted as a query parameter so a supervisor cannot
+// change the URL to download another track.
+router.get("/export/track-report", authenticate, async (req, res): Promise<void> => {
+  if (req.userRole !== "track_supervisor" || !req.userTrack) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const track = req.userTrack;
+  const [circles, users, students, enrollments, records] = await Promise.all([
+    db.select().from(circlesTable).where(and(
+      eq(circlesTable.track, track),
+      eq(circlesTable.isArchived, false),
+    )),
+    db.select().from(usersTable).where(eq(usersTable.isArchived, false)),
+    db.select().from(studentsTable).where(eq(studentsTable.isArchived, false)),
+    db.select().from(studentEnrollmentsTable).where(eq(studentEnrollmentsTable.isArchived, false)),
+    db.select().from(recordsTable),
+  ]);
+
+  const circleIds = new Set(circles.map(c => c.id));
+  const circleMap = new Map(circles.map(c => [c.id, c]));
+  const userMap = new Map(users.map(u => [u.id, u]));
+  const studentsByCircle = new Map<number, typeof students>();
+  const enrolledStudentIdsByCircle = new Map<number, Set<number>>();
+
+  for (const enrollment of enrollments) {
+    if (!circleIds.has(enrollment.circleId)) continue;
+    const student = students.find(s => s.id === enrollment.studentId);
+    if (!student) continue;
+    const list = studentsByCircle.get(enrollment.circleId) ?? [];
+    list.push(student);
+    studentsByCircle.set(enrollment.circleId, list);
+    const ids = enrolledStudentIdsByCircle.get(enrollment.circleId) ?? new Set<number>();
+    ids.add(student.id);
+    enrolledStudentIdsByCircle.set(enrollment.circleId, ids);
+  }
+
+  // Keep older registrations that predate student_enrollments.
+  for (const student of students) {
+    if (!student.circleId || !circleIds.has(student.circleId)) continue;
+    const ids = enrolledStudentIdsByCircle.get(student.circleId) ?? new Set<number>();
+    if (ids.has(student.id)) continue;
+    const list = studentsByCircle.get(student.circleId) ?? [];
+    list.push(student);
+    studentsByCircle.set(student.circleId, list);
+  }
+
+  const latestRecordByStudentCircle = new Map<string, typeof records[number]>();
+  for (const record of records) {
+    if (!circleIds.has(record.circleId)) continue;
+    const key = `${record.studentId}-${record.circleId}`;
+    const previous = latestRecordByStudentCircle.get(key);
+    if (
+      !previous ||
+      record.date > previous.date ||
+      (record.date === previous.date && record.updatedAt > previous.updatedAt)
+    ) {
+      latestRecordByStudentCircle.set(key, record);
+    }
+  }
+
+  const fixedStudentHeaders = [
+    "اسم المسار", "اسم الحلقة", "اسم المعلمة", "اسم المشرفة",
+    "اسم الطالبة", "رقم الجوال", "الدولة", "الفئة العمرية",
+    "المستوى التعليمي", "بداية الحفظ", "الحالة", "تاريخ التسجيل",
+    "تاريخ آخر نصاب", "المدخلة", "الحضور",
+    "آخر حفظ", "آخر مراجعة قريبة", "آخر مراجعة بعيدة", "آخر تلاوة",
+  ];
+  const extraKeys = new Set<string>();
+  for (const circleStudents of studentsByCircle.values()) {
+    for (const student of circleStudents) {
+      for (const key of Object.keys(parseExtraData(student.extraData))) {
+        if (!fixedStudentHeaders.includes(key)) extraKeys.add(key);
+      }
+    }
+  }
+  const extraKeysArr = [...extraKeys];
+
+  const sortedCircles = [...circles].sort((a, b) =>
+    a.name.localeCompare(b.name, "ar", { numeric: true, sensitivity: "base" }),
+  );
+  const studentRows: Record<string, unknown>[] = [];
+  const circleRows: Record<string, unknown>[] = [];
+
+  for (const circle of sortedCircles) {
+    const teacher = circle.teacherId ? userMap.get(circle.teacherId) : undefined;
+    const supervisor = circle.supervisorId ? userMap.get(circle.supervisorId) : undefined;
+    const circleStudents = [...(studentsByCircle.get(circle.id) ?? [])].sort((a, b) =>
+      a.fullName.localeCompare(b.fullName, "ar", { sensitivity: "base" }),
+    );
+
+    circleRows.push({
+      "اسم المسار": track,
+      "اسم الحلقة": circle.name,
+      "اسم المعلمة": teacher?.name ?? "",
+      "جوال المعلمة": teacher?.phone ?? "",
+      "بريد المعلمة": teacher?.email ?? "",
+      "اسم المشرفة": supervisor?.name ?? "",
+      "جوال المشرفة": supervisor?.phone ?? "",
+      "بريد المشرفة": supervisor?.email ?? "",
+      "عدد الطالبات": circleStudents.length,
+    });
+
+    for (const student of circleStudents) {
+      const record = latestRecordByStudentCircle.get(`${student.id}-${circle.id}`);
+      const enteredBy = record ? userMap.get(record.enteredById) : undefined;
+      const extra = parseExtraData(student.extraData);
+      const row: Record<string, unknown> = {
+        "اسم المسار": track,
+        "اسم الحلقة": circle.name,
+        "اسم المعلمة": teacher?.name ?? "",
+        "اسم المشرفة": supervisor?.name ?? "",
+        "اسم الطالبة": student.fullName,
+        "رقم الجوال": student.phone ?? "",
+        "الدولة": student.country ?? "",
+        "الفئة العمرية": student.ageRange ?? "",
+        "المستوى التعليمي": student.educationLevel ?? "",
+        "بداية الحفظ": student.memorizeFrom ?? "",
+        "الحالة": student.isArchived ? "مؤرشفة" : "نشطة",
+        "تاريخ التسجيل": formatDate(student.createdAt),
+        "تاريخ آخر نصاب": record?.date ?? "",
+        "المدخلة": enteredBy?.name ?? "",
+        "الحضور": record ? (record.isAbsent ? "غائبة" : "حاضرة") : "",
+        "آخر حفظ": record ? formatPortion(
+          record.memorizeSurahStart, record.memorizeAyahStart,
+          record.memorizeSurahEnd, record.memorizeAyahEnd, record.memorizePages,
+        ) : "",
+        "آخر مراجعة قريبة": record ? formatPortion(
+          record.reviewNearSurahStart, record.reviewNearAyahStart,
+          record.reviewNearSurahEnd, record.reviewNearAyahEnd, record.reviewNearPages,
+        ) : "",
+        "آخر مراجعة بعيدة": record ? formatPortion(
+          record.reviewFarSurahStart, record.reviewFarAyahStart,
+          record.reviewFarSurahEnd, record.reviewFarAyahEnd, record.reviewFarPages,
+        ) : "",
+        "آخر تلاوة": record ? formatPortion(
+          record.recitationSurahStart, record.recitationAyahStart,
+          record.recitationSurahEnd, record.recitationAyahEnd, record.recitationPages,
+        ) : "",
+      };
+      for (const key of extraKeysArr) row[key] = formatExtraValue(extra[key]);
+      studentRows.push(row);
+    }
+  }
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "مقرأة سنا الآي";
+  wb.created = new Date();
+
+  addSheet(wb, "ملخص الحلقات", [
+    "اسم المسار", "اسم الحلقة", "اسم المعلمة", "جوال المعلمة", "بريد المعلمة",
+    "اسم المشرفة", "جوال المشرفة", "بريد المشرفة", "عدد الطالبات",
+  ], [18, 24, 28, 18, 28, 28, 18, 28, 14], circleRows);
+  addSheet(wb, "الطالبات والنصاب", fixedStudentHeaders.concat(extraKeysArr), [
+    18, 24, 28, 28, 30, 18, 14, 14, 18, 18, 12, 16, 16, 24, 12, 32, 32, 32, 32,
+    ...extraKeysArr.map(() => 22),
+  ], studentRows);
+
+  await sendWorkbook(res, wb, `تقرير_مسار_${track}_${new Date().toISOString().slice(0, 10)}`);
+});
 
 // ─── Export: students (multi-sheet) ───────────────────────────────────────────
 router.get("/export/students", authenticate, requireRole("leader"), async (_req, res): Promise<void> => {

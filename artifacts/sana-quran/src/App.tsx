@@ -171,7 +171,7 @@ function AppRoutes() {
           {isLeaderOrDeputy ? <OnboardPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/export">
-          {isLeaderOrDeputy ? <ExportPage /> : <Redirect to="/" />}
+          {(isLeaderOrDeputy || isTrackSupervisor) ? <ExportPage /> : <Redirect to="/" />}
         </Route>
         <Route path="/monthly-report">
           {(isLeaderOrDeputy || isTrackSupervisor) && isFeatureEnabled("stats_monthly") ? <MonthlyReportPage /> : <Redirect to="/" />}

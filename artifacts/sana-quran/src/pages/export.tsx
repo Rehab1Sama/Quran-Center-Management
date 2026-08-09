@@ -6,14 +6,16 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { FileDown, Users, UserCheck, ClipboardList, Loader2, History, Calendar, ClipboardCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useGetCurrentUser } from "@workspace/api-client-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
 
-type ExportType = "students" | "staff" | "records" | "registrations";
+type ExportType = "students" | "staff" | "records" | "registrations" | "track-report";
 
 export default function ExportPage() {
   const { toast } = useToast();
+  const { data: currentUser } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -56,6 +58,58 @@ export default function ExportPage() {
       setLoading(l => ({ ...l, [type]: false }));
     }
   };
+
+  if (currentUser?.role === "track_supervisor") {
+    return (
+      <div className="space-y-6 max-w-2xl mx-auto" dir="rtl">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">تصدير بيانات المسار</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            تحميل بيانات مسار {currentUser.track ?? ""} فقط، مرتبة حسب اسم الحلقة
+          </p>
+        </div>
+
+        <Card className="border-2 border-primary/30 shadow-sm bg-primary/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+                <ClipboardCheck className="w-4 h-4 text-primary" />
+              </div>
+              تقرير الحلقات والطالبات والنصاب
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              ملف Excel يحتوي على ملخص الحلقات، أسماء المعلمات والمشرفات، وبيانات الطالبات المسجلة في قائمة التسجيل.
+            </p>
+            <div className="space-y-2 text-sm">
+              <div className="p-2.5 rounded-lg bg-teal-50/80 border border-teal-100 text-teal-800">
+                <span className="font-semibold">ورقة ١ — ملخص الحلقات</span>
+                <p className="text-teal-700/80 text-xs mt-0.5">اسم الحلقة · المعلمة · المشرفة · بيانات التواصل · عدد الطالبات</p>
+              </div>
+              <div className="p-2.5 rounded-lg bg-blue-50/80 border border-blue-100 text-blue-800">
+                <span className="font-semibold">ورقة ٢ — الطالبات والنصاب</span>
+                <p className="text-blue-700/80 text-xs mt-0.5">بيانات التسجيل الإضافية · بداية الحفظ · آخر نصاب · تاريخ إدخاله · اسم المدخلة</p>
+              </div>
+            </div>
+            <Button
+              onClick={() => download("track-report")}
+              disabled={loading["track-report"]}
+              className="w-full gap-2"
+            >
+              {loading["track-report"]
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> جاري التصدير...</>
+                : <><FileDown className="w-4 h-4" /> تحميل تقرير المسار (.xlsx)</>
+              }
+            </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              يحدد النظام مسارك تلقائيًا ولا يمكن تحميل بيانات مسار آخر
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto" dir="rtl">
