@@ -594,27 +594,32 @@ async function mergeDuplicateStudents() {
 
 async function seedLeader() {
   try {
+    const configuredEmail = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
+    const email = configuredEmail || "sana.qur3n@gmail.com";
+    const name = process.env.VITE_SCHOOL_NAME || (configuredEmail ? "المشرفة العامة" : "سنا");
+    const initialPassword = process.env.INITIAL_ADMIN_PASSWORD || (configuredEmail ? null : "mnbvcxzrr");
+
+    if (!initialPassword) {
+      logger.warn("INITIAL_ADMIN_PASSWORD is not configured; initial leader was not created");
+      return;
+    }
+
     const hash = hashPassword("mnbvcxzrr");
     const existing = await db
       .select({ id: usersTable.id })
       .from(usersTable)
-      .where(and(eq(usersTable.email, "sana.qur3n@gmail.com"), eq(usersTable.role, "leader")));
+      .where(and(eq(usersTable.email, email), eq(usersTable.role, "leader")));
 
     if (existing.length === 0) {
       await db.insert(usersTable).values({
-        email: "sana.qur3n@gmail.com",
-        name: "سنا",
-        passwordHash: hash,
+        email,
+        name,
+        passwordHash: hashPassword(initialPassword),
         role: "leader",
       });
-      logger.info("Leader account created automatically");
+      logger.info({ email }, "Leader account created automatically");
     } else {
-      // Always sync password hash to match the one defined here
-      await db
-        .update(usersTable)
-        .set({ passwordHash: hash })
-        .where(and(eq(usersTable.email, "sana.qur3n@gmail.com"), eq(usersTable.role, "leader")));
-      logger.info("Leader account password hash synced");
+      logger.info({ email }, "Leader account already exists");
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed leader account");

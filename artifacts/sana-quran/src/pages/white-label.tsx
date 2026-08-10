@@ -197,6 +197,7 @@ interface Config {
   deployStatus: string; deployError: string | null; createdAt: string;
 }
 interface RenderSettings { hasApiKey: boolean; hasRepoUrl: boolean; repoUrl: string | null; }
+interface InitialCredentials { email: string; password: string; url: string; }
 
 // ── Section Component ───────────────────────────────────────────────────────
 function Section({ title, icon: Icon, children, defaultOpen = false }: {
@@ -233,6 +234,7 @@ export default function WhiteLabelPage() {
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [expandedConfig, setExpandedConfig] = useState<number | null>(null);
+  const [initialCredentials, setInitialCredentials] = useState<InitialCredentials | null>(null);
   const [newTrackName, setNewTrackName] = useState("");
   const [newTrackCategory, setNewTrackCategory] = useState("فتيات");
   const [newTrackFields, setNewTrackFields] = useState<string[]>(["memorize", "review_near", "review_far", "listen"]);
@@ -358,6 +360,13 @@ export default function WhiteLabelPage() {
       setConfigs(prev => prev.map(c => c.id === id
         ? { ...c, deployStatus: "deploying", renderServiceUrl: data.serviceUrl }
         : c));
+      if (data.initialCredentials?.email && data.initialCredentials?.password) {
+        setInitialCredentials({
+          email: data.initialCredentials.email,
+          password: data.initialCredentials.password,
+          url: data.serviceUrl,
+        });
+      }
       toast({ title: "✓ تم إرسال طلب النشر إلى Render", description: "البناء يستغرق 10–15 دقيقة" });
     } catch (e: any) {
       setConfigs(prev => prev.map(c => c.id === id ? { ...c, deployStatus: "failed", deployError: e?.message } : c));
@@ -429,6 +438,29 @@ export default function WhiteLabelPage() {
           Render API + GitHub مضبوطان — يمكن النشر التلقائي ✓
         </div>
       )}
+      {initialCredentials && (
+        <Card className="border-emerald-200 bg-emerald-50 shadow-sm">
+          <CardContent className="pt-4 pb-4 space-y-2 text-sm text-emerald-900">
+            <p className="font-bold">احفظي بيانات دخول المشرفة الأولى الآن</p>
+            <p className="text-xs text-emerald-800">
+              هذه كلمة مرور أولية للنسخة الجديدة. لن نعرضها مرة أخرى بعد مغادرة الصفحة.
+            </p>
+            <div className="rounded-xl bg-white/70 p-3 space-y-1 font-mono text-xs" dir="ltr">
+              <p>URL: {initialCredentials.url}</p>
+              <p>Email: {initialCredentials.email}</p>
+              <p>Password: {initialCredentials.password}</p>
+            </div>
+            <button
+              onClick={() => navigator.clipboard.writeText(
+                `الرابط: ${initialCredentials.url}\nالبريد: ${initialCredentials.email}\nكلمة المرور: ${initialCredentials.password}`,
+              )}
+              className="rounded-xl border border-emerald-300 px-3 py-1.5 text-xs font-semibold hover:bg-white/70"
+            >
+              نسخ بيانات الدخول
+            </button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Builder Form ── */}
       <div className="space-y-2">
@@ -458,7 +490,7 @@ export default function WhiteLabelPage() {
               )}
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">بريد المشرفة الأولى (للنشر)</Label>
+              <Label className="text-xs font-semibold">بريد المشرفة الأولى (للنشر) *</Label>
               <Input value={form.adminEmail} onChange={e => setField("adminEmail", e.target.value)}
                 placeholder="admin@maqraa.com" dir="ltr" type="email" />
               <p className="text-[10px] text-muted-foreground">سيُستخدم لإنشاء حساب المشرفة في النسخة الجديدة</p>

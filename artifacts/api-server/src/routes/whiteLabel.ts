@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, whitelabelConfigsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
 import { authenticate, requireRole } from "../middlewares/authenticate";
 
 const router: IRouter = Router();
@@ -29,6 +30,7 @@ router.get("/white-label/configs", authenticate, requireRole("leader"), async (_
 router.post("/white-label/configs", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
   const b = req.body as Record<string, string>;
   if (!b.schoolName?.trim()) { res.status(400).json({ error: "اسم المقرأة مطلوب" }); return; }
+  if (!b.adminEmail?.trim()) { res.status(400).json({ error: "بريد المشرفة الأولى مطلوب" }); return; }
   const [config] = await db.insert(whitelabelConfigsTable).values({
     schoolName: b.schoolName.trim(),
     schoolTagline: b.schoolTagline ?? "نظام إدارة المقرأة",
@@ -117,6 +119,10 @@ router.post("/white-label/configs/:id/deploy", authenticate, requireRole("leader
 
   const repoUrl = process.env.RENDER_GITHUB_REPO_URL;
   if (!repoUrl) { res.status(400).json({ error: "RENDER_GITHUB_REPO_URL غير مضبوط — أضف رابط مستودع GitHub في Secrets" }); return; }
+  if (!config.adminEmail) {
+    res.status(400).json({ error: "احفظي بريد المشرفة الأولى قبل النشر" });
+    return;
+  }
 
   await db.update(whitelabelConfigsTable).set({ deployStatus: "deploying", deployError: null }).where(eq(whitelabelConfigsTable.id, id));
 
@@ -125,7 +131,14 @@ router.post("/white-label/configs/:id/deploy", authenticate, requireRole("leader
     const ownerId = (Array.isArray(owners) ? owners[0]?.owner?.id : null) as string | null;
     if (!ownerId) throw new Error("تعذّر الحصول على معرّف الحساب من Render");
 
-    const slug = config.schoolName.replace(/\s+/g, "-").replace(/[^\w-]/g, "").toLowerCase();
+    const readableSlug = config.schoolName
+      .normalize("NFKD")
+      .replace(/[^\x00-\x7F]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase();
+    const slug = `${readableSlug || "maqraa"}-${id}`;
+    const initialPassword = randomBytes(12).toString("base64url");
 
     let dbId: string | null = null;
     let dbConnStr: string;
@@ -161,7 +174,7 @@ router.post("/white-label/configs/:id/deploy", authenticate, requireRole("leader
       serviceDetails: {
         env: "node",
         buildCommand: "npm install -g pnpm && pnpm install --frozen-lockfile && pnpm --filter @workspace/db exec tsc --build && pnpm --filter @workspace/api-zod exec tsc --build && pnpm --filter @workspace/api-client-react exec tsc --build && pnpm --filter @workspace/sana-quran run build && pnpm --filter @workspace/api-server run build",
-        startCommand: "node artifacts/api-server/dist/index.mjs",
+        startCommand: "pnpm --filter @workspace/db run migrate && node artifacts/api-server/dist/index.mjs",
         plan: "starter",
         region: "oregon",
         numInstances: 1,
@@ -169,7 +182,7 @@ router.post("/white-label/configs/:id/deploy", authenticate, requireRole("leader
       envVars: [
         { key: "NODE_ENV", value: "production" },
         { key: "PORT", value: "10000" },
-        { key: "JWT_SECRET", generateValue: true },
+        { key: "SESSION_SECRET", generateValue: true },
         { key: "DATABASE_URL", value: dbConnStr },
         // Theming
         { key: "VITE_SCHOOL_NAME", value: config.schoolName },
@@ -191,7 +204,8 @@ router.post("/white-label/configs/:id/deploy", authenticate, requireRole("leader
         { key: "DEFAULT_TRACK_TYPES", value: JSON.stringify(trackTypes) },
         // Circle genders
         { key: "CIRCLE_GENDERS", value: JSON.stringify(circleGenders) },
-        ...(config.adminEmail ? [{ key: "INITIAL_ADMIN_EMAIL", value: config.adminEmail }] : []),
+        { key: "INITIAL_ADMIN_EMAIL", value: config.adminEmail },
+        { key: "INITIAL_ADMIN_PASSWORD", value: initialPassword },
       ],
     }) as any;
 
@@ -204,7 +218,16 @@ router.post("/white-label/configs/:id/deploy", authenticate, requireRole("leader
       deployStatus: "deploying",
     }).where(eq(whitelabelConfigsTable.id, id));
 
-    res.json({ ok: true, serviceUrl, serviceId, dbId });
+    res.json({
+      ok: true,
+      serviceUrl,
+      serviceId,
+      dbId,
+      initialCredentials: {
+        email: config.adminEmail,
+        password: initialPassword,
+      },
+    });
   } catch (err: any) {
     await db.update(whitelabelConfigsTable).set({
       deployStatus: "failed",
