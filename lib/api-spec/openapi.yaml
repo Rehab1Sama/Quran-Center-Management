@@ -4012,11 +4012,17 @@ components:
           type: string
         isActive:
           type: boolean
+        teacherScope:
+          $ref: "#/components/schemas/ExamRotationTeacherScope"
+        selectedTracks:
+          type: array
+          items:
+            type: string
         createdById:
           type: integer
         createdAt:
           type: string
-      required: [id, name, startDate, endDate, isActive, createdById, createdAt]
+      required: [id, name, startDate, endDate, isActive, teacherScope, selectedTracks, createdById, createdAt]
 
     CreateExamRotationBody:
       type: object
@@ -4029,7 +4035,17 @@ components:
           type: string
         isActive:
           type: boolean
+        teacherScope:
+          $ref: "#/components/schemas/ExamRotationTeacherScope"
+        selectedTracks:
+          type: array
+          items:
+            type: string
       required: [name, startDate, endDate]
+
+    ExamRotationTeacherScope:
+      type: string
+      enum: [girls, selected_tracks]
 
     ExamTeacherAssignment:
       type: object

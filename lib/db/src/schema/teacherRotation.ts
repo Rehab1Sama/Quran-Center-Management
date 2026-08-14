@@ -6,6 +6,8 @@ export const examRotationsTable = pgTable("exam_rotations", {
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  teacherScope: text("teacher_scope").notNull().default("girls"),
+  selectedTracks: text("selected_tracks").notNull().default("[]"),
   createdById: integer("created_by_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

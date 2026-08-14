@@ -1188,12 +1188,22 @@ export interface CreateBadgeAssignmentBody {
   notes?: string | null;
 }
 
+export type ExamRotationTeacherScope = typeof ExamRotationTeacherScope[keyof typeof ExamRotationTeacherScope];
+
+
+export const ExamRotationTeacherScope = {
+  girls: 'girls',
+  selected_tracks: 'selected_tracks',
+} as const;
+
 export interface ExamRotation {
   id: number;
   name: string;
   startDate: string;
   endDate: string;
   isActive: boolean;
+  teacherScope: ExamRotationTeacherScope;
+  selectedTracks: string[];
   createdById: number;
   createdAt: string;
 }
@@ -1203,6 +1213,8 @@ export interface CreateExamRotationBody {
   startDate: string;
   endDate: string;
   isActive?: boolean;
+  teacherScope?: ExamRotationTeacherScope;
+  selectedTracks?: string[];
 }
 
 export interface ExamTeacherAssignment {

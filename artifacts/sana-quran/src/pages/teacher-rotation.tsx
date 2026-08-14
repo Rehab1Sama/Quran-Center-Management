@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   useListExamRotations, useCreateExamRotation, useUpdateExamRotation, useDeleteExamRotation,
   useListExamAssignments, useSaveExamAssignments,
-  useListUsers, useListCircles,
+  useListUsers, useListCircles, useListTracks,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,11 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
   const [showDialog, setShowDialog] = useState(false);
   const [editingRotation, setEditingRotation] = useState<any>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: "", startDate: "", endDate: "", isActive: true });
+  const [form, setForm] = useState({
+    name: "", startDate: "", endDate: "", isActive: true,
+    teacherScope: "girls" as "girls" | "selected_tracks",
+    selectedTracks: [] as string[],
+  });
   const [editingAssignments, setEditingAssignments] = useState<any[]>([]);
   const [assigningId, setAssigningId] = useState<number | null>(null);
   const { toast } = useToast();
@@ -31,6 +35,7 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
   const { data: rotations = [] } = useListExamRotations({});
   const { data: users = [] } = useListUsers({});
   const { data: circles = [] } = useListCircles({});
+  const { data: tracks = [] } = useListTracks({ query: { queryKey: ["tracks"] } });
 
   const { data: currentAssignments = [] } = useListExamAssignments(
     expandedId ?? 0,
@@ -44,11 +49,25 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
 
   function inv() { qc.invalidateQueries({ queryKey: ["listExamRotations"] }); }
 
-  function openNew() { setEditingRotation(null); setForm({ name: "", startDate: "", endDate: "", isActive: true }); setShowDialog(true); }
-  function openEdit(r: any) { setEditingRotation(r); setForm({ name: r.name, startDate: r.startDate, endDate: r.endDate, isActive: r.isActive }); setShowDialog(true); }
+  function openNew() {
+    setEditingRotation(null);
+    setForm({ name: "", startDate: "", endDate: "", isActive: true, teacherScope: "girls", selectedTracks: [] });
+    setShowDialog(true);
+  }
+  function openEdit(r: any) {
+    setEditingRotation(r);
+    setForm({
+      name: r.name, startDate: r.startDate, endDate: r.endDate, isActive: r.isActive,
+      teacherScope: r.teacherScope ?? "girls", selectedTracks: r.selectedTracks ?? [],
+    });
+    setShowDialog(true);
+  }
 
   async function handleSave() {
     if (!form.name || !form.startDate || !form.endDate) { toast({ title: "أدخل جميع الحقول", variant: "destructive" }); return; }
+    if (form.teacherScope === "selected_tracks" && form.selectedTracks.length === 0) {
+      toast({ title: "اختاري مسارًا واحدًا على الأقل للشقلبة", variant: "destructive" }); return;
+    }
     try {
       if (editingRotation) await updateRot.mutateAsync({ id: editingRotation.id, data: form });
       else await createRot.mutateAsync({ data: form });
@@ -78,7 +97,22 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
     }
   }, [currentAssignments, expandedId]);
 
-  const teachers = users.filter(u => u.role === "teacher" && !u.isArchived);
+  const expandedRotation = rotations.find(rotation => rotation.id === expandedId);
+  const rotationScope = expandedRotation?.teacherScope ?? "girls";
+  const rotationTracks = expandedRotation?.selectedTracks ?? [];
+  const isGirlsCircle = (circle: any) =>
+    circle.trackType === "girls" || String(circle.trackType ?? "").startsWith("girls_");
+  const isCircleInScope = (circle: any) =>
+    rotationScope === "girls" ? isGirlsCircle(circle) : rotationTracks.includes(circle.track);
+  const scopedCircles = circles.filter(isCircleInScope);
+  const scopedCircleIds = new Set(scopedCircles.map(circle => circle.id));
+  const teachers = users.filter(u =>
+    u.role === "teacher" && !u.isArchived && u.circleId != null && scopedCircleIds.has(u.circleId),
+  );
+  const availableTracks = Array.from(new Set([
+    ...tracks.map(track => track.name),
+    ...circles.map(circle => circle.track),
+  ])).filter(Boolean);
 
   function autoDistribute() {
     const teachersWithCircles = teachers.filter(t => t.circleId != null);
@@ -86,7 +120,7 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
 
     const groupedByTime: Record<string, typeof teachersWithCircles> = {};
     teachersWithCircles.forEach(t => {
-      const circle = circles.find(c => c.id === t.circleId);
+      const circle = scopedCircles.find(c => c.id === t.circleId);
       const time = circle?.meetingTime ?? "غير محدد";
       if (!groupedByTime[time]) groupedByTime[time] = [];
       groupedByTime[time].push(t);
@@ -99,14 +133,14 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
         const next = group[(i + 1) % group.length];
         assignments.push({
           teacherId: group[i].id, teacherName: group[i].name,
-          originalCircleId: group[i].circleId!, originalCircleName: circles.find(c => c.id === group[i].circleId)?.name ?? "",
-          examCircleId: next.circleId!, examCircleName: circles.find(c => c.id === next.circleId)?.name ?? "",
+          originalCircleId: group[i].circleId!, originalCircleName: scopedCircles.find(c => c.id === group[i].circleId)?.name ?? "",
+          examCircleId: next.circleId!, examCircleName: scopedCircles.find(c => c.id === next.circleId)?.name ?? "",
         });
       }
     });
 
     const solo = teachersWithCircles.filter(t => {
-      const circle = circles.find(c => c.id === t.circleId);
+      const circle = scopedCircles.find(c => c.id === t.circleId);
       const time = circle?.meetingTime ?? "غير محدد";
       return groupedByTime[time].length === 1;
     });
@@ -176,6 +210,11 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
                       {rotation.isActive ? <Badge className="bg-green-100 text-green-700 text-xs">نشطة</Badge> : <Badge variant="secondary" className="text-xs">منتهية</Badge>}
                     </div>
                     <div className="text-sm text-muted-foreground">{rotation.startDate} — {rotation.endDate}</div>
+                    <div className="text-xs text-primary mt-1">
+                      {rotation.teacherScope === "selected_tracks"
+                        ? `المسارات: ${(rotation.selectedTracks ?? []).join("، ")}`
+                        : "معلمات مسارات الفتيات فقط"}
+                    </div>
                   </div>
                   <div className="flex gap-1">
                     {isLeader && (
@@ -228,7 +267,7 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
                               <div className="text-sm text-muted-foreground px-1">{a.originalCircleName || "—"}</div>
                               <Select value={String(a.examCircleId)} onValueChange={v => updateAssignmentExamCircle(i, parseInt(v))}>
                                 <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="حلقة الاختبار..." /></SelectTrigger>
-                                <SelectContent>{circles.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+                                <SelectContent>{scopedCircles.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
                               </Select>
                             </>
                           ) : (
@@ -263,6 +302,51 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
             <div className="grid grid-cols-2 gap-3">
               <div><Label>من تاريخ *</Label><Input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} /></div>
               <div><Label>إلى تاريخ *</Label><Input type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} /></div>
+            </div>
+            <div className="space-y-2">
+              <Label>نطاق الشقلبة *</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, teacherScope: "girls" }))}
+                  className={`rounded-lg border p-3 text-right text-sm transition-colors ${form.teacherScope === "girls" ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"}`}
+                >
+                  <span className="font-semibold block">معلمات الفتيات فقط</span>
+                  <span className="text-xs text-muted-foreground">بين حلقات مسارات الفتيات</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, teacherScope: "selected_tracks" }))}
+                  className={`rounded-lg border p-3 text-right text-sm transition-colors ${form.teacherScope === "selected_tracks" ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"}`}
+                >
+                  <span className="font-semibold block">مسارات محددة</span>
+                  <span className="text-xs text-muted-foreground">الشقلبة بين المسارات المختارة فقط</span>
+                </button>
+              </div>
+              {form.teacherScope === "selected_tracks" && (
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">اختاري المسارات التي تتبادل معلماتها:</p>
+                  <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto">
+                    {availableTracks.map(track => (
+                      <label key={track} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={form.selectedTracks.includes(track)}
+                          onChange={() => setForm(f => ({
+                            ...f,
+                            selectedTracks: f.selectedTracks.includes(track)
+                              ? f.selectedTracks.filter(item => item !== track)
+                              : [...f.selectedTracks, track],
+                          }))}
+                          className="accent-primary"
+                        />
+                        <span>{track}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {availableTracks.length === 0 && <p className="text-xs text-muted-foreground">لا توجد مسارات متاحة.</p>}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3"><Switch checked={form.isActive} onCheckedChange={v => setForm(f => ({ ...f, isActive: v }))} /><Label>نشطة</Label></div>
           </div>

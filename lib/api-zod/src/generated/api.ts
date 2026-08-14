@@ -888,6 +888,8 @@ export const ListExamRotationsResponseItem = zod.object({
   "startDate": zod.string(),
   "endDate": zod.string(),
   "isActive": zod.boolean(),
+  "teacherScope": zod.enum(['girls', 'selected_tracks']),
+  "selectedTracks": zod.array(zod.string()),
   "createdById": zod.number(),
   "createdAt": zod.string()
 })
@@ -898,7 +900,9 @@ export const CreateExamRotationBody = zod.object({
   "name": zod.string(),
   "startDate": zod.string(),
   "endDate": zod.string(),
-  "isActive": zod.boolean().optional()
+  "isActive": zod.boolean().optional(),
+  "teacherScope": zod.enum(['girls', 'selected_tracks']).optional(),
+  "selectedTracks": zod.array(zod.string()).optional()
 })
 
 
@@ -915,7 +919,9 @@ export const UpdateExamRotationBody = zod.object({
   "name": zod.string(),
   "startDate": zod.string(),
   "endDate": zod.string(),
-  "isActive": zod.boolean().optional()
+  "isActive": zod.boolean().optional(),
+  "teacherScope": zod.enum(['girls', 'selected_tracks']).optional(),
+  "selectedTracks": zod.array(zod.string()).optional()
 })
 
 export const UpdateExamRotationResponse = zod.object({
@@ -924,6 +930,8 @@ export const UpdateExamRotationResponse = zod.object({
   "startDate": zod.string(),
   "endDate": zod.string(),
   "isActive": zod.boolean(),
+  "teacherScope": zod.enum(['girls', 'selected_tracks']),
+  "selectedTracks": zod.array(zod.string()),
   "createdById": zod.number(),
   "createdAt": zod.string()
 })
@@ -1289,9 +1297,6 @@ export const GetStudentProfileResponse = zod.object({
   "reviewFarPages": zod.number().nullish(),
   "reviewFarSurahStart": zod.string().nullish(),
   "reviewFarSurahEnd": zod.string().nullish(),
-  "reviewFar2Pages": zod.number().nullish(),
-  "reviewFar2SurahStart": zod.string().nullish(),
-  "reviewFar2SurahEnd": zod.string().nullish(),
   "reviewPages": zod.number().nullish(),
   "reviewSurahStart": zod.string().nullish(),
   "reviewSurahEnd": zod.string().nullish(),
@@ -1338,11 +1343,6 @@ export const ListRecordsResponseItem = zod.object({
   "reviewFarSurahEnd": zod.string().nullish(),
   "reviewFarAyahEnd": zod.number().nullish(),
   "reviewFarPages": zod.number().nullish(),
-  "reviewFar2SurahStart": zod.string().nullish(),
-  "reviewFar2AyahStart": zod.number().nullish(),
-  "reviewFar2SurahEnd": zod.string().nullish(),
-  "reviewFar2AyahEnd": zod.number().nullish(),
-  "reviewFar2Pages": zod.number().nullish(),
   "reviewSurahStart": zod.string().nullish(),
   "reviewAyahStart": zod.number().nullish(),
   "reviewSurahEnd": zod.string().nullish(),
@@ -1383,11 +1383,6 @@ export const CreateRecordBody = zod.object({
   "reviewFarSurahEnd": zod.string().nullish(),
   "reviewFarAyahEnd": zod.number().nullish(),
   "reviewFarPages": zod.number().nullish(),
-  "reviewFar2SurahStart": zod.string().nullish(),
-  "reviewFar2AyahStart": zod.number().nullish(),
-  "reviewFar2SurahEnd": zod.string().nullish(),
-  "reviewFar2AyahEnd": zod.number().nullish(),
-  "reviewFar2Pages": zod.number().nullish(),
   "reviewSurahStart": zod.string().nullish(),
   "reviewAyahStart": zod.number().nullish(),
   "reviewSurahEnd": zod.string().nullish(),
@@ -1427,11 +1422,6 @@ export const UpdateRecordBody = zod.object({
   "reviewFarSurahEnd": zod.string().nullish(),
   "reviewFarAyahEnd": zod.number().nullish(),
   "reviewFarPages": zod.number().nullish(),
-  "reviewFar2SurahStart": zod.string().nullish(),
-  "reviewFar2AyahStart": zod.number().nullish(),
-  "reviewFar2SurahEnd": zod.string().nullish(),
-  "reviewFar2AyahEnd": zod.number().nullish(),
-  "reviewFar2Pages": zod.number().nullish(),
   "reviewSurahStart": zod.string().nullish(),
   "reviewAyahStart": zod.number().nullish(),
   "reviewSurahEnd": zod.string().nullish(),
