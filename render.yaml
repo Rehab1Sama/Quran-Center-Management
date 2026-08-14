@@ -6,7 +6,8 @@ services:
     region: frankfurt
     plan: free
     buildCommand: >
-      pnpm install --frozen-lockfile &&
+      npm install -g pnpm@10.26.1 &&
+      pnpm install --frozen-lockfile --prod=false &&
       BASE_PATH=/ pnpm --filter @workspace/sana-quran run build &&
       pnpm --filter @workspace/api-server run build
     startCommand: pnpm --filter @workspace/db run migrate && node --enable-source-maps artifacts/api-server/dist/index.mjs

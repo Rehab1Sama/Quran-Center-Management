@@ -173,8 +173,8 @@ router.post("/white-label/configs/:id/deploy", authenticate, requireRole("leader
       autoDeploy: "yes",
       serviceDetails: {
         env: "node",
-        buildCommand: "npm install -g pnpm && pnpm install --frozen-lockfile && pnpm --filter @workspace/db exec tsc --build && pnpm --filter @workspace/api-zod exec tsc --build && pnpm --filter @workspace/api-client-react exec tsc --build && pnpm --filter @workspace/sana-quran run build && pnpm --filter @workspace/api-server run build",
-        startCommand: "pnpm --filter @workspace/db run migrate && node artifacts/api-server/dist/index.mjs",
+        buildCommand: "npm install -g pnpm@10.26.1 && pnpm install --frozen-lockfile --prod=false && pnpm --filter @workspace/db exec tsc --build && pnpm --filter @workspace/api-zod exec tsc --build && pnpm --filter @workspace/api-client-react exec tsc --build && pnpm --filter @workspace/sana-quran run build && pnpm --filter @workspace/api-server run build",
+        startCommand: "pnpm --filter @workspace/db run migrate && node --enable-source-maps artifacts/api-server/dist/index.mjs",
         plan: "starter",
         region: "oregon",
         numInstances: 1,

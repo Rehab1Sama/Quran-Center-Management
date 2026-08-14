@@ -651,7 +651,6 @@ app.listen(port, (err) => {
   void migrateGlobalSettings();
   void migrateReviewPlansTable();
   void migrateRecordsUniqueConstraint();
-  void seedLeader();
   void normalizeEmails();
   void repairMissingEnrollments();
   void syncCircleStaff();
@@ -664,6 +663,7 @@ app.listen(port, (err) => {
   void (async () => {
     await restoreWronglyMergedStudents();
     await migrateAndLinkStudentIds();
+    await seedLeader();
     await mergeDuplicateStudents();
   })();
 
