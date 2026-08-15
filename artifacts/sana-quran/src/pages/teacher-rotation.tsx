@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Pencil, RefreshCw, Shuffle, ChevronDown, ChevronUp, Save, X } from "lucide-react";
+import { Plus, Trash2, Pencil, RefreshCw, Shuffle, ChevronDown, ChevronUp, Save, X, Check } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -90,10 +90,16 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
   useEffect(() => {
     if (expandedId == null) { setEditingAssignments([]); return; }
     if (!assignmentsFetched) return;
-    setEditingAssignments(currentAssignments.map(a => ({
-      teacherId: a.teacherId, originalCircleId: a.originalCircleId, examCircleId: a.examCircleId,
-      teacherName: a.teacherName, originalCircleName: a.originalCircleName, examCircleName: a.examCircleName,
-    })));
+    // deduplicate by teacherId, mark loaded ones as confirmed
+    const seen = new Set<number>();
+    const deduped = currentAssignments
+      .filter(a => { if (seen.has(a.teacherId)) return false; seen.add(a.teacherId); return true; })
+      .map(a => ({
+        teacherId: a.teacherId, originalCircleId: a.originalCircleId, examCircleId: a.examCircleId,
+        teacherName: a.teacherName, originalCircleName: a.originalCircleName, examCircleName: a.examCircleName,
+        confirmed: true,
+      }));
+    setEditingAssignments(deduped);
   }, [currentAssignments, expandedId, assignmentsFetched]);
 
   const expandedRotation = rotations.find(rotation => rotation.id === expandedId);
@@ -125,15 +131,19 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
       groupedByTime[time].push(t);
     });
 
+    const seenIds = new Set<number>();
     const assignments: any[] = [];
     Object.values(groupedByTime).forEach(group => {
       if (group.length < 2) return;
       for (let i = 0; i < group.length; i++) {
+        if (seenIds.has(group[i].id)) continue;
+        seenIds.add(group[i].id);
         const next = group[(i + 1) % group.length];
         assignments.push({
           teacherId: group[i].id, teacherName: group[i].name,
           originalCircleId: group[i].circleId!, originalCircleName: scopedCircles.find(c => c.id === group[i].circleId)?.name ?? "",
           examCircleId: next.circleId!, examCircleName: scopedCircles.find(c => c.id === next.circleId)?.name ?? "",
+          confirmed: false,
         });
       }
     });
@@ -157,7 +167,7 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
     if (!expandedId) return;
     try {
       const payload = editingAssignments
-        .filter(a => a.teacherId && a.originalCircleId && a.examCircleId)
+        .filter(a => a.confirmed && a.teacherId && a.originalCircleId && a.examCircleId)
         .map(a => ({ teacherId: a.teacherId, originalCircleId: a.originalCircleId, examCircleId: a.examCircleId }));
       await saveMutation.mutateAsync({ id: expandedId, data: { assignments: payload } });
       await qc.invalidateQueries({ queryKey: ["listExamAssignments"] });
@@ -166,6 +176,14 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
       const msg = e?.response?.data?.error ?? e?.message ?? "حدث خطأ أثناء الحفظ";
       toast({ title: msg, variant: "destructive" });
     }
+  }
+
+  function toggleConfirm(index: number) {
+    setEditingAssignments(prev => prev.map((a, i) => i === index ? { ...a, confirmed: !a.confirmed } : a));
+  }
+
+  function removeAssignment(index: number) {
+    setEditingAssignments(prev => prev.filter((_, i) => i !== index));
   }
 
   function updateAssignmentExamCircle(index: number, circleId: number) {
@@ -181,6 +199,7 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
         teacherId: teacher.id, teacherName: teacher.name,
         originalCircleId: teacher.circleId ?? 0, originalCircleName: origCircle?.name ?? "—",
         examCircleId, examCircleName: examCircle?.name ?? "—",
+        confirmed: existing >= 0 ? prev[existing].confirmed : false,
       };
       if (existing >= 0) { const next = [...prev]; next[existing] = entry; return next; }
       return [...prev, entry];
@@ -188,7 +207,7 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
   }
 
   function addManualAssignment() {
-    setEditingAssignments(prev => [...prev, { teacherId: 0, teacherName: "", originalCircleId: 0, originalCircleName: "", examCircleId: 0, examCircleName: "" }]);
+    setEditingAssignments(prev => [...prev, { teacherId: 0, teacherName: "", originalCircleId: 0, originalCircleName: "", examCircleId: 0, examCircleName: "", confirmed: false }]);
   }
 
   function updateManualAssignment(index: number, field: string, value: any) {
@@ -283,53 +302,115 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
 
                     return (
                       <>
-                        {editingAssignments.length === 0 ? (
-                          <div className="text-center py-6 text-muted-foreground text-sm">
-                            {isLeader ? "اضغطي «توزيع تلقائي» أو أضيفي يدويًا" : "لا يوجد توزيع بعد"}
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="grid grid-cols-3 text-xs font-semibold text-muted-foreground px-2 mb-1">
-                              <span>المعلمة</span><span>حلقتها الأصلية</span><span>تراقب في حلقة</span>
+                        {(() => {
+                          // للمديرة: كل الصفوف | لغيرها: الصفوف المعتمدة فقط
+                          const displayedAssignments = isLeader
+                            ? editingAssignments
+                            : editingAssignments.filter(a => a.confirmed);
+                          // المعلمات المعيّنة مسبقًا (لمنع التكرار في القائمة)
+                          const assignedTeacherIds = new Set(editingAssignments.map(a => a.teacherId).filter(Boolean));
+                          return displayedAssignments.length === 0 ? (
+                            <div className="text-center py-6 text-muted-foreground text-sm">
+                              {isLeader ? "اضغطي «توزيع تلقائي» أو أضيفي يدويًا" : "لا يوجد توزيع معتمد بعد"}
                             </div>
-                            {editingAssignments.map((a, i) => {
-                              const origTime = circles.find(c => c.id === a.originalCircleId)?.meetingTime;
-                              const examTime = circles.find(c => c.id === a.examCircleId)?.meetingTime;
-                              return (
-                                <div key={i} className="grid grid-cols-3 gap-2 items-center bg-background rounded-lg p-2 border">
-                                  {isLeader ? (
-                                    <>
-                                      <Select value={String(a.teacherId)} onValueChange={v => updateManualAssignment(i, "teacherId", v)}>
-                                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="معلمة..." /></SelectTrigger>
-                                        <SelectContent>{teachers.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent>
-                                      </Select>
-                                      <div className="px-1">
-                                        <div className="text-sm text-muted-foreground">{a.originalCircleName || "—"}</div>
-                                        {origTime && <div className="text-xs text-primary/70">{origTime}</div>}
-                                      </div>
-                                      <Select value={String(a.examCircleId)} onValueChange={v => updateAssignmentExamCircle(i, parseInt(v))}>
-                                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="حلقة الاختبار..." /></SelectTrigger>
-                                        <SelectContent>{scopedCircles.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}{c.meetingTime ? ` — ${c.meetingTime}` : ""}</SelectItem>)}</SelectContent>
-                                      </Select>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <span className="text-sm font-medium">{a.teacherName}</span>
-                                      <div>
-                                        <div className="text-sm text-muted-foreground">{a.originalCircleName}</div>
-                                        {origTime && <div className="text-xs text-primary/70">{origTime}</div>}
-                                      </div>
-                                      <div>
-                                        <div className="text-sm font-medium text-primary">{a.examCircleName}</div>
-                                        {examTime && <div className="text-xs text-primary/70">{examTime}</div>}
-                                      </div>
-                                    </>
-                                  )}
+                          ) : (
+                            <div className="space-y-2">
+                              {/* header */}
+                              <div className="grid gap-2 text-xs font-semibold text-muted-foreground px-2 mb-1"
+                                style={{ gridTemplateColumns: isLeader ? "1fr 1fr auto auto" : "1fr 1fr auto" }}>
+                                <span>المعلمة / حلقتها الأصلية</span>
+                                <span>تراقب في حلقة</span>
+                                <span className="text-center">✓</span>
+                                {isLeader && <span />}
+                              </div>
+                              {displayedAssignments.map((a, rawIdx) => {
+                                // نحتاج الـ index الحقيقي في editingAssignments لتعديله
+                                const realIdx = editingAssignments.indexOf(a);
+                                const examTime = circles.find(c => c.id === a.examCircleId)?.meetingTime;
+                                return (
+                                  <div key={rawIdx}
+                                    className={`grid gap-2 items-center rounded-lg p-2 border transition-colors ${a.confirmed ? "bg-green-50/60 border-green-200" : "bg-background"}`}
+                                    style={{ gridTemplateColumns: isLeader ? "1fr 1fr auto auto" : "1fr 1fr auto" }}>
+                                    {isLeader ? (
+                                      <>
+                                        {/* عمود المعلمة + حلقتها الأصلية */}
+                                        <div className="space-y-1 min-w-0">
+                                          <Select
+                                            value={a.teacherId ? String(a.teacherId) : ""}
+                                            onValueChange={v => updateManualAssignment(realIdx, "teacherId", v)}
+                                          >
+                                            <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="اختاري معلمة..." /></SelectTrigger>
+                                            <SelectContent>
+                                              {teachers
+                                                .filter(t => t.id === a.teacherId || !assignedTeacherIds.has(t.id))
+                                                .map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+                                            </SelectContent>
+                                          </Select>
+                                          {a.originalCircleName && (
+                                            <div className="text-xs text-muted-foreground px-1 truncate">{a.originalCircleName}</div>
+                                          )}
+                                        </div>
+                                        {/* عمود حلقة الاختبار */}
+                                        <Select
+                                          value={a.examCircleId ? String(a.examCircleId) : ""}
+                                          onValueChange={v => updateAssignmentExamCircle(realIdx, parseInt(v))}
+                                        >
+                                          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="حلقة الاختبار..." /></SelectTrigger>
+                                          <SelectContent>
+                                            {scopedCircles.map(c => (
+                                              <SelectItem key={c.id} value={String(c.id)}>
+                                                {c.name}{c.meetingTime ? ` — ${c.meetingTime}` : ""}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                        {/* زر الاعتماد */}
+                                        <button
+                                          type="button"
+                                          title={a.confirmed ? "إلغاء الاعتماد" : "اعتماد"}
+                                          onClick={() => toggleConfirm(realIdx)}
+                                          className={`flex items-center justify-center w-8 h-8 rounded-full border-2 transition-colors ${a.confirmed ? "border-green-500 bg-green-500 text-white" : "border-muted-foreground/30 text-muted-foreground/40 hover:border-green-400 hover:text-green-500"}`}
+                                        >
+                                          <Check className="w-4 h-4" />
+                                        </button>
+                                        {/* زر الحذف */}
+                                        <button
+                                          type="button"
+                                          onClick={() => removeAssignment(realIdx)}
+                                          className="flex items-center justify-center w-8 h-8 rounded-full text-destructive/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        {/* اليمين: الاسم + حلقتها الأصلية */}
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-medium truncate">{a.teacherName}</div>
+                                          <div className="text-xs text-muted-foreground truncate">{a.originalCircleName}</div>
+                                        </div>
+                                        {/* اليسار: حلقة الاختبار */}
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-semibold text-primary truncate">{a.examCircleName}</div>
+                                          {examTime && <div className="text-xs text-primary/60">{examTime}</div>}
+                                        </div>
+                                        {/* علامة الاعتماد */}
+                                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-500 text-white">
+                                          <Check className="w-4 h-4" />
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {isLeader && (
+                                <div className="text-xs text-muted-foreground text-left pt-1 px-1">
+                                  {editingAssignments.filter(a => a.confirmed).length} معتمدة من أصل {editingAssignments.length} — سيتم حفظ المعتمدات فقط
                                 </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {soloTeachers.length > 0 && (
                           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
