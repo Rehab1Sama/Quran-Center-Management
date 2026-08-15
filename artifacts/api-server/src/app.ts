@@ -3,6 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import path from "path";
 import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
@@ -35,11 +36,16 @@ app.use("/api", router);
 
 // Serve frontend static files in production (Render deployment)
 if (process.env.NODE_ENV === "production") {
+  // Render may start the service from a different working directory than the
+  // repository root. Resolve the asset directory from the bundled server too.
+  const runtimeDir = path.dirname(fileURLToPath(import.meta.url));
   const frontendDistCandidates = [
     path.resolve(process.cwd(), "artifacts/sana-quran/dist/public"),
     path.resolve(process.cwd(), "sana-quran/dist/public"),
     path.resolve(process.cwd(), "../sana-quran/dist/public"),
     path.resolve(process.cwd(), "../../artifacts/sana-quran/dist/public"),
+    path.resolve(runtimeDir, "../../sana-quran/dist/public"),
+    path.resolve(runtimeDir, "../../../artifacts/sana-quran/dist/public"),
   ];
   const frontendDist =
     frontendDistCandidates.find((candidate) =>
