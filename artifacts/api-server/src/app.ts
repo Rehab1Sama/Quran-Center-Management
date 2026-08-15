@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import path from "path";
+import { existsSync } from "node:fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
@@ -34,7 +35,16 @@ app.use("/api", router);
 
 // Serve frontend static files in production (Render deployment)
 if (process.env.NODE_ENV === "production") {
-  const frontendDist = path.resolve(process.cwd(), "artifacts/sana-quran/dist/public");
+  const frontendDistCandidates = [
+    path.resolve(process.cwd(), "artifacts/sana-quran/dist/public"),
+    path.resolve(process.cwd(), "sana-quran/dist/public"),
+    path.resolve(process.cwd(), "../sana-quran/dist/public"),
+    path.resolve(process.cwd(), "../../artifacts/sana-quran/dist/public"),
+  ];
+  const frontendDist =
+    frontendDistCandidates.find((candidate) =>
+      existsSync(path.join(candidate, "index.html")),
+    ) ?? frontendDistCandidates[0];
   logger.info({ frontendDist }, "Serving static files from");
   app.use(express.static(frontendDist));
   app.use((_req, res) => {
