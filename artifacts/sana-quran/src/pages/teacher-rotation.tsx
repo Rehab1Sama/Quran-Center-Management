@@ -14,9 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 
-interface RotationPageProps { userRole?: string; }
+interface RotationPageProps { userRole?: string; userId?: number; }
 
-export default function TeacherRotationPage({ userRole }: RotationPageProps) {
+export default function TeacherRotationPage({ userRole, userId }: RotationPageProps) {
   const [showDialog, setShowDialog] = useState(false);
   const [editingRotation, setEditingRotation] = useState<any>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -118,6 +118,14 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
     ...tracks.map(track => track.name),
     ...circles.map(circle => circle.track),
   ])).filter(Boolean);
+
+  // عدد الطالبات لكل حلقة
+  const studentCountByCircle = users.reduce((acc: Record<number, number>, u: any) => {
+    if (u.role === "student" && !u.isArchived && u.circleId != null) {
+      acc[u.circleId] = (acc[u.circleId] ?? 0) + 1;
+    }
+    return acc;
+  }, {} as Record<number, number>);
 
   function autoDistribute() {
     const teachersWithCircles = teachers.filter(t => t.circleId != null);
@@ -287,6 +295,27 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
                     </div>
                   )}
 
+                  {/* بطاقة المعلمة: حلقتها في الاختبار */}
+                  {userRole === "teacher" && userId && (() => {
+                    const myAssignment = editingAssignments.find(a => a.teacherId === userId && a.confirmed);
+                    const examStudentCount = myAssignment ? (studentCountByCircle[myAssignment.examCircleId] ?? 0) : null;
+                    return (
+                      <div className={`rounded-xl border p-4 mb-4 ${myAssignment ? "bg-primary/10 border-primary/30" : "bg-amber-50 border-amber-200"}`}>
+                        <p className="text-xs font-semibold text-muted-foreground mb-1">حلقتك في الاختبار</p>
+                        {myAssignment ? (
+                          <div>
+                            <p className="text-lg font-bold text-primary">{myAssignment.examCircleName}</p>
+                            {examStudentCount != null && (
+                              <p className="text-sm text-muted-foreground mt-0.5">{examStudentCount} طالبة</p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-amber-700 italic">لم يتم تعيينك بعد في هذه الشقلبة</p>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {(() => {
                     // حلقات بلا شريك للتبادل (وحيدة في وقتها)
                     const grouped: Record<string, typeof teachers> = {};
@@ -324,12 +353,15 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
                                 {isLeader && <span />}
                               </div>
                               {displayedAssignments.map((a, rawIdx) => {
-                                // نحتاج الـ index الحقيقي في editingAssignments لتعديله
                                 const realIdx = editingAssignments.indexOf(a);
                                 const examTime = circles.find(c => c.id === a.examCircleId)?.meetingTime;
+                                const examStudentCount = a.examCircleId ? (studentCountByCircle[a.examCircleId] ?? 0) : null;
+                                const isOwnRow = userRole === "teacher" && a.teacherId === userId;
                                 return (
                                   <div key={rawIdx}
-                                    className={`grid gap-2 items-center rounded-lg p-2 border transition-colors ${a.confirmed ? "bg-green-50/60 border-green-200" : "bg-background"}`}
+                                    className={`grid gap-2 items-center rounded-lg p-2 border transition-colors
+                                      ${isOwnRow ? "bg-primary/10 border-primary/30 ring-1 ring-primary/20" :
+                                        a.confirmed ? "bg-green-50/60 border-green-200" : "bg-background"}`}
                                     style={{ gridTemplateColumns: isLeader ? "1fr 1fr auto auto" : "1fr 1fr auto" }}>
                                     {isLeader ? (
                                       <>
@@ -350,20 +382,25 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
                                             <div className="text-xs text-muted-foreground px-1 truncate">{a.originalCircleName}</div>
                                           )}
                                         </div>
-                                        {/* عمود حلقة الاختبار */}
-                                        <Select
-                                          value={a.examCircleId ? String(a.examCircleId) : ""}
-                                          onValueChange={v => updateAssignmentExamCircle(realIdx, parseInt(v))}
-                                        >
-                                          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="حلقة الاختبار..." /></SelectTrigger>
-                                          <SelectContent>
-                                            {scopedCircles.map(c => (
-                                              <SelectItem key={c.id} value={String(c.id)}>
-                                                {c.name}{c.meetingTime ? ` — ${c.meetingTime}` : ""}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
+                                        {/* عمود حلقة الاختبار + عدد الطالبات */}
+                                        <div className="space-y-1 min-w-0">
+                                          <Select
+                                            value={a.examCircleId ? String(a.examCircleId) : ""}
+                                            onValueChange={v => updateAssignmentExamCircle(realIdx, parseInt(v))}
+                                          >
+                                            <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="حلقة الاختبار..." /></SelectTrigger>
+                                            <SelectContent>
+                                              {scopedCircles.map(c => (
+                                                <SelectItem key={c.id} value={String(c.id)}>
+                                                  {c.name}{c.meetingTime ? ` — ${c.meetingTime}` : ""}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                          {examStudentCount != null && a.examCircleId ? (
+                                            <div className="text-xs text-muted-foreground px-1">{examStudentCount} طالبة</div>
+                                          ) : null}
+                                        </div>
                                         {/* زر الاعتماد */}
                                         <button
                                           type="button"
@@ -389,13 +426,16 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
                                           <div className="text-sm font-medium truncate">{a.teacherName}</div>
                                           <div className="text-xs text-muted-foreground truncate">{a.originalCircleName}</div>
                                         </div>
-                                        {/* اليسار: حلقة الاختبار */}
+                                        {/* اليسار: حلقة الاختبار + عدد الطالبات */}
                                         <div className="min-w-0">
                                           <div className="text-sm font-semibold text-primary truncate">{a.examCircleName}</div>
                                           {examTime && <div className="text-xs text-primary/60">{examTime}</div>}
+                                          {examStudentCount != null && (
+                                            <div className="text-xs text-muted-foreground">{examStudentCount} طالبة</div>
+                                          )}
                                         </div>
                                         {/* علامة الاعتماد */}
-                                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-500 text-white">
+                                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-500 text-white flex-shrink-0">
                                           <Check className="w-4 h-4" />
                                         </div>
                                       </>
@@ -421,26 +461,30 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
                               {soloTeachers.map(t => {
                                 const circle = scopedCircles.find(c => c.id === t.circleId);
                                 const assigned = editingAssignments.find(a => a.teacherId === t.id);
+                                const displayCount = assigned
+                                  ? (studentCountByCircle[assigned.examCircleId] ?? 0)
+                                  : (t.circleId ? (studentCountByCircle[t.circleId] ?? 0) : 0);
                                 return (
-                                  <div key={t.id} className="flex items-center gap-2">
+                                  <div key={t.id} className="flex items-center gap-2 flex-wrap">
                                     <div className="min-w-0 flex-shrink-0">
                                       <span className="text-xs font-medium text-amber-800">{t.name}</span>
                                       <span className="text-xs text-amber-500 mr-1">
                                         ({circle?.name ?? "—"}{circle?.meetingTime ? ` · ${circle.meetingTime}` : ""})
                                       </span>
+                                      <span className="text-xs text-muted-foreground mr-1">· {displayCount} طالبة</span>
                                     </div>
                                     {isLeader ? (
                                       <Select
                                         value={assigned ? String(assigned.examCircleId) : ""}
                                         onValueChange={v => assignSoloTeacher(t, parseInt(v))}
                                       >
-                                        <SelectTrigger className="h-7 text-xs flex-1 border-amber-300 bg-white">
+                                        <SelectTrigger className="h-7 text-xs flex-1 border-amber-300 bg-white min-w-[120px]">
                                           <SelectValue placeholder="اختاري حلقة..." />
                                         </SelectTrigger>
                                         <SelectContent>
                                           {scopedCircles.filter(c => c.id !== t.circleId).map(c => (
                                             <SelectItem key={c.id} value={String(c.id)}>
-                                              {c.name}{c.meetingTime ? ` — ${c.meetingTime}` : ""}
+                                              {c.name}{c.meetingTime ? ` — ${c.meetingTime}` : ""}{studentCountByCircle[c.id] != null ? ` (${studentCountByCircle[c.id]} طالبة)` : ""}
                                             </SelectItem>
                                           ))}
                                         </SelectContent>
