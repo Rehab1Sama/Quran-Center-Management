@@ -247,40 +247,89 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
                     </div>
                   )}
 
-                  {editingAssignments.length === 0 ? (
-                    <div className="text-center py-6 text-muted-foreground text-sm">
-                      {isLeader ? "اضغطي «توزيع تلقائي» أو أضيفي يدويًا" : "لا يوجد توزيع بعد"}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-3 text-xs font-semibold text-muted-foreground px-2 mb-1">
-                        <span>المعلمة</span><span>حلقتها الأصلية</span><span>تراقب في حلقة</span>
-                      </div>
-                      {editingAssignments.map((a, i) => (
-                        <div key={i} className="grid grid-cols-3 gap-2 items-center bg-background rounded-lg p-2 border">
-                          {isLeader ? (
-                            <>
-                              <Select value={String(a.teacherId)} onValueChange={v => updateManualAssignment(i, "teacherId", v)}>
-                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="معلمة..." /></SelectTrigger>
-                                <SelectContent>{teachers.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent>
-                              </Select>
-                              <div className="text-sm text-muted-foreground px-1">{a.originalCircleName || "—"}</div>
-                              <Select value={String(a.examCircleId)} onValueChange={v => updateAssignmentExamCircle(i, parseInt(v))}>
-                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="حلقة الاختبار..." /></SelectTrigger>
-                                <SelectContent>{scopedCircles.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
-                              </Select>
-                            </>
-                          ) : (
-                            <>
-                              <span className="text-sm font-medium">{a.teacherName}</span>
-                              <span className="text-sm text-muted-foreground">{a.originalCircleName}</span>
-                              <span className="text-sm font-medium text-primary">{a.examCircleName}</span>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {(() => {
+                    // حلقات بلا شريك للتبادل (وحيدة في وقتها)
+                    const grouped: Record<string, typeof teachers> = {};
+                    teachers.filter(t => t.circleId != null).forEach(t => {
+                      const time = scopedCircles.find(c => c.id === t.circleId)?.meetingTime ?? "غير محدد";
+                      if (!grouped[time]) grouped[time] = [];
+                      grouped[time].push(t);
+                    });
+                    const soloTeachers = teachers.filter(t => {
+                      const time = scopedCircles.find(c => c.id === t.circleId)?.meetingTime ?? "غير محدد";
+                      return (grouped[time]?.length ?? 0) === 1;
+                    });
+
+                    return (
+                      <>
+                        {editingAssignments.length === 0 ? (
+                          <div className="text-center py-6 text-muted-foreground text-sm">
+                            {isLeader ? "اضغطي «توزيع تلقائي» أو أضيفي يدويًا" : "لا يوجد توزيع بعد"}
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-3 text-xs font-semibold text-muted-foreground px-2 mb-1">
+                              <span>المعلمة</span><span>حلقتها الأصلية</span><span>تراقب في حلقة</span>
+                            </div>
+                            {editingAssignments.map((a, i) => {
+                              const origTime = circles.find(c => c.id === a.originalCircleId)?.meetingTime;
+                              const examTime = circles.find(c => c.id === a.examCircleId)?.meetingTime;
+                              return (
+                                <div key={i} className="grid grid-cols-3 gap-2 items-center bg-background rounded-lg p-2 border">
+                                  {isLeader ? (
+                                    <>
+                                      <Select value={String(a.teacherId)} onValueChange={v => updateManualAssignment(i, "teacherId", v)}>
+                                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="معلمة..." /></SelectTrigger>
+                                        <SelectContent>{teachers.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent>
+                                      </Select>
+                                      <div className="px-1">
+                                        <div className="text-sm text-muted-foreground">{a.originalCircleName || "—"}</div>
+                                        {origTime && <div className="text-xs text-primary/70">{origTime}</div>}
+                                      </div>
+                                      <Select value={String(a.examCircleId)} onValueChange={v => updateAssignmentExamCircle(i, parseInt(v))}>
+                                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="حلقة الاختبار..." /></SelectTrigger>
+                                        <SelectContent>{scopedCircles.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}{c.meetingTime ? ` — ${c.meetingTime}` : ""}</SelectItem>)}</SelectContent>
+                                      </Select>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="text-sm font-medium">{a.teacherName}</span>
+                                      <div>
+                                        <div className="text-sm text-muted-foreground">{a.originalCircleName}</div>
+                                        {origTime && <div className="text-xs text-primary/70">{origTime}</div>}
+                                      </div>
+                                      <div>
+                                        <div className="text-sm font-medium text-primary">{a.examCircleName}</div>
+                                        {examTime && <div className="text-xs text-primary/70">{examTime}</div>}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {soloTeachers.length > 0 && (
+                          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                            <p className="text-xs font-semibold text-amber-700 mb-2">⚠️ حلقات بلا شريك للتبادل (وقت منفرد)</p>
+                            <div className="space-y-1">
+                              {soloTeachers.map(t => {
+                                const circle = scopedCircles.find(c => c.id === t.circleId);
+                                return (
+                                  <div key={t.id} className="flex items-center gap-2 text-xs text-amber-800">
+                                    <span className="font-medium">{t.name}</span>
+                                    <span className="text-amber-600">← {circle?.name ?? "—"}</span>
+                                    {circle?.meetingTime && <span className="text-amber-500">({circle.meetingTime})</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
