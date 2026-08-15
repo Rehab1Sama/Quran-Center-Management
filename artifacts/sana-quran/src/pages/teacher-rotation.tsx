@@ -166,6 +166,21 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
     setEditingAssignments(prev => prev.map((a, i) => i === index ? { ...a, examCircleId: circleId, examCircleName: circles.find(c => c.id === circleId)?.name ?? "" } : a));
   }
 
+  function assignSoloTeacher(teacher: { id: number; name: string; circleId: number | null }, examCircleId: number) {
+    const origCircle = scopedCircles.find(c => c.id === teacher.circleId);
+    const examCircle = scopedCircles.find(c => c.id === examCircleId);
+    setEditingAssignments(prev => {
+      const existing = prev.findIndex(a => a.teacherId === teacher.id);
+      const entry = {
+        teacherId: teacher.id, teacherName: teacher.name,
+        originalCircleId: teacher.circleId ?? 0, originalCircleName: origCircle?.name ?? "—",
+        examCircleId, examCircleName: examCircle?.name ?? "—",
+      };
+      if (existing >= 0) { const next = [...prev]; next[existing] = entry; return next; }
+      return [...prev, entry];
+    });
+  }
+
   function addManualAssignment() {
     setEditingAssignments(prev => [...prev, { teacherId: 0, teacherName: "", originalCircleId: 0, originalCircleName: "", examCircleId: 0, examCircleName: "" }]);
   }
@@ -312,15 +327,42 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
 
                         {soloTeachers.length > 0 && (
                           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                            <p className="text-xs font-semibold text-amber-700 mb-2">⚠️ حلقات بلا شريك للتبادل (وقت منفرد)</p>
-                            <div className="space-y-1">
+                            <p className="text-xs font-semibold text-amber-700 mb-2">
+                              ⚠️ حلقات بلا شريك للتبادل — {isLeader ? "يمكنك تعيينهن يدويًا" : "وقت منفرد"}
+                            </p>
+                            <div className="space-y-2">
                               {soloTeachers.map(t => {
                                 const circle = scopedCircles.find(c => c.id === t.circleId);
+                                const assigned = editingAssignments.find(a => a.teacherId === t.id);
                                 return (
-                                  <div key={t.id} className="flex items-center gap-2 text-xs text-amber-800">
-                                    <span className="font-medium">{t.name}</span>
-                                    <span className="text-amber-600">← {circle?.name ?? "—"}</span>
-                                    {circle?.meetingTime && <span className="text-amber-500">({circle.meetingTime})</span>}
+                                  <div key={t.id} className="flex items-center gap-2">
+                                    <div className="min-w-0 flex-shrink-0">
+                                      <span className="text-xs font-medium text-amber-800">{t.name}</span>
+                                      <span className="text-xs text-amber-500 mr-1">
+                                        ({circle?.name ?? "—"}{circle?.meetingTime ? ` · ${circle.meetingTime}` : ""})
+                                      </span>
+                                    </div>
+                                    {isLeader ? (
+                                      <Select
+                                        value={assigned ? String(assigned.examCircleId) : ""}
+                                        onValueChange={v => assignSoloTeacher(t, parseInt(v))}
+                                      >
+                                        <SelectTrigger className="h-7 text-xs flex-1 border-amber-300 bg-white">
+                                          <SelectValue placeholder="اختاري حلقة..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {scopedCircles.filter(c => c.id !== t.circleId).map(c => (
+                                            <SelectItem key={c.id} value={String(c.id)}>
+                                              {c.name}{c.meetingTime ? ` — ${c.meetingTime}` : ""}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    ) : (
+                                      assigned
+                                        ? <span className="text-xs font-medium text-primary">← {assigned.examCircleName}</span>
+                                        : <span className="text-xs text-amber-400 italic">لم تُعيَّن بعد</span>
+                                    )}
                                   </div>
                                 );
                               })}
