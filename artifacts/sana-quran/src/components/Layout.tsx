@@ -797,7 +797,6 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/", label: "حلقتي", icon: Users },
       { href: "/review-plans-overview", label: "خطط المراجعة", icon: BookOpen },
       { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
-      { href: "/teacher-rotation", label: "شقلبة المعلمات", icon: Shuffle, feature: "teacher_rotation" },
       { href: "/badges", label: "أوسمتي", icon: Award, feature: "badges" },
       { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
       { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount, feature: "messages" },
