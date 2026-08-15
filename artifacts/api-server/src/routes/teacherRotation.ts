@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, examRotationsTable, examTeacherAssignmentsTable, usersTable, circlesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 
 const router: IRouter = Router();
@@ -99,6 +99,28 @@ router.delete("/exam-rotations/:id", authenticate, async (req, res): Promise<voi
   await db.delete(examTeacherAssignmentsTable).where(eq(examTeacherAssignmentsTable.rotationId, id));
   await db.delete(examRotationsTable).where(eq(examRotationsTable.id, id));
   res.status(204).send();
+});
+
+// ── My assignment (for the logged-in teacher) ──────────────────────────────
+router.get("/exam-rotations/my-assignment", authenticate, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const [activeRotation] = await db.select().from(examRotationsTable)
+    .where(eq(examRotationsTable.isActive, true));
+  if (!activeRotation) { res.json(null); return; }
+  const [assignment] = await db.select().from(examTeacherAssignmentsTable)
+    .where(and(
+      eq(examTeacherAssignmentsTable.rotationId, activeRotation.id),
+      eq(examTeacherAssignmentsTable.teacherId, userId),
+    ));
+  if (!assignment) { res.json(null); return; }
+  const [examCircle] = await db.select().from(circlesTable).where(eq(circlesTable.id, assignment.examCircleId));
+  res.json({
+    rotationName: activeRotation.name,
+    examCircleId: assignment.examCircleId,
+    examCircleName: examCircle?.name ?? "غير معروف",
+    examMeetingTime: examCircle?.meetingTime ?? null,
+    examCircleWhatsappLink: examCircle?.whatsappLink ?? null,
+  });
 });
 
 router.get("/exam-rotations/:id/assignments", authenticate, async (req, res): Promise<void> => {
