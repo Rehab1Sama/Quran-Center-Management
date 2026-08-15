@@ -9,10 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Plus, Trash2, Pencil, RefreshCw, Shuffle, ChevronDown, ChevronUp, Save, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Pencil, RefreshCw, Shuffle, ChevronDown, ChevronUp, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface RotationPageProps { userRole?: string; }
@@ -392,10 +391,13 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
         )}
       </div>
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent dir="rtl">
-          <DialogHeader><DialogTitle>{editingRotation ? "تعديل الشقلبة" : "شقلبة جديدة"}</DialogTitle></DialogHeader>
-          <div className="space-y-4">
+      {showDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowDialog(false)}>
+          <div className="bg-background rounded-xl border shadow-xl w-full max-w-lg mx-4 p-6 space-y-4" dir="rtl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">{editingRotation ? "تعديل الشقلبة" : "شقلبة جديدة"}</h2>
+              <button type="button" onClick={() => setShowDialog(false)} className="rounded-sm opacity-70 hover:opacity-100 transition-opacity"><X className="h-4 w-4" /></button>
+            </div>
             <div><Label>الاسم *</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="اختبارات المراجعة العامة..." /></div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>من تاريخ *</Label><Input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} /></div>
@@ -404,19 +406,11 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
             <div className="space-y-2">
               <Label>نطاق الشقلبة *</Label>
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setForm(f => ({ ...f, teacherScope: "girls" }))}
-                  className={`rounded-lg border p-3 text-right text-sm transition-colors ${form.teacherScope === "girls" ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"}`}
-                >
+                <button type="button" onClick={() => setForm(f => ({ ...f, teacherScope: "girls" }))} className={`rounded-lg border p-3 text-right text-sm transition-colors ${form.teacherScope === "girls" ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"}`}>
                   <span className="font-semibold block">معلمات الفتيات فقط</span>
                   <span className="text-xs text-muted-foreground">بين حلقات مسارات الفتيات</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setForm(f => ({ ...f, teacherScope: "selected_tracks" }))}
-                  className={`rounded-lg border p-3 text-right text-sm transition-colors ${form.teacherScope === "selected_tracks" ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"}`}
-                >
+                <button type="button" onClick={() => setForm(f => ({ ...f, teacherScope: "selected_tracks" }))} className={`rounded-lg border p-3 text-right text-sm transition-colors ${form.teacherScope === "selected_tracks" ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"}`}>
                   <span className="font-semibold block">مسارات محددة</span>
                   <span className="text-xs text-muted-foreground">الشقلبة بين المسارات المختارة فقط</span>
                 </button>
@@ -427,17 +421,7 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
                   <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto">
                     {availableTracks.map(track => (
                       <label key={track} className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={form.selectedTracks.includes(track)}
-                          onChange={() => setForm(f => ({
-                            ...f,
-                            selectedTracks: f.selectedTracks.includes(track)
-                              ? f.selectedTracks.filter(item => item !== track)
-                              : [...f.selectedTracks, track],
-                          }))}
-                          className="accent-primary"
-                        />
+                        <input type="checkbox" checked={form.selectedTracks.includes(track)} onChange={() => setForm(f => ({ ...f, selectedTracks: f.selectedTracks.includes(track) ? f.selectedTracks.filter(i => i !== track) : [...f.selectedTracks, track] }))} className="accent-primary" />
                         <span>{track}</span>
                       </label>
                     ))}
@@ -447,13 +431,13 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
               )}
             </div>
             <div className="flex items-center gap-3"><Switch checked={form.isActive} onCheckedChange={v => setForm(f => ({ ...f, isActive: v }))} /><Label>نشطة</Label></div>
+            <div className="flex gap-2 justify-start pt-2">
+              <Button onClick={handleSave}>حفظ</Button>
+              <Button variant="outline" onClick={() => setShowDialog(false)}>إلغاء</Button>
+            </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>إلغاء</Button>
-            <Button onClick={handleSave}>حفظ</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </div>
   );
 }
