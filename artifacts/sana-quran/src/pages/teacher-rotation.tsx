@@ -142,7 +142,8 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
 
   // summary data
   const confirmedAssignments = editingAssignments.filter(a => a.confirmed);
-  const assignedTeacherIds   = new Set(confirmedAssignments.map(a => a.teacherId));
+  // أي معلمة في القائمة (معتمدة أو لا) لا تظهر في "غير الموزعات"
+  const assignedTeacherIds   = new Set(editingAssignments.map(a => a.teacherId));
   const coveredExamCircleIds = new Set(confirmedAssignments.map(a => a.examCircleId));
   const byTeacherId: Record<number, any[]> = {};
   for (const a of confirmedAssignments) {
@@ -594,15 +595,35 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
                       <p className="text-xs font-semibold text-orange-700 mb-3">
                         👩‍🏫 معلمات لم يُعيَّن لهن دور ({unassignedTeachers.length})
                       </p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="space-y-2">
                         {unassignedTeachers.map(t => {
                           const c = scopedCircles.find(x => x.id === t.circleId);
                           const cnt = t.circleId != null ? studentCountByCircle[t.circleId] : undefined;
                           return (
-                            <span key={t.id} className="text-xs bg-white border border-orange-200 rounded-full px-3 py-1.5 flex items-center gap-1">
-                              <span className="font-medium">{t.name}</span>
-                              {c && <span className="text-orange-500">({c.name}{cnt != null ? ` · ${cnt} ط` : ""})</span>}
-                            </span>
+                            <div key={t.id} className="flex items-center gap-2 bg-white border border-orange-200 rounded-lg px-3 py-2">
+                              <div className="min-w-0 flex-shrink-0">
+                                <span className="text-sm font-medium text-amber-800">{t.name}</span>
+                                {c && <span className="text-xs text-orange-500 mr-1">({c.name}{(c as any).meetingTime ? ` · ${(c as any).meetingTime}` : ""}{cnt != null ? ` · ${cnt} ط` : ""})</span>}
+                              </div>
+                              {isLeader && (
+                                <Select
+                                  value=""
+                                  onValueChange={v => assignSoloTeacher(t, parseInt(v))}
+                                >
+                                  <SelectTrigger className="h-7 text-xs flex-1 border-orange-300 bg-orange-50 min-w-[140px]">
+                                    <SelectValue placeholder="عيّني حلقة اختبار..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {scopedCircles.filter(sc => sc.id !== t.circleId).map(sc => (
+                                      <SelectItem key={sc.id} value={String(sc.id)}>
+                                        {sc.name}{(sc as any).meetingTime ? ` — ${(sc as any).meetingTime}` : ""}
+                                        {studentCountByCircle[sc.id] != null ? ` · ${studentCountByCircle[sc.id]} ط` : ""}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            </div>
                           );
                         })}
                       </div>
