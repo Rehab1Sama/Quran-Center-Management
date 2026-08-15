@@ -134,6 +134,12 @@ function CirclePlansCard({ circlePlans, trackType }: { circlePlans: ReviewPlan[]
 export default function MyCirclePage() {
   const [showArchived, setShowArchived] = useState(false);
   const [circlePlans, setCirclePlans] = useState<any[]>([]);
+  const [examAssignment, setExamAssignment] = useState<null | {
+    rotationName: string;
+    examCircleName: string;
+    examMeetingTime?: string | null;
+    examCircleWhatsappLink?: string | null;
+  }>(null);
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const circleId = user?.circleId ?? undefined;
   const trackType: string = (user as any)?.trackType ?? "";
@@ -150,6 +156,14 @@ export default function MyCirclePage() {
     circleId ? { circleId } : undefined,
     { query: { queryKey: ["records", circleId], enabled: !!circleId } }
   );
+
+  // Fetch exam rotation assignment for current teacher
+  useEffect(() => {
+    fetch(`${BASE}/api/exam-rotations/my-assignment`, { headers: authHeader() })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setExamAssignment(data))
+      .catch(() => {});
+  }, []);
 
   // Fetch review plans for girls/fixation circles
   useEffect(() => {
@@ -183,6 +197,28 @@ export default function MyCirclePage() {
 
       {/* Messages from leader */}
       <MessagesSection />
+
+      {/* Exam rotation assignment */}
+      {examAssignment && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+          <p className="text-xs font-bold text-amber-700">📋 شقلبة الاختبار — {examAssignment.rotationName}</p>
+          <p className="text-sm text-amber-800">
+            ستراقبين حلقة:{" "}
+            <span className="font-semibold">{examAssignment.examCircleName}</span>
+            {examAssignment.examMeetingTime && (
+              <span className="text-xs text-amber-600 mr-1">({examAssignment.examMeetingTime})</span>
+            )}
+          </p>
+          {examAssignment.examCircleWhatsappLink && (
+            <a href={examAssignment.examCircleWhatsappLink} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="outline" className="text-xs border-amber-300 text-amber-700 hover:bg-amber-100 gap-1">
+                <MessageCircle className="w-3 h-3" />
+                رابط مجموعة الحلقة
+              </Button>
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Quick stats */}
       <div className={`grid gap-4 ${studentsOnLeave > 0 ? "grid-cols-4" : "grid-cols-3"}`}>
