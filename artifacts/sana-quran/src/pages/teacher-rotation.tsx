@@ -142,9 +142,10 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
 
   // summary data
   const confirmedAssignments = editingAssignments.filter(a => a.confirmed);
-  // أي معلمة في القائمة (معتمدة أو لا) لا تظهر في "غير الموزعات"
-  const assignedTeacherIds   = new Set(editingAssignments.map(a => a.teacherId));
-  const coveredExamCircleIds = new Set(confirmedAssignments.map(a => a.examCircleId));
+  // أي معلمة لها صف في القائمة (غير الصفر/الفارغ) تختفي من "غير الموزعات"
+  const assignedTeacherIds   = new Set(editingAssignments.map(a => a.teacherId).filter(id => id && id > 0));
+  // أي حلقة مأخوذة كحلقة اختبار (معتمدة أو لا) تختفي من القوائم المنسدلة
+  const coveredExamCircleIds = new Set(editingAssignments.map(a => a.examCircleId).filter(id => id && id > 0));
   const byTeacherId: Record<number, any[]> = {};
   for (const a of confirmedAssignments) {
     if (!byTeacherId[a.teacherId]) byTeacherId[a.teacherId] = [];
@@ -463,11 +464,13 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
                                       onValueChange={v => updateAssignmentExamCircle(rawIdx, parseInt(v))}>
                                       <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="حلقة الاختبار..." /></SelectTrigger>
                                       <SelectContent>
-                                        {scopedCircles.map(c => (
-                                          <SelectItem key={c.id} value={String(c.id)}>
-                                            {c.name}{(c as any).meetingTime ? ` — ${(c as any).meetingTime}` : ""}
-                                          </SelectItem>
-                                        ))}
+                                        {scopedCircles
+                                          .filter(c => c.id === a.examCircleId || !coveredExamCircleIds.has(c.id))
+                                          .map(c => (
+                                            <SelectItem key={c.id} value={String(c.id)}>
+                                              {c.name}{(c as any).meetingTime ? ` — ${(c as any).meetingTime}` : ""}
+                                            </SelectItem>
+                                          ))}
                                       </SelectContent>
                                     </Select>
                                     {examCount != null && a.examCircleId
@@ -614,12 +617,14 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
                                     <SelectValue placeholder="عيّني حلقة اختبار..." />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {scopedCircles.filter(sc => sc.id !== t.circleId).map(sc => (
-                                      <SelectItem key={sc.id} value={String(sc.id)}>
-                                        {sc.name}{(sc as any).meetingTime ? ` — ${(sc as any).meetingTime}` : ""}
-                                        {studentCountByCircle[sc.id] != null ? ` · ${studentCountByCircle[sc.id]} ط` : ""}
-                                      </SelectItem>
-                                    ))}
+                                    {scopedCircles
+                                      .filter(sc => sc.id !== t.circleId && !coveredExamCircleIds.has(sc.id))
+                                      .map(sc => (
+                                        <SelectItem key={sc.id} value={String(sc.id)}>
+                                          {sc.name}{(sc as any).meetingTime ? ` — ${(sc as any).meetingTime}` : ""}
+                                          {studentCountByCircle[sc.id] != null ? ` · ${studentCountByCircle[sc.id]} ط` : ""}
+                                        </SelectItem>
+                                      ))}
                                   </SelectContent>
                                 </Select>
                               )}
