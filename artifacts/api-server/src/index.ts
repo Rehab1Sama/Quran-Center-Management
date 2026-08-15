@@ -58,6 +58,20 @@ async function migrateReviewPlansTable() {
   logger.info({ steps: ok }, "review_plans migration complete");
 }
 
+// إضافة أعمدة teacherScope وselectedTracks لجدول exam_rotations (migration 0003)
+async function migrateExamRotationsScope() {
+  const steps = [
+    `ALTER TABLE exam_rotations ADD COLUMN IF NOT EXISTS "teacher_scope" text NOT NULL DEFAULT 'girls'`,
+    `ALTER TABLE exam_rotations ADD COLUMN IF NOT EXISTS "selected_tracks" text NOT NULL DEFAULT '[]'`,
+  ];
+  for (const step of steps) {
+    try { await db.execute(sql.raw(step)); } catch (err: any) {
+      logger.warn({ msg: err?.message?.slice(0, 120) }, "exam_rotations scope migration step skipped");
+    }
+  }
+  logger.info("exam_rotations scope columns ensured");
+}
+
 async function migrateRecordsUniqueConstraint() {
   try {
     // فحص أولاً — إذا كان القيد موجوداً لا نحاول إضافته
@@ -650,6 +664,7 @@ app.listen(port, (err) => {
   // دوال المخطط والإعدادات — مستقلة، تشتغل معاً
   void migrateGlobalSettings();
   void migrateReviewPlansTable();
+  void migrateExamRotationsScope();
   void migrateRecordsUniqueConstraint();
   void normalizeEmails();
   void repairMissingEnrollments();
