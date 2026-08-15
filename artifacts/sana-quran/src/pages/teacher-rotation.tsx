@@ -342,6 +342,7 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
 
                             {displayedAssignments.map((a, rawIdx) => {
                               const realIdx = editingAssignments.indexOf(a);
+                              const origTime = circles.find(c => c.id === a.originalCircleId)?.meetingTime;
                               const examTime = circles.find(c => c.id === a.examCircleId)?.meetingTime;
                               const examCount = a.examCircleId ? studentCountByCircle[a.examCircleId] : undefined;
                               return (
@@ -367,6 +368,9 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
                                         </Select>
                                         {a.originalCircleName && (
                                           <div className="text-xs text-muted-foreground px-1 truncate">{a.originalCircleName}</div>
+                                        )}
+                                        {origTime && (
+                                          <div className="text-xs text-muted-foreground/70 px-1">{origTime}</div>
                                         )}
                                       </div>
 
@@ -414,10 +418,11 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
                                     </>
                                   ) : (
                                     <>
-                                      {/* اليمين: الاسم + حلقتها الأصلية */}
+                                      {/* اليمين: الاسم + حلقتها الأصلية + وقتها */}
                                       <div className="min-w-0">
                                         <div className="text-sm font-medium truncate">{a.teacherName}</div>
                                         <div className="text-xs text-muted-foreground truncate">{a.originalCircleName}</div>
+                                        {origTime && <div className="text-xs text-muted-foreground/70">{origTime}</div>}
                                       </div>
 
                                       {/* اليسار: حلقة الاختبار + وقتها + عدد الطالبات */}
