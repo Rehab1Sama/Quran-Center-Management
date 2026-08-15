@@ -836,6 +836,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/my-messages", label: "رسائلي", icon: MessageSquare, badge: unreadCount, feature: "messages" },
       { href: "/student-leaves", label: "طالبات الإجازة", icon: PlaneTakeoff, feature: "leaves" },
       { href: "/pending-registrations", label: "طلبات التسجيل", icon: ClipboardList, feature: "registration" },
+      { href: "/teacher-rotation", label: "شقلبة المعلمات", icon: Shuffle, feature: "teacher_rotation" },
       { href: "/export", label: "تصدير بيانات المسار", icon: FileDown },
     ]);
   }
