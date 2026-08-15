@@ -522,7 +522,7 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
                                         <SelectValue placeholder="اختاري حلقة..." />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        {scopedCircles.filter(c => c.id !== t.circleId).map(c => (
+                                        {scopedCircles.map(c => (
                                           <SelectItem key={c.id} value={String(c.id)}>
                                             {c.name}{(c as any).meetingTime ? ` — ${(c as any).meetingTime}` : ""}
                                             {studentCountByCircle[c.id] != null ? ` · ${studentCountByCircle[c.id]} طالبة` : ""}
@@ -618,7 +618,7 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
                                   </SelectTrigger>
                                   <SelectContent>
                                     {scopedCircles
-                                      .filter(sc => sc.id !== t.circleId && !coveredExamCircleIds.has(sc.id))
+                                      .filter(sc => !coveredExamCircleIds.has(sc.id))
                                       .map(sc => (
                                         <SelectItem key={sc.id} value={String(sc.id)}>
                                           {sc.name}{(sc as any).meetingTime ? ` — ${(sc as any).meetingTime}` : ""}
