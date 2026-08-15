@@ -321,11 +321,14 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
                   const phone = phoneByUserId[a.teacherId];
                   return (
                     <div key={i} className="flex items-center gap-2 justify-end">
-                      <span className="text-sm font-medium">{a.teacherName}</span>
+                      <div className="text-right">
+                        <span className="text-sm font-medium block">{a.teacherName}</span>
+                        {phone && <span className="text-xs text-muted-foreground" dir="ltr">{phone}</span>}
+                      </div>
                       {phone ? (
                         <a href={toWhatsApp(phone)} target="_blank" rel="noopener noreferrer"
                           title={phone}
-                          className="flex items-center justify-center w-7 h-7 rounded-full bg-green-100 text-green-700 hover:bg-green-200 transition-colors">
+                          className="flex items-center justify-center w-7 h-7 rounded-full bg-green-100 text-green-700 hover:bg-green-200 transition-colors flex-shrink-0">
                           <Phone className="w-3.5 h-3.5" />
                         </a>
                       ) : null}
@@ -581,8 +584,8 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
                     </div>
                   )}
 
-                  {/* ④ ملخص التوزيع المعتمد — مديرة / نائبة / معلمة: تعرض حسب المعلمة */}
-                  {(isLeader || isDeputy || isTeacher) && (
+                  {/* ④ ملخص التوزيع المعتمد — مديرة / نائبة: تعرض حسب المعلمة */}
+                  {(isLeader || isDeputy) && (
                     <div className="rounded-xl border bg-background overflow-hidden">
                       <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/20">
                         <span className="font-semibold text-sm">ملخص التوزيع المعتمد</span>
