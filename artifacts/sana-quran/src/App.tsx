@@ -212,7 +212,7 @@ function AppRoutes() {
           {isLeaderOrDeputy && isFeatureEnabled("store") ? <StoreManagePage /> : <Redirect to="/" />}
         </Route>
         <Route path="/teacher-rotation">
-          {(isLeaderOrDeputy || isTrackSupervisor) && isFeatureEnabled("teacher_rotation") ? <TeacherRotationPage userRole={user.role} /> : <Redirect to="/" />}
+          {(isLeaderOrDeputy || isTrackSupervisor || isTeacher) && isFeatureEnabled("teacher_rotation") ? <TeacherRotationPage userRole={user.role} userId={(user as any).id} /> : <Redirect to="/" />}
         </Route>
         <Route path="/calendar">
           {isFeatureEnabled("calendar") ? <CalendarPage userRole={user.role} userId={user.id} /> : <Redirect to="/" />}
