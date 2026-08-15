@@ -393,47 +393,49 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
       </div>
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent dir="rtl" onPointerDownOutside={e => e.preventDefault()} onInteractOutside={e => e.preventDefault()}>
-          <DialogHeader><DialogTitle>{editingRotation ? "تعديل الشقلبة" : "شقلبة جديدة"}</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div><Label>الاسم *</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="اختبارات المراجعة العامة..." /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>من تاريخ *</Label><Input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} /></div>
-              <div><Label>إلى تاريخ *</Label><Input type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} /></div>
-            </div>
-            <div className="space-y-2">
-              <Label>نطاق الشقلبة *</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setForm(f => ({ ...f, teacherScope: "girls" }))} className={`rounded-lg border p-3 text-right text-sm transition-colors ${form.teacherScope === "girls" ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"}`}>
-                  <span className="font-semibold block">معلمات الفتيات فقط</span>
-                  <span className="text-xs text-muted-foreground">بين حلقات مسارات الفتيات</span>
-                </button>
-                <button type="button" onClick={() => setForm(f => ({ ...f, teacherScope: "selected_tracks" }))} className={`rounded-lg border p-3 text-right text-sm transition-colors ${form.teacherScope === "selected_tracks" ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"}`}>
-                  <span className="font-semibold block">مسارات محددة</span>
-                  <span className="text-xs text-muted-foreground">الشقلبة بين المسارات المختارة فقط</span>
-                </button>
+        <DialogContent>
+          <div dir="rtl">
+            <DialogHeader><DialogTitle>{editingRotation ? "تعديل الشقلبة" : "شقلبة جديدة"}</DialogTitle></DialogHeader>
+            <div className="space-y-4 mt-4">
+              <div><Label>الاسم *</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="اختبارات المراجعة العامة..." /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>من تاريخ *</Label><Input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} /></div>
+                <div><Label>إلى تاريخ *</Label><Input type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} /></div>
               </div>
-              {form.teacherScope === "selected_tracks" && (
-                <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                  <p className="text-xs text-muted-foreground">اختاري المسارات التي تتبادل معلماتها:</p>
-                  <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto">
-                    {availableTracks.map(track => (
-                      <label key={track} className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="checkbox" checked={form.selectedTracks.includes(track)} onChange={() => setForm(f => ({ ...f, selectedTracks: f.selectedTracks.includes(track) ? f.selectedTracks.filter(i => i !== track) : [...f.selectedTracks, track] }))} className="accent-primary" />
-                        <span>{track}</span>
-                      </label>
-                    ))}
-                  </div>
-                  {availableTracks.length === 0 && <p className="text-xs text-muted-foreground">لا توجد مسارات متاحة.</p>}
+              <div className="space-y-2">
+                <Label>نطاق الشقلبة *</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setForm(f => ({ ...f, teacherScope: "girls" }))} className={`rounded-lg border p-3 text-right text-sm transition-colors ${form.teacherScope === "girls" ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"}`}>
+                    <span className="font-semibold block">معلمات الفتيات فقط</span>
+                    <span className="text-xs text-muted-foreground">بين حلقات مسارات الفتيات</span>
+                  </button>
+                  <button type="button" onClick={() => setForm(f => ({ ...f, teacherScope: "selected_tracks" }))} className={`rounded-lg border p-3 text-right text-sm transition-colors ${form.teacherScope === "selected_tracks" ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"}`}>
+                    <span className="font-semibold block">مسارات محددة</span>
+                    <span className="text-xs text-muted-foreground">الشقلبة بين المسارات المختارة فقط</span>
+                  </button>
                 </div>
-              )}
+                {form.teacherScope === "selected_tracks" && (
+                  <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                    <p className="text-xs text-muted-foreground">اختاري المسارات التي تتبادل معلماتها:</p>
+                    <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto">
+                      {availableTracks.map(track => (
+                        <label key={track} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={form.selectedTracks.includes(track)} onChange={() => setForm(f => ({ ...f, selectedTracks: f.selectedTracks.includes(track) ? f.selectedTracks.filter(i => i !== track) : [...f.selectedTracks, track] }))} className="accent-primary" />
+                          <span>{track}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {availableTracks.length === 0 && <p className="text-xs text-muted-foreground">لا توجد مسارات متاحة.</p>}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-3"><Switch checked={form.isActive} onCheckedChange={v => setForm(f => ({ ...f, isActive: v }))} /><Label>نشطة</Label></div>
             </div>
-            <div className="flex items-center gap-3"><Switch checked={form.isActive} onCheckedChange={v => setForm(f => ({ ...f, isActive: v }))} /><Label>نشطة</Label></div>
+            <DialogFooter className="mt-4">
+              <Button variant="outline" onClick={() => setShowDialog(false)}>إلغاء</Button>
+              <Button onClick={handleSave}>حفظ</Button>
+            </DialogFooter>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>إلغاء</Button>
-            <Button onClick={handleSave}>حفظ</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
