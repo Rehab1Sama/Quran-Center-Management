@@ -37,7 +37,7 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
   const { data: circles = [] } = useListCircles({});
   const { data: tracks = [] } = useListTracks({ query: { queryKey: ["tracks"] } });
 
-  const { data: currentAssignments = [] } = useListExamAssignments(
+  const { data: currentAssignments = [], isFetched: assignmentsFetched } = useListExamAssignments(
     expandedId ?? 0,
     { query: { enabled: expandedId != null, queryKey: ["listExamAssignments", expandedId] } }
   );
@@ -89,13 +89,13 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
   }
 
   useEffect(() => {
-    if (currentAssignments.length > 0 && expandedId != null) {
-      setEditingAssignments(currentAssignments.map(a => ({
-        teacherId: a.teacherId, originalCircleId: a.originalCircleId, examCircleId: a.examCircleId,
-        teacherName: a.teacherName, originalCircleName: a.originalCircleName, examCircleName: a.examCircleName,
-      })));
-    }
-  }, [currentAssignments, expandedId]);
+    if (expandedId == null) { setEditingAssignments([]); return; }
+    if (!assignmentsFetched) return;
+    setEditingAssignments(currentAssignments.map(a => ({
+      teacherId: a.teacherId, originalCircleId: a.originalCircleId, examCircleId: a.examCircleId,
+      teacherName: a.teacherName, originalCircleName: a.originalCircleName, examCircleName: a.examCircleName,
+    })));
+  }, [currentAssignments, expandedId, assignmentsFetched]);
 
   const expandedRotation = rotations.find(rotation => rotation.id === expandedId);
   const rotationScope = expandedRotation?.teacherScope ?? "girls";
@@ -156,10 +156,17 @@ export default function TeacherRotationPage({ userRole }: RotationPageProps) {
 
   async function handleSaveAssignments() {
     if (!expandedId) return;
-    const payload = editingAssignments.map(a => ({ teacherId: a.teacherId, originalCircleId: a.originalCircleId, examCircleId: a.examCircleId }));
-    await saveMutation.mutateAsync({ id: expandedId, data: { assignments: payload } });
-    qc.invalidateQueries({ queryKey: ["listExamAssignments"] });
-    toast({ title: "تم حفظ التوزيع" });
+    try {
+      const payload = editingAssignments
+        .filter(a => a.teacherId && a.originalCircleId && a.examCircleId)
+        .map(a => ({ teacherId: a.teacherId, originalCircleId: a.originalCircleId, examCircleId: a.examCircleId }));
+      await saveMutation.mutateAsync({ id: expandedId, data: { assignments: payload } });
+      await qc.invalidateQueries({ queryKey: ["listExamAssignments"] });
+      toast({ title: `تم حفظ التوزيع (${payload.length} معلمة)` });
+    } catch (e: any) {
+      const msg = e?.response?.data?.error ?? e?.message ?? "حدث خطأ أثناء الحفظ";
+      toast({ title: msg, variant: "destructive" });
+    }
   }
 
   function updateAssignmentExamCircle(index: number, circleId: number) {
