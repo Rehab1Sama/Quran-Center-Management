@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useGetCurrentUser } from "@workspace/api-client-react";
 import { getToken } from "@/lib/auth";
 import LoginPage from "@/pages/login";
+import LandingPage from "@/pages/landing";
 import DashboardPage from "@/pages/dashboard";
 import CirclesPage from "@/pages/circles";
 import LeaderCirclesPage from "@/pages/leader-circles";
@@ -109,6 +110,7 @@ function AppRoutes() {
         <Route path="/reset-password" component={ResetPasswordPage} />
         <Route path="/store" component={StorePage} />
         <Route path="/login" component={LoginPage} />
+        <Route path="/" component={LandingPage} />
         <Route>
           <Redirect to="/login" />
         </Route>
