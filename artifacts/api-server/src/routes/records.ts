@@ -1,11 +1,49 @@
 import { Router, type IRouter } from "express";
-import { db, recordsTable, studentsTable, usersTable, circlesTable, studentEnrollmentsTable } from "@workspace/db";
+import { db, recordsTable, studentsTable, usersTable, circlesTable, tracksTable, globalSettingsTable, studentEnrollmentsTable, dataEntryCircleAssignmentsTable } from "@workspace/db";
 import { eq, and, gte, lte, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateRecordBody, UpdateRecordBody } from "@workspace/api-zod";
 import { checkAndCreateLowMemorizationAlert } from "./lowMemorizationAlerts";
 
 const router: IRouter = Router();
+
+function sameText(a: string | null | undefined, b: string | null | undefined): boolean {
+  return Boolean(a && b && a.trim().replace(/\s+/g, " ").toLowerCase() === b.trim().replace(/\s+/g, " ").toLowerCase());
+}
+
+async function allowedCircle(req: any, circleId: number): Promise<boolean> {
+  if (req.userRole === "leader" || req.userRole === "deputy") return true;
+  if (req.userRole === "teacher" || req.userRole === "supervisor") return req.userCircleId === circleId;
+  if (req.userRole === "track_supervisor") {
+    const [circle] = await db.select().from(circlesTable).where(eq(circlesTable.id, circleId));
+    return Boolean(circle && sameText(circle.track, req.userTrack));
+  }
+  if (req.userRole === "data_entry") {
+    const assignments = await db.select({ circleId: dataEntryCircleAssignmentsTable.circleId })
+      .from(dataEntryCircleAssignmentsTable)
+      .where(and(
+        eq(dataEntryCircleAssignmentsTable.circleId, circleId),
+        eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId),
+      ));
+    return assignments.length > 0;
+  }
+  return false;
+}
+
+async function allowedDataEntryRole(req: any, circleId: number): Promise<boolean> {
+  if (req.userRole === "leader" || req.userRole === "deputy") return true;
+  if (!(req.userRole === "teacher" || req.userRole === "supervisor" || req.userRole === "data_entry")) return false;
+  if (req.userRole === "data_entry") return allowedCircle(req, circleId);
+  const [circle] = await db.select({ circleId: circlesTable.id, circleType: circlesTable.trackType, trackId: circlesTable.trackId })
+    .from(circlesTable).where(eq(circlesTable.id, circleId));
+  if (!circle) return false;
+  const [track] = circle.trackId
+    ? await db.select({ dataEntryType: tracksTable.dataEntryType }).from(tracksTable).where(eq(tracksTable.id, circle.trackId))
+    : [];
+  const type = track?.dataEntryType ?? circle.circleType;
+  const teacherOwns = type === "children" || type === "mothers";
+  return teacherOwns ? req.userRole === "teacher" : req.userRole === "supervisor";
+}
 
 router.get("/records", authenticate, async (req, res): Promise<void> => {
   const { circleId, studentId, date, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
@@ -17,11 +55,29 @@ router.get("/records", authenticate, async (req, res): Promise<void> => {
 
     // فلترة بـ (studentId + circleId) إذا أرسلت الطالبة circleId — يمنع خلط سجلات الحلقات
     const activeCircleId = circleId ? parseInt(circleId, 10) : null;
+    if (activeCircleId) {
+      const [enrollment] = await db.select({ id: studentEnrollmentsTable.id })
+        .from(studentEnrollmentsTable)
+        .where(and(eq(studentEnrollmentsTable.studentId, linkedStudentId), eq(studentEnrollmentsTable.circleId, activeCircleId), eq(studentEnrollmentsTable.isArchived, false)));
+      if (!enrollment) { res.status(403).json({ error: "هذه الحلقة غير مرتبطة بحسابك" }); return; }
+    }
     const whereClause = activeCircleId
       ? and(eq(recordsTable.studentId, linkedStudentId), eq(recordsTable.circleId, activeCircleId))
       : eq(recordsTable.studentId, linkedStudentId);
 
     let studentRecords = await db.select().from(recordsTable).where(whereClause);
+    const [archiveSetting] = await db.select({ value: globalSettingsTable.value }).from(globalSettingsTable)
+      .where(eq(globalSettingsTable.key, "student_record_archive_periods"));
+    let archivedPeriods: { from: string; to: string }[] = [];
+    try {
+      const parsed = archiveSetting ? JSON.parse(archiveSetting.value) : [];
+      archivedPeriods = Array.isArray(parsed) ? parsed : [];
+    } catch { archivedPeriods = []; }
+    const isArchived = (date: string) => archivedPeriods.some(p => date >= p.from && date <= p.to);
+    // Keep progress fields, but hide absence and shortcomings from the student account.
+    studentRecords = studentRecords
+      .filter(r => !isArchived(r.date) || !r.isAbsent)
+      .map(r => isArchived(r.date) ? { ...r, shortcomingOverride: false } : r);
     if (date) studentRecords = studentRecords.filter(r => r.date === date);
     if (dateFrom) studentRecords = studentRecords.filter(r => r.date >= dateFrom);
     if (dateTo) studentRecords = studentRecords.filter(r => r.date <= dateTo);
@@ -32,6 +88,14 @@ router.get("/records", authenticate, async (req, res): Promise<void> => {
   }
 
   let records = await db.select().from(recordsTable);
+
+  if (req.userRole === "teacher" || req.userRole === "supervisor") {
+    records = records.filter(r => r.circleId === req.userCircleId);
+  } else if (req.userRole === "track_supervisor") {
+    const circles = await db.select({ id: circlesTable.id, track: circlesTable.track }).from(circlesTable);
+    const permitted = new Set(circles.filter(c => sameText(c.track, req.userTrack)).map(c => c.id));
+    records = records.filter(r => permitted.has(r.circleId));
+  }
 
   if (circleId) records = records.filter(r => r.circleId === parseInt(circleId, 10));
   if (studentId) records = records.filter(r => r.studentId === parseInt(studentId, 10));
@@ -53,6 +117,9 @@ router.get("/records", authenticate, async (req, res): Promise<void> => {
 
 // إدخال جماعي لحلقات إشراق وسُنى
 router.post("/records/bulk", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy", "data_entry", "teacher", "supervisor"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
   const records = req.body as any[];
   if (!Array.isArray(records) || records.length === 0) {
     res.status(400).json({ error: "يجب إرسال قائمة سجلات" });
@@ -71,6 +138,13 @@ router.post("/records/bulk", authenticate, async (req, res): Promise<void> => {
   for (const rec of records) {
     const { studentId, circleId, isAbsent = false, ...rest } = rec;
     if (!studentId || !circleId) { skipped++; continue; }
+    if (!await allowedDataEntryRole(req, Number(circleId))) { res.status(403).json({ error: "دورك لا يسمح بإدخال بيانات هذه الحلقة" }); return; }
+    const [enrollment] = await db.select({ id: studentEnrollmentsTable.id }).from(studentEnrollmentsTable).where(and(
+      eq(studentEnrollmentsTable.studentId, Number(studentId)),
+      eq(studentEnrollmentsTable.circleId, Number(circleId)),
+      eq(studentEnrollmentsTable.isArchived, false),
+    ));
+    if (!enrollment) { skipped++; continue; }
     if (alreadyEntered.has(`${studentId}-${circleId}`)) { skipped++; continue; }
     await db.insert(recordsTable).values({
       studentId,
@@ -203,6 +277,19 @@ router.post("/records", authenticate, async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  if (!await allowedDataEntryRole(req, parsed.data.circleId)) {
+    res.status(403).json({ error: "دورك لا يسمح بإدخال بيانات هذه الحلقة" });
+    return;
+  }
+  const [enrollment] = await db.select({ id: studentEnrollmentsTable.id }).from(studentEnrollmentsTable).where(and(
+    eq(studentEnrollmentsTable.studentId, parsed.data.studentId),
+    eq(studentEnrollmentsTable.circleId, parsed.data.circleId),
+    eq(studentEnrollmentsTable.isArchived, false),
+  ));
+  if (!enrollment) {
+    res.status(403).json({ error: "الطالبة غير مسجلة في هذه الحلقة" });
+    return;
+  }
   const [record] = await db.insert(recordsTable).values({
     ...parsed.data,
     enteredById: req.userId!,
@@ -221,11 +308,15 @@ router.patch("/records/:id", authenticate, async (req, res): Promise<void> => {
   }
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
+  const [existingRecord] = await db.select().from(recordsTable).where(eq(recordsTable.id, id));
+  if (!existingRecord) { res.status(404).json({ error: "Record not found" }); return; }
+  if (!await allowedCircle(req, existingRecord.circleId)) {
+    res.status(403).json({ error: "لا يمكنك تعديل سجل هذه الحلقة" }); return;
+  }
 
   // For data_entry: enforce 2-hour edit window
   if (req.userRole === "data_entry") {
-    const [existing] = await db.select().from(recordsTable).where(eq(recordsTable.id, id));
-    if (!existing) { res.status(404).json({ error: "Record not found" }); return; }
+    const existing = existingRecord;
     const isThursdayRecord = new Date(existing.date + "T12:00:00Z").getUTCDay() === 4;
     const windowMs = isThursdayRecord ? 48 * 60 * 60 * 1000 : 2 * 60 * 60 * 1000;
     const cutoff = new Date(Date.now() - windowMs);
@@ -260,6 +351,11 @@ router.delete("/records/:id", authenticate, async (req, res): Promise<void> => {
   }
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
+  const [existing] = await db.select().from(recordsTable).where(eq(recordsTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Record not found" }); return; }
+  if (!await allowedCircle(req, existing.circleId)) {
+    res.status(403).json({ error: "لا يمكنك حذف سجل هذه الحلقة" }); return;
+  }
   await db.delete(recordsTable).where(eq(recordsTable.id, id));
   res.sendStatus(204);
 });
