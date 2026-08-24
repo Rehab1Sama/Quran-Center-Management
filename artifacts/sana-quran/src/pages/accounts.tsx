@@ -479,8 +479,8 @@ export default function AccountsPage() {
                                 : <span className="text-xs text-amber-600 bg-amber-50 rounded px-1.5 py-0.5">بدون حلقة ⚠</span>
                             )}
                             {acc.isArchived && <span className="text-xs text-gray-500">معطّل</span>}
-                            {/* أزرار الإجراءات — مخفية لمسؤولة المسار */}
-                            {!isTrackSupervisor && (<>
+                            {/* مسؤولة المسار ترى حسابات مسارها فقط وتدير أسماء الموظفات وأرشفتهم */}
+                            {(isLeader || isTrackSupervisor) && (<>
                               <button
                                 onClick={() => openEdit(acc)}
                                 className="text-muted-foreground hover:text-foreground transition-colors ml-1"
@@ -489,21 +489,17 @@ export default function AccountsPage() {
                               >
                                 <Pencil className="w-3 h-3" />
                               </button>
-                              <button
+                              {isLeader && <button
                                 onClick={() => { setResetPwdUserId(acc.id); setNewPassword(""); setResetPwdOpen(true); }}
                                 className="text-muted-foreground hover:text-blue-600 transition-colors"
                                 title="إعادة تعيين كلمة المرور"
-                              >
-                                <KeyRound className="w-3 h-3" />
-                              </button>
-                              <button
+                              ><KeyRound className="w-3 h-3" /></button>}
+                              {isLeader && <button
                                 onClick={() => handleToggleDisable(acc)}
                                 className={`transition-colors ${acc.isArchived ? "text-muted-foreground hover:text-emerald-600" : "text-muted-foreground hover:text-destructive"}`}
                                 title={acc.isArchived ? "تفعيل الحساب" : "تعطيل الحساب"}
-                              >
-                                {acc.isArchived ? <CheckCircle2 className="w-3 h-3" /> : <Ban className="w-3 h-3" />}
-                              </button>
-                              {isLeader && acc.role !== "leader" && acc.role !== "deputy" && (
+                              >{acc.isArchived ? <CheckCircle2 className="w-3 h-3" /> : <Ban className="w-3 h-3" />}</button>}
+                              {acc.role !== "leader" && acc.role !== "deputy" && (
                                 <button
                                   onClick={() => handleArchiveAccount(acc.id, `${acc.role} — ${person.name}`)}
                                   className="text-muted-foreground hover:text-amber-600 transition-colors"
