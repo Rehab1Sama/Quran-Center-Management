@@ -91,8 +91,7 @@ export default function LoginPage() {
 
   return (
     <div
-      className="min-h-screen flex flex-col"
-      style={{ background: "linear-gradient(135deg, hsl(180, 20%, 96%) 0%, hsl(177, 40%, 93%) 100%)" }}
+      className="min-h-screen sana-main-background flex flex-col"
     >
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-md">
