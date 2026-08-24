@@ -7,7 +7,7 @@ const router: IRouter = Router();
 
 router.get("/reports/weekly", authenticate, async (req, res): Promise<void> => {
   const role = req.userRole!;
-  if (!["leader", "deputy"].includes(role)) {
+  if (!["leader", "deputy", "track_supervisor", "teacher", "supervisor"].includes(role)) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
 
@@ -19,7 +19,7 @@ router.get("/reports/weekly", authenticate, async (req, res): Promise<void> => {
   const fromStr = from ?? defaultFrom.toISOString().slice(0, 10);
   const toStr = to ?? today.toISOString().slice(0, 10);
 
-  const [allRecords, allCircles, allTracks] = await Promise.all([
+  let [allRecords, allCircles, allTracks] = await Promise.all([
     db.select().from(recordsTable).where(
       and(gte(recordsTable.date, fromStr), lte(recordsTable.date, toStr))
     ),
@@ -29,6 +29,12 @@ router.get("/reports/weekly", authenticate, async (req, res): Promise<void> => {
 
   const trackMap = new Map(allTracks.map(t => [t.id, t]));
   const circleMap = new Map(allCircles.map(c => [c.id, c]));
+  if (role === "teacher" || role === "supervisor") {
+    allRecords = allRecords.filter(r => r.circleId === req.userCircleId);
+  } else if (role === "track_supervisor") {
+    const permitted = new Set(allCircles.filter(c => c.track === req.userTrack).map(c => c.id));
+    allRecords = allRecords.filter(r => permitted.has(r.circleId));
+  }
 
   const getEffectiveTrackName = (circleId: number) => {
     const c = circleMap.get(circleId);
