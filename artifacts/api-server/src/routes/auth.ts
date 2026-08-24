@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, studentsTable, circlesTable, tracksTable, registrationSettingsTable } from "@workspace/db";
+import { db, usersTable, studentsTable, circlesTable, tracksTable, studentEnrollmentsTable, registrationSettingsTable } from "@workspace/db";
 import { eq, and, or } from "drizzle-orm";
 import { hashPassword, verifyPassword, generateToken } from "../lib/auth";
 import { authenticate } from "../middlewares/authenticate";
@@ -18,14 +18,12 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   }
   const { email, password } = parsed.data;
   const users = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim()));
-  const activeUsers = users.filter(u => !u.isArchived);
-
-  if (activeUsers.length === 0) {
+  if (users.length === 0) {
     res.status(401).json({ error: "بيانات الدخول غير صحيحة" });
     return;
   }
 
-  const verified = activeUsers.filter(u => verifyPassword(password, u.passwordHash));
+  const verified = users.filter(u => verifyPassword(password, u.passwordHash));
   if (verified.length === 0) {
     res.status(401).json({ error: "بيانات الدخول غير صحيحة" });
     return;
@@ -96,7 +94,7 @@ router.post("/auth/login/select", async (req, res): Promise<void> => {
   }
   const { email, password, accountId } = parsed.data;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, accountId));
-  if (!user || user.isArchived || user.email !== email.toLowerCase()) {
+  if (!user || user.email !== email.toLowerCase()) {
     res.status(401).json({ error: "بيانات الدخول غير صحيحة" });
     return;
   }
@@ -324,6 +322,21 @@ router.get("/auth/me", authenticate, async (req, res): Promise<void> => {
 
   // استخدام studentId المحسوب مسبقًا في middleware (authenticate) لتجنب التكرار
   const studentId: number | null = user.role === "student" ? (req.userStudentId ?? null) : null;
+  let studentCircles: any[] = [];
+  if (studentId) {
+    const rows = await db.select({
+      id: circlesTable.id, name: circlesTable.name, track: circlesTable.track,
+      trackType: circlesTable.trackType, trackId: circlesTable.trackId,
+      dataEntryType: tracksTable.dataEntryType,
+    }).from(studentEnrollmentsTable)
+      .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))
+      .leftJoin(tracksTable, eq(tracksTable.id, circlesTable.trackId))
+      .where(and(eq(studentEnrollmentsTable.studentId, studentId), eq(studentEnrollmentsTable.isArchived, false), eq(circlesTable.isArchived, false)));
+    studentCircles = rows.map(c => ({
+      ...c,
+      dataEntryType: c.dataEntryType ?? (c.track === "مشكاة نور" ? "recitation" : c.track === "سُنى" ? "fixation" : ["girls", "children", "mothers"].includes(c.trackType ?? "") ? c.trackType : "girls"),
+    }));
+  }
 
   let circleDataEntryType: string | null = null;
   let circleTrackType: string | null = null;
@@ -344,7 +357,7 @@ router.get("/auth/me", authenticate, async (req, res): Promise<void> => {
     }
   }
 
-  res.json({ ...safeUser, studentId, circleDataEntryType, circleTrackType });
+  res.json({ ...safeUser, studentId, circleDataEntryType, circleTrackType, circles: studentCircles });
 });
 
 export default router;
