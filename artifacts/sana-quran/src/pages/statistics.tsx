@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useGetStatsSummary, useGetCirclesStats, useGetCurrentUser, useListRecords } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { formatPages } from "@/lib/quran";
 import { schoolConfig, getFieldLabel } from "@/lib/schoolConfig";
 import {
@@ -59,6 +61,50 @@ function PeriodFilter({ periodDays, setPeriodDays }: { periodDays: number; setPe
             </button>
           ))}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ArchivePeriodSettings() {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    const token = localStorage.getItem("sana_auth_token");
+    fetch(`${BASE}/api/settings`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => r.ok ? r.json() : {})
+      .then((data: any) => {
+        try {
+          const p = JSON.parse(data.student_record_archive_periods ?? "[]")[0];
+          if (p) { setFrom(p.from ?? ""); setTo(p.to ?? ""); }
+        } catch { /* empty setting */ }
+        setLoaded(true);
+      }).catch(() => setLoaded(true));
+  }, []);
+  const save = async () => {
+    if (!from || !to || from > to) return;
+    setSaving(true);
+    const token = localStorage.getItem("sana_auth_token");
+    await fetch(`${BASE}/api/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ key: "student_record_archive_periods", value: JSON.stringify([{ from, to }]) }),
+    });
+    setSaving(false);
+  };
+  if (!loaded) return null;
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader className="pb-2"><CardTitle className="text-sm font-bold">أرشفة عرض الغياب والتقصير للطالبات</CardTitle></CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-end gap-2">
+          <div><label className="text-xs text-muted-foreground block mb-1">من</label><Input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
+          <div><label className="text-xs text-muted-foreground block mb-1">إلى</label><Input type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
+          <Button onClick={save} disabled={saving || !from || !to || from > to}>{saving ? "جاري الحفظ..." : "حفظ الأرشفة"}</Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">تبقى البيانات محفوظة للإدارة والتقارير والشهادات، وتُخفى الغيابات والتقصير عن حساب الطالبة فقط.</p>
       </CardContent>
     </Card>
   );
@@ -833,6 +879,7 @@ export default function StatisticsPage() {
       ) : (
         <>
           <PeriodFilter periodDays={periodDays} setPeriodDays={setPeriodDays} />
+          {role === "leader" && <ArchivePeriodSettings />}
 
           {summary && circleStats !== undefined ? (
             role === "leader" ? (
