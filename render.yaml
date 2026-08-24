@@ -5,6 +5,7 @@ services:
     runtime: node
     region: frankfurt
     plan: free
+    autoDeploy: true
     buildCommand: >
       corepack pnpm install --frozen-lockfile &&
       BASE_PATH=/ corepack pnpm --filter @workspace/sana-quran run build &&
