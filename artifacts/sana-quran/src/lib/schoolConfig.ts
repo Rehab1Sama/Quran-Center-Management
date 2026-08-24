@@ -42,7 +42,7 @@ export function getRoleName(role: string): string {
 }
 
 export function canEnterData(role: string): boolean {
-  return role === "leader" || schoolConfig.dataEntryRoles.includes(role);
+  return role === "leader" || role === "teacher" || role === "supervisor" || schoolConfig.dataEntryRoles.includes(role);
 }
 
 export function isFeatureEnabled(key: string): boolean {
