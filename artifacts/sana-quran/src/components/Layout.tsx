@@ -110,7 +110,7 @@ function NewsTicker() {
   return (
     <div data-testid="news-ticker">
       <div className="text-white py-1.5 overflow-hidden relative"
-        style={{ background: "linear-gradient(90deg, hsl(210, 51%, 25%) 0%, hsl(177, 35%, 38%) 100%)" }}
+        style={{ background: "linear-gradient(90deg,  #1A2260 0%, #2B3784 100%)" }}
       >
         <div className="flex items-center gap-3 px-4">
           <div className="flex-shrink-0 bg-white/20 rounded-full px-2.5 py-0.5 text-xs font-bold whitespace-nowrap">
@@ -124,7 +124,7 @@ function NewsTicker() {
         </div>
       </div>
       <div className="text-white py-1.5 overflow-hidden relative"
-        style={{ background: "linear-gradient(90deg, hsl(177, 40%, 30%) 0%, hsl(160, 45%, 35%) 100%)" }}
+        style={{ background: "linear-gradient(90deg,  #2B3784 0%, #1A2260 100%)" }}
       >
         <div className="flex items-center gap-3 px-4">
           <div className="flex-shrink-0 bg-white/20 rounded-full px-2.5 py-0.5 text-xs font-bold whitespace-nowrap">
@@ -538,7 +538,7 @@ export default function Layout({ user, children }: LayoutProps) {
             sidebarOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"
           }`}
           style={{
-            background: "linear-gradient(180deg, hsl(210, 51%, 18%) 0%, hsl(210, 51%, 22%) 50%, hsl(204, 56%, 28%) 100%)"
+            background: "linear-gradient(180deg,  #1A2260 0%, #232D73 50%, #2B3784 100%)"
           }}
         >
           {/* Logo */}
