@@ -304,6 +304,18 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
 
   const [before] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
   if (!before) { res.status(404).json({ error: "Student not found" }); return; }
+  if (req.userRole === "track_supervisor") {
+    const allowed = await db
+      .select({ track: circlesTable.track })
+      .from(studentEnrollmentsTable)
+      .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))
+      .where(and(
+        eq(studentEnrollmentsTable.studentId, id),
+        eq(studentEnrollmentsTable.isArchived, false),
+        eq(circlesTable.track, req.userTrack!),
+      ));
+    if (allowed.length === 0) { res.status(403).json({ error: "الطالبة خارج نطاق المسار" }); return; }
+  }
 
   const [student] = await db.update(studentsTable).set(parsed.data).where(eq(studentsTable.id, id)).returning();
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
