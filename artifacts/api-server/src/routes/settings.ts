@@ -18,6 +18,14 @@ router.patch("/settings", authenticate, async (req, res): Promise<void> => {
 
   const { key, value } = req.body as { key: string; value: string };
   if (!key || value === undefined) { res.status(400).json({ error: "key و value مطلوبان" }); return; }
+  if (key === "student_record_archive_periods") {
+    try {
+      const periods = JSON.parse(value);
+      if (!Array.isArray(periods) || periods.some((p: any) => !p?.from || !p?.to || p.from > p.to)) {
+        res.status(400).json({ error: "فترات الأرشفة غير صحيحة" }); return;
+      }
+    } catch { res.status(400).json({ error: "قيمة الأرشفة يجب أن تكون JSON صحيحًا" }); return; }
+  }
 
   await db
     .insert(globalSettingsTable)
