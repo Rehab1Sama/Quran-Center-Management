@@ -75,35 +75,35 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
-  --background: 180 20% 96%;
-  --foreground: 210 51% 18%;
-  --border: 175 26% 88%;
+  --background: 240 33% 97%;
+  --foreground: 234 56% 24%;
+  --border: 230 35% 84%;
   --card: 0 0% 100%;
-  --card-foreground: 210 51% 18%;
-  --card-border: 175 26% 90%;
-  --sidebar: 210 51% 21%;
-  --sidebar-foreground: 177 35% 74%;
-  --sidebar-border: 210 45% 28%;
-  --sidebar-primary: 204 56% 28%;
+  --card-foreground: 234 56% 24%;
+  --card-border: 230 35% 88%;
+  --sidebar: 234 56% 24%;
+  --sidebar-foreground: 230 35% 86%;
+  --sidebar-border: 230 45% 35%;
+  --sidebar-primary: 231 56% 34%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 210 48% 26%;
-  --sidebar-accent-foreground: 177 40% 85%;
-  --sidebar-ring: 177 35% 57%;
+  --sidebar-accent: 231 50% 31%;
+  --sidebar-accent-foreground: 230 40% 92%;
+  --sidebar-ring: 42 50% 58%;
   --popover: 0 0% 100%;
   --popover-foreground: 210 51% 18%;
   --popover-border: 175 26% 88%;
-  --primary: 210 51% 21%;
+  --primary: 231 56% 34%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 177 35% 57%;
+  --secondary: 42 50% 58%;
   --secondary-foreground: 0 0% 100%;
-  --muted: 177 25% 94%;
-  --muted-foreground: 205 22% 52%;
-  --accent: 177 40% 95%;
-  --accent-foreground: 210 51% 25%;
+  --muted: 230 35% 95%;
+  --muted-foreground: 230 24% 43%;
+  --accent: 230 45% 95%;
+  --accent-foreground: 234 56% 24%;
   --destructive: 0 75% 55%;
   --destructive-foreground: 0 0% 100%;
-  --input: 175 26% 88%;
-  --ring: 177 35% 57%;
+  --input: 230 35% 84%;
+  --ring: 42 50% 58%;
   --chart-1: 177 35% 57%;
   --chart-2: 205 40% 60%;
   --chart-3: 180 45% 62%;
@@ -220,11 +220,11 @@
 
 /* Navy + Teal gradient background */
 .gradient-bg {
-  background: linear-gradient(135deg, hsl(210, 51%, 21%) 0%, hsl(177, 35%, 40%) 100%);
+  background: linear-gradient(135deg, #1A2260 0%, #2B3784 100%);
 }
 
 .gradient-bg-soft {
-  background: linear-gradient(135deg, hsl(180, 20%, 96%) 0%, hsl(177, 40%, 93%) 100%);
+  background: linear-gradient(180deg, #FFF9FC 0%, #F8F7FC 52%, #F1F4FC 100%);
 }
 
 /* Card with teal accent */
@@ -240,11 +240,11 @@
   background: hsl(var(--muted));
 }
 ::-webkit-scrollbar-thumb {
-  background: hsl(177 30% 72%);
+  background: #C8CDE8;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(177 35% 57%);
+  background: #C4A76A;
 }
 
 @layer utilities {
