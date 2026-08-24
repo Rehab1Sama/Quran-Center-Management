@@ -80,7 +80,7 @@ export default function ReportsPage() {
   const [useCustom, setUseCustom] = useState(false);
 
   const role = (user as any)?.role ?? "";
-  const allowed = ["leader", "deputy"].includes(role);
+  const allowed = ["leader", "deputy", "track_supervisor", "teacher", "supervisor"].includes(role);
 
   const fetchReport = (from: string, to: string) => {
     setLoading(true);
