@@ -51,6 +51,30 @@ function formatShortDate(dateStr: string): string {
   return d.toLocaleDateString("ar-SA", { month: "short", day: "numeric" });
 }
 
+function formatDualDate(dateStr?: string | null): string {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr + "T00:00:00");
+  const gregorian = d.toLocaleDateString("ar-SA", { year: "numeric", month: "short", day: "numeric" });
+  const hijri = d.toLocaleDateString("ar-SA-u-ca-islamic-umalqura", { year: "numeric", month: "short", day: "numeric" });
+  return `${hijri} هـ · ${gregorian} م`;
+}
+
+function semesterCards(events: any[]) {
+  const starts = events.filter(e => /بداية الفصل/.test(e.title)).sort((a, b) => a.date.localeCompare(b.date));
+  return starts.map((start, index) => {
+    const nextStart = starts[index + 1]?.date;
+    const inTerm = events.filter(e => e.date >= start.date && (!nextStart || e.date < nextStart));
+    const pick = (pattern: RegExp) => inTerm.find(e => pattern.test(e.title));
+    return {
+      title: start.title.replace(/^بداية\s*/, "").trim(),
+      start: start,
+      review: pick(/مراجعة/),
+      exam: pick(/اختبار/),
+      holiday: pick(/إجازة|إحازة/),
+    };
+  });
+}
+
 function daysUntil(dateStr: string): number {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -234,6 +258,7 @@ export default function CalendarPage({ userRole }: CalendarPageProps) {
   const nextEvent = upcoming[0] ?? null;
   const nextDays = nextEvent ? daysUntil(nextEvent.date) : null;
   const nextTypeInfo = nextEvent ? getTypeInfo(nextEvent.eventType) : null;
+  const semesters = semesterCards(allEvents);
 
   return (
     <div className="space-y-5 pb-10" dir="rtl">
@@ -326,32 +351,30 @@ export default function CalendarPage({ userRole }: CalendarPageProps) {
         </Card>
       )}
 
-      {upcoming.slice(1).length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-bold text-muted-foreground px-1 flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5" />
-            المناسبات القادمة ({upcoming.slice(1).length})
-          </p>
-          {upcoming.slice(1).map(e => (
-            <EventItem key={e.id} event={e} isLeader={isLeader} onEdit={openEdit} onDelete={handleDelete} />
-          ))}
-        </div>
-      )}
-
-      {past.length > 0 && (
-        <div className="space-y-2">
-          <button
-            className="w-full flex items-center justify-between px-1 py-1 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => setShowPast(v => !v)}
-          >
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              المناسبات السابقة ({past.length})
-            </span>
-            {showPast ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
-          {showPast && past.map(e => (
-            <EventItem key={e.id} event={e} isLeader={isLeader} onEdit={openEdit} onDelete={handleDelete} />
+      {semesters.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {semesters.map((semester, index) => (
+            <Card key={`${semester.start.id}-${index}`} className="border-0 shadow-sm overflow-hidden">
+              <div className="bg-primary/5 border-b border-border/50 px-4 py-3">
+                <p className="font-bold text-base">{semester.title}</p>
+                <p className="text-[11px] text-muted-foreground mt-1">مواعيد الفصل الهجرية والميلادية</p>
+              </div>
+              <CardContent className="p-4 space-y-3 text-sm">
+                {[
+                  ["تاريخ البدء", semester.start],
+                  ["أسبوع المراجعة", semester.review],
+                  ["أسبوع الاختبار", semester.exam],
+                  ["الإجازة", semester.holiday],
+                ].map(([label, event]: any) => (
+                  <div key={label} className="flex items-start justify-between gap-3 border-b border-border/40 last:border-0 pb-2 last:pb-0">
+                    <span className="font-semibold text-muted-foreground">{label}</span>
+                    <span className="text-left text-xs leading-5">
+                      {event ? `${formatDualDate(event.date)}${event.endDate && event.endDate !== event.date ? ` — ${formatDualDate(event.endDate)}` : ""}` : "—"}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
