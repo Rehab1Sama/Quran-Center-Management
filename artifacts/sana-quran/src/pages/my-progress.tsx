@@ -36,8 +36,20 @@ export default function MyProgressPage() {
   const [newGoalTitle, setNewGoalTitle] = useState("");
   const [newGoalDate, setNewGoalDate] = useState("");
   const [newGoalNotes, setNewGoalNotes] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [archivePeriods, setArchivePeriods] = useState<{ from: string; to: string }[]>([]);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
+  useEffect(() => {
+    const token = localStorage.getItem("sana_auth_token");
+    fetch(`${BASE}/api/settings`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => r.ok ? r.json() : {})
+      .then((data: any) => {
+        try { setArchivePeriods(JSON.parse(data.student_record_archive_periods ?? "[]")); } catch { setArchivePeriods([]); }
+      }).catch(() => setArchivePeriods([]));
+  }, []);
   
   // جلب رقم الحلقة من الرابط العلوي (URL) فوراً
   const urlParams = new URLSearchParams(window.location.search);
@@ -103,6 +115,7 @@ export default function MyProgressPage() {
   const { data: allBadgeAssignments = [] } = useListBadgeAssignments(undefined, { query: { queryKey: ["badgeAssignments"] } });
   const { data: myMessages = [] } = useGetMyMessages({ query: { queryKey: ["myMessages"], enabled: onCircleTab } });
   const myCircle = allCircles.find((c: any) => c.id === circleId);
+  const circleChoices = ((user as any)?.circles ?? []).filter((c: any) => c?.id);
   const myTrackType: string = (user as any)?.circleTrackType ?? (myCircle as any)?.trackType ?? "";
   const circleMembers = (allStudents as any[]).filter((s: any) => s.circleId === circleId && s.fullName !== user?.name);
   const circleTeacher = (allUsers as any[]).find((u: any) => u.role === "teacher" && u.circleId === circleId);
@@ -113,9 +126,12 @@ export default function MyProgressPage() {
 
   // Progress data
   const sortedRecords = (records ?? []).filter(r => (r as any).circleId === effectiveCircleId).slice().sort((a: any, b: any) => b.date.localeCompare(a.date));
-  const totalMemorize = Math.round(sortedRecords.reduce((s, r) => s + (r.memorizePages ?? 0), 0) * 2) / 2;
-  const totalAbsences = sortedRecords.filter(r => r.isAbsent).length;
-  const latestRecord = sortedRecords.find(r => !r.isAbsent);
+  const visibleRecords = sortedRecords.filter((r: any) => (!dateFrom || r.date >= dateFrom) && (!dateTo || r.date <= dateTo));
+  const isArchivedRecord = (date: string) => archivePeriods.some(p => date >= p.from && date <= p.to);
+  const currentRecords = visibleRecords.filter((r: any) => !isArchivedRecord(r.date));
+  const archivedRecords = visibleRecords.filter((r: any) => isArchivedRecord(r.date));
+  const totalMemorize = Math.round(currentRecords.reduce((s, r) => s + (r.memorizePages ?? 0), 0) * 2) / 2;
+  const latestRecord = currentRecords.find(r => !r.isAbsent);
   const TOTAL_QURAN_PAGES = 604;
   const progressPct = Math.min(100, Math.round((totalMemorize / TOTAL_QURAN_PAGES) * 1000) / 10);
 
@@ -143,7 +159,7 @@ export default function MyProgressPage() {
     return { isShortcoming, reasons };
   }
 
-  const shortcomingRecords = sortedRecords
+  const shortcomingRecords = currentRecords
     .map(r => ({ r, ...computeShortcoming(r) }))
     .filter(x => x.isShortcoming);
 
@@ -151,7 +167,7 @@ export default function MyProgressPage() {
   const monthlyTrend = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const monthRecords = sortedRecords.filter(r => r.date.startsWith(month));
+    const monthRecords = currentRecords.filter(r => r.date.startsWith(month));
     const sessions = monthRecords.length;
     const absences = monthRecords.filter(r => r.isAbsent).length;
     return {
@@ -173,8 +189,27 @@ export default function MyProgressPage() {
     <div className="space-y-5" dir="rtl">
       <div>
         <h1 className="text-2xl font-bold text-foreground">مرحبًا، {user?.name}</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">{user?.circles?.find(c => c.id === effectiveCircleId)?.name || "..."}</p>
+        <p className="text-muted-foreground text-sm mt-0.5">{myCircle?.name ?? circleChoices.find((c: any) => c.id === effectiveCircleId)?.name ?? "..."}</p>
+        {circleChoices.length > 1 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {circleChoices.map((c: any) => (
+              <button key={c.id} onClick={() => { const url = new URL(window.location.href); url.searchParams.set("circleId", String(c.id)); window.location.assign(url.toString()); }}
+                className={`text-xs px-2.5 py-1 rounded-full border ${c.id === effectiveCircleId ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border"}`}>
+                {c.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div><label className="text-xs text-muted-foreground block mb-1">من تاريخ</label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
+            <div><label className="text-xs text-muted-foreground block mb-1">إلى تاريخ</label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></div>
+            {(dateFrom || dateTo) && <Button variant="outline" onClick={() => { setDateFrom(""); setDateTo(""); }}>مسح الفترة</Button>}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Leader Messages Banner */}
       {leaderMessages.length > 0 && (
@@ -263,23 +298,11 @@ export default function MyProgressPage() {
           </Card>
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <Card className="border-0 shadow-sm" data-testid="card-total-memorize">
               <CardContent className="p-4 text-center">
                 <p className="text-3xl font-bold text-teal-600">{formatPages(totalMemorize)}</p>
                 <p className="text-xs text-muted-foreground mt-1 font-medium">إجمالي الحفظ (وجه)</p>
-              </CardContent>
-            </Card>
-            <Card className="border-0 shadow-sm" data-testid="card-sessions">
-              <CardContent className="p-4 text-center">
-                <p className="text-3xl font-bold text-primary">{sortedRecords.filter(r => !r.isAbsent).length}</p>
-                <p className="text-xs text-muted-foreground mt-1 font-medium">الجلسات</p>
-              </CardContent>
-            </Card>
-            <Card className="border-0 shadow-sm" data-testid="card-absences">
-              <CardContent className="p-4 text-center">
-                <p className="text-3xl font-bold text-rose-500">{totalAbsences}</p>
-                <p className="text-xs text-muted-foreground mt-1 font-medium">الغيابات</p>
               </CardContent>
             </Card>
           </div>
@@ -378,46 +401,15 @@ export default function MyProgressPage() {
           )}
 
           {/* Shortcomings (التقصير) */}
-          <Card className="border-0 shadow-sm" data-testid="card-shortcomings">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-bold flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
-                التقصير
-                {shortcomingRecords.length > 0 && (
-                  <Badge className="bg-amber-100 text-amber-700 border-0 text-xs mr-auto">
-                    {shortcomingRecords.length} جلسة
-                  </Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {shortcomingRecords.length === 0 ? (
-                <div className="flex items-center gap-2 py-3 text-emerald-600">
-                  <span className="text-lg">✅</span>
-                  <span className="text-sm font-medium">ما شاء الله، لا تقصير مسجّل</span>
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  {shortcomingRecords.map(({ r, reasons }: { r: any; reasons: string[] }) => (
-                    <div key={r.id} className="rounded-xl px-3 py-2 bg-amber-50/80 border border-amber-100">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="text-xs font-medium text-amber-800">
-                          {new Date(r.date).toLocaleDateString("ar-SA", { year: "numeric", month: "short", day: "numeric" })}
-                        </span>
-                        <div className="flex flex-wrap gap-1">
-                          {reasons.map(reason => (
-                            <span key={reason} className="text-[10px] bg-amber-200 text-amber-800 rounded-full px-2 py-0.5 font-medium">
-                              {reason}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {archivedRecords.length > 0 && (
+            <Card className="border-0 shadow-sm">
+              <button className="w-full p-4 flex items-center justify-between text-right" onClick={() => setArchiveOpen(v => !v)}>
+                <span className="font-bold">الفصل الأول</span>
+                <span className="text-xs text-muted-foreground">{archiveOpen ? "إخفاء السجلات المؤرشفة" : "السجلات مؤرشفة"}</span>
+              </button>
+              {archiveOpen && <CardContent className="pt-0 text-xs text-muted-foreground">تمت أرشفة جلسات الفصل الأول، ولا تظهر تفاصيل الغياب أو التقصير أو سجل المحفوظ في الحساب العام.</CardContent>}
+            </Card>
+          )}
 
           {/* Attendance trend */}
           {monthlyTrend.some(m => m.sessions > 0) && (
@@ -461,7 +453,7 @@ export default function MyProgressPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              {sortedRecords.length === 0 ? (
+              {currentRecords.length === 0 ? (
                 <p className="text-center py-8 text-muted-foreground text-sm">لا توجد سجلات بعد</p>
               ) : (
                 <div className="overflow-x-auto">
@@ -476,7 +468,7 @@ export default function MyProgressPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedRecords.filter(r => (r as any).circleId === effectiveCircleId).map(record => {
+                      {currentRecords.filter(r => (r as any).circleId === effectiveCircleId).map(record => {
                         const recCircle = (allCircles as any[]).find((c: any) => c.id === (record as any).circleId);
                         return (
                           <tr key={record.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors"
