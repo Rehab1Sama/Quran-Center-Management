@@ -147,7 +147,7 @@ export default function TrackPage() {
   // الحلقات المفصّلة
   const [enrichedCircles, setEnrichedCircles] = useState<EnrichedCircle[]>([]);
   const [editingCircle, setEditingCircle] = useState<number | null>(null);
-  const [circleEditData, setCircleEditData] = useState({ meetingTime: "", period: "am" as "am" | "pm", whatsappLink: "" });
+  const [circleEditData, setCircleEditData] = useState({ name: "", meetingTime: "", period: "am" as "am" | "pm", whatsappLink: "" });
   const [circleSaving, setCircleSaving] = useState(false);
 
   const myTrack = user?.track;
@@ -298,7 +298,7 @@ export default function TrackPage() {
       const res = await fetch(`/api/circles/${circleId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ meetingTime: time || null, whatsappLink: circleEditData.whatsappLink || null }),
+        body: JSON.stringify({ name: circleEditData.name.trim(), meetingTime: time || null, whatsappLink: circleEditData.whatsappLink || null }),
       });
       if (!res.ok) throw new Error();
       toast({ title: "تم حفظ إعدادات الحلقة" });
@@ -317,6 +317,7 @@ export default function TrackPage() {
     const mt = c.meetingTime ?? "";
     const h = mt ? parseInt(mt.split(":")[0]) : 0;
     setCircleEditData({
+      name: c.name,
       meetingTime: mt ? `${String(h > 12 ? h - 12 : h === 0 ? 12 : h).padStart(2,"0")}:${mt.split(":")[1]}` : "",
       period: mt ? (h >= 12 ? "pm" : "am") : "am",
       whatsappLink: c.whatsappLink ?? "",
@@ -628,6 +629,14 @@ export default function TrackPage() {
                             />
                           )}
                           <div className="flex-1 space-y-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">اسم الحلقة</Label>
+                              <Input
+                                value={circleEditData.name}
+                                onChange={e => setCircleEditData(d => ({ ...d, name: e.target.value }))}
+                                className="h-8 text-xs"
+                              />
+                            </div>
                             <div className="flex gap-2">
                               <button
                                 onClick={() => setCircleEditData(d => ({ ...d, period: "am" }))}
