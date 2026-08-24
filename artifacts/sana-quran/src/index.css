@@ -211,6 +211,13 @@
   white-space: nowrap;
 }
 
+/* Shared Sana Al-Ay page background */
+.sana-main-background {
+  background-color: #F8F7FC;
+  background-image: radial-gradient(circle at 8% 16%, rgba(228,231,244,0.9) 0 11rem, transparent 11.1rem), radial-gradient(circle at 92% 34%, rgba(236,238,247,0.95) 0 13rem, transparent 13.1rem), radial-gradient(circle at 14% 61%, rgba(228,231,244,0.75) 0 9rem, transparent 9.1rem), radial-gradient(circle at 88% 78%, rgba(236,238,247,0.85) 0 10rem, transparent 10.1rem), linear-gradient(180deg, #FFF9FC 0%, #F8F7FC 52%, #F1F4FC 100%);
+  background-attachment: fixed;
+}
+
 /* Navy + Teal gradient background */
 .gradient-bg {
   background: linear-gradient(135deg, hsl(210, 51%, 21%) 0%, hsl(177, 35%, 40%) 100%);
