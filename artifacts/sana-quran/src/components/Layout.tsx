@@ -524,7 +524,7 @@ export default function Layout({ user, children }: LayoutProps) {
   const navItems = getNavItems(user.role, unreadCount, user.track, (user as any).circleDataEntryType);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col" dir="rtl">
+    <div className="min-h-screen sana-main-background flex flex-col" dir="rtl">
       {/* Messages popup on login */}
       <NewMessagesModal userId={user.id} role={user.role} navigate={(p) => { setLocation(p); setSidebarOpen(false); }} />
 
