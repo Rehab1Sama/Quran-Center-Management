@@ -303,9 +303,27 @@ router.post("/circles/:id/remove-staff", authenticate, async (req, res): Promise
   }
 
   // مسؤولة المسار: فقط حلقات مسارها
-  if (req.userRole === "track_supervisor" && circle.track !== req.userTrack) {
+  const [circleTrack] = circle.trackId
+    ? await db.select({ name: tracksTable.name }).from(tracksTable).where(eq(tracksTable.id, circle.trackId))
+    : [];
+  const circleTrackName = circle.track ?? circleTrack?.name;
+  if (req.userRole === "track_supervisor" && circleTrackName !== req.userTrack) {
     res.status(403).json({ error: "Forbidden" });
     return;
+  }
+  if (req.userRole === "track_supervisor" && targetCircleId) {
+    const [targetCircle] = await db.select({ track: circlesTable.track, trackId: circlesTable.trackId, isArchived: circlesTable.isArchived, teacherId: circlesTable.teacherId, supervisorId: circlesTable.supervisorId })
+      .from(circlesTable).where(eq(circlesTable.id, targetCircleId));
+    const [targetTrack] = targetCircle?.trackId
+      ? await db.select({ name: tracksTable.name }).from(tracksTable).where(eq(tracksTable.id, targetCircle.trackId))
+      : [];
+    const targetTrackName = targetCircle?.track ?? targetTrack?.name;
+    if (!targetCircle || targetCircle.isArchived || targetTrackName !== req.userTrack) {
+      res.status(403).json({ error: "الحلقة الهدف خارج نطاق المسار" }); return;
+    }
+    if ((staffRole === "teacher" && targetCircle.teacherId) || (staffRole === "supervisor" && targetCircle.supervisorId)) {
+      res.status(409).json({ error: "الحلقة الهدف لديها موظفة من نفس الدور" }); return;
+    }
   }
 
   const userId = staffRole === "teacher" ? circle.teacherId : circle.supervisorId;
@@ -350,15 +368,15 @@ router.patch("/circles/:id", authenticate, async (req, res): Promise<void> => {
     return;
   }
 
-  // Track supervisors can only edit meetingTime and whatsappLink for their own track's circles
+  // Track supervisors can edit the circle name and its meeting details only within their track.
   if (req.userRole === "track_supervisor") {
     const [existing] = await db.select().from(circlesTable).where(eq(circlesTable.id, id));
     if (!existing || existing.track !== req.userTrack) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    const { meetingTime, whatsappLink } = parsed.data;
-    const [updated] = await db.update(circlesTable).set({ meetingTime, whatsappLink }).where(eq(circlesTable.id, id)).returning();
+    const { name, meetingTime, whatsappLink } = parsed.data;
+    const [updated] = await db.update(circlesTable).set({ name, meetingTime, whatsappLink }).where(eq(circlesTable.id, id)).returning();
     res.json(updated);
     return;
   }
