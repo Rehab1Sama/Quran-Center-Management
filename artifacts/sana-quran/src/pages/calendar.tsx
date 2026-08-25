@@ -442,7 +442,7 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
       <div id="homepage-return" className="flex justify-center pt-2">
         <a
           href="/"
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#2B3784] px-7 py-3 text-sm font-bold text-white shadow-md shadow-[#2B3784]/20 transition-all hover:bg-[#1A2260] hover:-translate-y-0.5"
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#59658F] px-7 py-3 text-sm font-bold text-white shadow-md shadow-[#59658F]/20 transition-all hover:bg-[#4A5590] hover:-translate-y-0.5"
         >
           <Home className="h-4 w-4 text-[#C4A76A]" />
           العودة للصفحة الرئيسية
