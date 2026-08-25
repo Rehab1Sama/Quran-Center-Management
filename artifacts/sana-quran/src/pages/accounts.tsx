@@ -164,6 +164,14 @@ export default function AccountsPage() {
   const enableUser = useEnableUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const invalidateArchiveViews = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["users"] }),
+      queryClient.invalidateQueries({ queryKey: ["circles"] }),
+      queryClient.invalidateQueries({ queryKey: ["circles-all"] }),
+      queryClient.invalidateQueries({ queryKey: ["listStudents"] }),
+    ]);
+  };
   const [permDeleteOpen, setPermDeleteOpen] = useState(false);
   const [permDeleteTarget, setPermDeleteTarget] = useState<{ id: number; label: string } | null>(null);
   const [permDeleting, setPermDeleting] = useState(false);
@@ -294,9 +302,9 @@ export default function AccountsPage() {
     deleteUser.mutate(
       { id: userId },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
           toast({ title: "تم حذف الحساب" });
-          queryClient.invalidateQueries({ queryKey: ["users"] });
+          await invalidateArchiveViews();
         },
         onError: () => toast({ title: "خطأ في حذف الحساب", variant: "destructive" }),
       }
@@ -313,9 +321,9 @@ export default function AccountsPage() {
     deleteUser.mutate(
       { id: archiveTarget.id },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
           toast({ title: "تمت الأرشفة", description: "الحساب في الأرشيف وبياناته محفوظة" });
-          queryClient.invalidateQueries({ queryKey: ["users"] });
+          await invalidateArchiveViews();
           setArchiveOpen(false);
           setArchiveTarget(null);
         },

@@ -205,6 +205,18 @@ export default function StudentProfilePage({ id }: { id: number }) {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["studentProfile", id] });
   const invalidateGoals = () => queryClient.invalidateQueries({ queryKey: ["studentGoals", id] });
+  const invalidateArchiveViews = async (circleId?: number) => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["circles"] }),
+      queryClient.invalidateQueries({ queryKey: ["circles-all"] }),
+      queryClient.invalidateQueries({ queryKey: ["users"] }),
+      queryClient.invalidateQueries({ queryKey: ["listStudents"] }),
+      ...(circleId ? [
+        queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] }),
+        queryClient.invalidateQueries({ queryKey: ["circle-students-archived", circleId] }),
+      ] : []),
+    ]);
+  };
 
   // openNewGoal removed — students create their own goals from my-progress.tsx
   const openEditGoal = (g: { id: number; title: string; targetDate?: string | null; notes?: string | null; motivationalMessage?: string | null }) => {
@@ -300,34 +312,14 @@ export default function StudentProfilePage({ id }: { id: number }) {
         },
       },
       {
-        onSuccess: () => {
-          const targetCircleId = Number(new URLSearchParams(location.split("?")[1] ?? "").get("targetCircleId"));
-          if (Number.isFinite(targetCircleId) && targetCircleId > 0 && archiveRequest.circleId) {
-            enrollStudentMutation.mutate(
-              { id, data: { circleId: targetCircleId } },
-              {
-                onSuccess: () => {
-                  toast({ title: "تم حفظ البطاقة وإتمام النقل", description: `تم نقل ${profile?.fullName} للحلقة الجديدة` });
-                  setArchiveRequest(null);
-                  invalidate();
-                  navigate("/unlinked-students");
-                },
-                onError: () => toast({ title: "تمت الأرشفة لكن تعذر إتمام النقل", variant: "destructive" }),
-              },
-            );
-          } else {
-            toast({ title: "تم الإخراج من الحلقة", description: `تم حفظ بطاقة انسحاب ${profile?.fullName}` });
-            if (archiveRequest.circleId) {
-              queryClient.invalidateQueries({ queryKey: ["circle-students", archiveRequest.circleId] });
-              queryClient.invalidateQueries({ queryKey: ["circle-students-archived", archiveRequest.circleId] });
-            }
-            queryClient.invalidateQueries({ queryKey: ["circles"] });
-            setArchiveRequest(null);
-            invalidate();
-            const returnTo = new URLSearchParams(location.split("?")[1] ?? "").get("returnTo");
-            if (returnTo === "/leader-circles" || returnTo === "/circles") {
-              navigate(returnTo);
-            }
+        onSuccess: async () => {
+          toast({ title: "تم الإخراج من الحلقة", description: `تم حفظ بطاقة انسحاب ${profile?.fullName}` });
+          await invalidateArchiveViews(archiveRequest.circleId);
+          setArchiveRequest(null);
+          invalidate();
+          const returnTo = new URLSearchParams(location.split("?")[1] ?? "").get("returnTo");
+          if (returnTo === "/leader-circles" || returnTo === "/circles") {
+            navigate(returnTo);
           }
         },
         onError: (error: any) => toast({
@@ -374,7 +366,13 @@ export default function StudentProfilePage({ id }: { id: number }) {
   };
 
   const handleRestore = () => {
-    restoreStudent.mutate({ id, data: {} }, { onSuccess: () => { toast({ title: "تم استرجاع الطالبة" }); invalidate(); } });
+    restoreStudent.mutate({ id, data: {} }, {
+      onSuccess: async () => {
+        toast({ title: "تم استرجاع الطالبة" });
+        await invalidateArchiveViews();
+        invalidate();
+      },
+    });
   };
 
   const handleSetLeave = () => {
@@ -497,12 +495,12 @@ export default function StudentProfilePage({ id }: { id: number }) {
               <Archive className="w-3.5 h-3.5" />
               أرشفة
             </Button>
-          ) : (
+          ) : user?.role === "leader" ? (
             <Button size="sm" variant="outline" className="gap-1.5 text-xs text-emerald-700" onClick={handleRestore}>
               <RotateCcw className="w-3.5 h-3.5" />
-              استرجاع للحلقة
+              استرجاع بيانات الطالبة
             </Button>
-          )}
+          ) : null}
         </div>
       )}
 

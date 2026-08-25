@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Archive, RefreshCw, Search, UserCheck } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
@@ -39,6 +40,7 @@ export default function ArchivedStaffPage() {
   const [restoring, setRestoring] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` };
 
@@ -64,6 +66,11 @@ export default function ArchivedStaffPage() {
       const res = await fetch(`${BASE}/api/users/${userId}/restore`, { method: "POST", headers });
       if (!res.ok) throw new Error();
       toast({ title: `تم استعادة حساب ${userName} ✓` });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["users"] }),
+        queryClient.invalidateQueries({ queryKey: ["circles"] }),
+        queryClient.invalidateQueries({ queryKey: ["circles-all"] }),
+      ]);
       await fetchArchived();
     } catch {
       toast({ title: "حدث خطأ", variant: "destructive" });
@@ -79,12 +86,17 @@ export default function ArchivedStaffPage() {
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-4" dir="rtl">
-      <div className="flex items-center gap-3">
-        <Archive className="w-6 h-6 text-primary" />
-        <div>
-          <h1 className="text-xl font-bold">الموظفات المؤرشفات</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">الحسابات التي تم أرشفتها — يمكن استعادتها في أي وقت</p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Archive className="w-6 h-6 text-primary" />
+          <div>
+            <h1 className="text-xl font-bold">الموظفات المؤرشفات</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">الحسابات التي تم أرشفتها — يمكن استعادتها في أي وقت</p>
+          </div>
         </div>
+        <Button size="icon" variant="outline" onClick={fetchArchived} disabled={loading} title="تحديث القائمة">
+          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+        </Button>
       </div>
 
       <div className="relative">

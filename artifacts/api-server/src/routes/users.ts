@@ -25,12 +25,25 @@ router.get("/users/archived-staff", authenticate, async (req, res): Promise<void
 });
 
 router.post("/users/:id/restore", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "deputy"].includes(req.userRole ?? "")) {
+  if (!["leader", "deputy", "track_supervisor"].includes(req.userRole ?? "")) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
-   const id = parseInt(String(req.params.id));
-  const [user] = await db.update(usersTable).set({ isArchived: false }).where(eq(usersTable.id, id)).returning();
-  if (!user) { res.status(404).json({ error: "المستخدم غير موجود" }); return; }
+  const id = parseInt(String(req.params.id));
+  const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  if (!target) { res.status(404).json({ error: "المستخدم غير موجود" }); return; }
+  if (!target.isArchived) { res.status(409).json({ error: "الحساب نشط بالفعل" }); return; }
+  const protectedRoles = ["leader", "deputy", "track_supervisor"];
+  if (req.userRole !== "leader" && protectedRoles.includes(target.role)) {
+    res.status(403).json({ error: "لا تملكين صلاحية استعادة هذا الحساب" }); return;
+  }
+  if (req.userRole === "track_supervisor" && target.track !== req.userTrack) {
+    res.status(403).json({ error: "الحساب خارج نطاق المسار" }); return;
+  }
+  const [user] = await db.update(usersTable)
+    .set({ isArchived: false })
+    .where(and(eq(usersTable.id, id), eq(usersTable.isArchived, true)))
+    .returning();
+  if (!user) { res.status(409).json({ error: "تعذر استعادة الحساب" }); return; }
   res.json({ success: true });
 });
 
@@ -372,6 +385,16 @@ router.delete("/users/:id", authenticate, async (req, res): Promise<void> => {
   const id = parseInt(raw, 10);
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
+  if (target.isArchived) { res.status(409).json({ error: "الحساب مؤرشف بالفعل" }); return; }
+  if (target.role === "student") {
+    res.status(400).json({ error: "أرشفة الطالبة تتم من بطاقة الانسحاب داخل الحلقة" });
+    return;
+  }
+  const protectedRoles = ["leader", "deputy", "track_supervisor"];
+  if (protectedRoles.includes(target.role)) {
+    res.status(403).json({ error: "لا يمكن أرشفة حساب إداري محمي" });
+    return;
+  }
   let belongsToSupervisorTrack = target.track === req.userTrack;
   if (
     !belongsToSupervisorTrack &&
@@ -394,12 +417,16 @@ router.delete("/users/:id", authenticate, async (req, res): Promise<void> => {
   ) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
-  if (target.circleId && target.role === "teacher") {
-    await db.update(circlesTable).set({ teacherId: null }).where(eq(circlesTable.id, target.circleId));
-  } else if (target.circleId && target.role === "supervisor") {
-    await db.update(circlesTable).set({ supervisorId: null }).where(eq(circlesTable.id, target.circleId));
-  }
-  await db.update(usersTable).set({ isArchived: true, circleId: null }).where(eq(usersTable.id, id));
+  await db.transaction(async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+    if (target.role === "teacher") {
+      await tx.update(circlesTable).set({ teacherId: null }).where(eq(circlesTable.teacherId, id));
+    } else if (target.role === "supervisor") {
+      await tx.update(circlesTable).set({ supervisorId: null }).where(eq(circlesTable.supervisorId, id));
+    }
+    await tx.update(usersTable)
+      .set({ isArchived: true, circleId: null })
+      .where(and(eq(usersTable.id, id), eq(usersTable.isArchived, false)));
+  });
   res.sendStatus(204);
 });
 

@@ -1,9 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
-import { useListCircles } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Archive, RotateCcw, Search, UserCircle, Users, X, Check } from "lucide-react";
+import { Archive, RotateCcw, Search, UserCircle, Users, X, Check, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -34,13 +33,10 @@ export default function ArchivedStudentsPage() {
   const [selectedTrack, setSelectedTrack] = useState("");
   const [restoringId, setRestoringId] = useState<number | null>(null);
   const [restoringEnrollmentCircleId, setRestoringEnrollmentCircleId] = useState<number | null>(null);
-  const [selectedCircleId, setSelectedCircleId] = useState<string>("");
   const [isPending, setIsPending] = useState(false);
 
   const [archivedEntries, setArchivedEntries] = useState<ArchivedEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  const { data: circles } = useListCircles(undefined, { query: { queryKey: ["circles-all"] } });
 
   async function fetchArchived() {
     setIsLoading(true);
@@ -73,25 +69,13 @@ export default function ArchivedStudentsPage() {
     });
   }, [archivedEntries, search, selectedTrack]);
 
-  // Group circles by track for the select
-  const circlesByTrack = useMemo(() => {
-    const map: Record<string, { id: number; name: string }[]> = {};
-    circles?.forEach(c => {
-      const track = (c as any).track ?? "غير محدد";
-      if (!map[track]) map[track] = [];
-      map[track].push({ id: c.id, name: c.name });
-    });
-    return map;
-  }, [circles]);
-
   const handleRestoreClick = (e: ArchivedEntry) => {
     setRestoringId(e.studentId);
     setRestoringEnrollmentCircleId(e.circleId);
-    setSelectedCircleId(String(e.circleId));
   };
 
   const handleRestoreConfirm = async (e: ArchivedEntry) => {
-    const circleId = selectedCircleId ? parseInt(selectedCircleId, 10) : e.circleId;
+    const circleId = e.circleId;
     setIsPending(true);
     try {
       const res = await fetch(`/api/students/${e.studentId}/restore`, {
@@ -101,7 +85,14 @@ export default function ArchivedStudentsPage() {
       });
       if (!res.ok) throw new Error();
       toast({ title: `تم استرجاع ${e.fullName} بنجاح` });
-      queryClient.invalidateQueries({ queryKey: ["circles"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["circles"] }),
+        queryClient.invalidateQueries({ queryKey: ["circles-all"] }),
+        queryClient.invalidateQueries({ queryKey: ["users"] }),
+        queryClient.invalidateQueries({ queryKey: ["listStudents"] }),
+        queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] }),
+        queryClient.invalidateQueries({ queryKey: ["circle-students-archived", e.circleId] }),
+      ]);
       await fetchArchived();
       setRestoringId(null);
     } catch {
@@ -114,19 +105,29 @@ export default function ArchivedStudentsPage() {
   const handleRestoreCancel = () => {
     setRestoringId(null);
     setRestoringEnrollmentCircleId(null);
-    setSelectedCircleId("");
   };
 
   return (
     <div className="space-y-5" dir="rtl">
-      <div>
-        <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-          <Archive className="w-5 h-5 text-gray-500" />
-          الطالبات المؤرشفات
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          جميع الطالبات اللواتي أُرشفن من حلقاتهن
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
+            <Archive className="w-5 h-5 text-gray-500" />
+            الطالبات المؤرشفات
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            جميع الطالبات اللواتي أُرشفن من حلقاتهن
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={fetchArchived}
+          disabled={isLoading}
+          className="p-2 rounded-lg border hover:bg-muted disabled:opacity-50"
+          title="تحديث القائمة"
+        >
+          <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+        </button>
       </div>
 
       <Card className="border border-border/50 shadow-sm">
@@ -234,21 +235,10 @@ export default function ArchivedStudentsPage() {
 
                     {isRestoring && (
                       <div className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200 space-y-3">
-                        <p className="text-xs font-semibold text-emerald-800">اختاري الحلقة للاسترجاع إليها:</p>
-                        <select
-                          value={selectedCircleId}
-                          onChange={ev => setSelectedCircleId(ev.target.value)}
-                          className="w-full text-sm rounded-lg border border-border bg-white px-3 py-2 text-right focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                        >
-                          <option value={e.circleId}>— نفس الحلقة السابقة ({e.circleName}) —</option>
-                          {Object.entries(circlesByTrack).map(([track, cs]) => (
-                            <optgroup key={track} label={track}>
-                              {cs.filter(c => c.id !== e.circleId).map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                              ))}
-                            </optgroup>
-                          ))}
-                        </select>
+                        <p className="text-xs font-semibold text-emerald-800">سيُعاد التسجيل في الحلقة السابقة فقط:</p>
+                        <p className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-emerald-900">
+                          {e.circleName}
+                        </p>
                         <div className="flex gap-2">
                           <button
                             onClick={() => handleRestoreConfirm(e)}

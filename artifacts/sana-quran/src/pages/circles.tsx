@@ -114,7 +114,7 @@ function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRol
   };
 
   const handleArchive = (s: any) => {
-    navigate(`/students/${s.id}?archive=1&circleId=${circleId}`);
+    navigate(`/students/${s.id}?archive=1&circleId=${circleId}&returnTo=/circles`);
   };
 
   const handleRestore = (s: any) => {

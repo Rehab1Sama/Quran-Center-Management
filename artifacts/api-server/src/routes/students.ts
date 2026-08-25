@@ -328,11 +328,12 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
     if (allowed.length === 0) { res.status(403).json({ error: "الطالبة خارج نطاق المسار" }); return; }
   }
 
-  if (parsed.data.circleId !== undefined) {
+  const requestedCircleId = parsed.data.circleId;
+  if (typeof requestedCircleId === "number") {
     const [targetCircle] = await db
       .select({ id: circlesTable.id, track: circlesTable.track, isArchived: circlesTable.isArchived })
       .from(circlesTable)
-      .where(eq(circlesTable.id, parsed.data.circleId));
+      .where(eq(circlesTable.id, requestedCircleId));
     if (!targetCircle || targetCircle.isArchived) {
       res.status(400).json({ error: "الحلقة الهدف غير متاحة" });
       return;
@@ -437,15 +438,11 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
   res.json(student);
 });
 
-// ── Delete (soft) student ──────────────────────────────────────────────────────
+// ── Legacy delete endpoint ─────────────────────────────────────────────────────
+// Student withdrawal must always go through the archive endpoint so a withdrawal
+// card, circle scope, and archive event are recorded together.
 router.delete("/students/:id", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "track_supervisor"].includes(req.userRole!)) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const id = parseId(req.params.id);
-  await db.update(studentsTable).set({ isArchived: true }).where(eq(studentsTable.id, id));
-  res.sendStatus(204);
+  res.status(405).json({ error: "أرشفة الطالبة تتم عبر بطاقة الانسحاب في الحلقة" });
 });
 
 // ── Archive student (per-circle or global) ─────────────────────────────────────
@@ -456,36 +453,51 @@ router.patch("/students/:id/archive", authenticate, async (req, res): Promise<vo
   const { circleId, withdrawalPeriod, withdrawalReason, withdrawalNotes } = req.body as {
     circleId?: number; withdrawalPeriod?: string; withdrawalReason?: string; withdrawalNotes?: string;
   };
+  const hasCircleId = circleId !== undefined && circleId !== null;
+  if (hasCircleId && (!Number.isInteger(circleId) || circleId <= 0)) {
+    res.status(400).json({ error: "معرّف الحلقة غير صالح" });
+    return;
+  }
   // Per-circle archive: leader + track_supervisor + data_entry (own circles only)
   // Global archive (no circleId): leader only
-  const canPerCircle = ["leader", "track_supervisor", "data_entry"].includes(req.userRole!);
+  const canPerCircle = ["leader", "deputy", "track_supervisor", "data_entry"].includes(req.userRole!);
   const canGlobal = req.userRole === "leader";
-  if ((circleId && !canPerCircle) || (!circleId && !canGlobal)) {
+  if ((hasCircleId && !canPerCircle) || (!hasCircleId && !canGlobal)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  // data_entry: verify they are assigned to the target circle
-  if (circleId && req.userRole === "data_entry") {
-    const [assignment] = await db
-      .select({ circleId: dataEntryCircleAssignmentsTable.circleId })
-      .from(dataEntryCircleAssignmentsTable)
-      .where(and(
-        eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId!),
-        eq(dataEntryCircleAssignmentsTable.circleId, circleId),
-      ));
-    if (!assignment) { res.status(403).json({ error: "Forbidden: not assigned to this circle" }); return; }
-  }
   const id = parseId(req.params.id);
-
   const [before] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
   if (!before) { res.status(404).json({ error: "Student not found" }); return; }
+  if (before.isArchived) {
+    res.status(409).json({ error: "الطالبة مؤرشفة بالفعل" });
+    return;
+  }
 
-  if (circleId) {
+  if (hasCircleId) {
+    const [circle] = await db.select({
+      id: circlesTable.id,
+      track: circlesTable.track,
+      isArchived: circlesTable.isArchived,
+    }).from(circlesTable).where(eq(circlesTable.id, circleId));
+    if (!circle || circle.isArchived) {
+      res.status(400).json({ error: "الحلقة المحددة غير متاحة" });
+      return;
+    }
     if (req.userRole === "track_supervisor") {
-      const [targetCircle] = await db.select({ track: circlesTable.track }).from(circlesTable).where(eq(circlesTable.id, circleId));
-      if (!targetCircle || targetCircle.track !== req.userTrack) {
+      if (circle.track !== req.userTrack) {
         res.status(403).json({ error: "الحلقة خارج نطاق المسار" }); return;
       }
+    }
+    if (req.userRole === "data_entry") {
+      const [assignment] = await db
+        .select({ circleId: dataEntryCircleAssignmentsTable.circleId })
+        .from(dataEntryCircleAssignmentsTable)
+        .where(and(
+          eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId!),
+          eq(dataEntryCircleAssignmentsTable.circleId, circleId),
+        ));
+      if (!assignment) { res.status(403).json({ error: "لا تملكين صلاحية هذه الحلقة" }); return; }
     }
     if (!withdrawalPeriod || !withdrawalReason?.trim()) {
       res.status(400).json({ error: "يجب اختيار فترة الانسحاب وكتابة السبب" }); return;
@@ -504,50 +516,43 @@ router.patch("/students/:id/archive", authenticate, async (req, res): Promise<vo
       return;
     }
 
-    // Per-circle archive: archive the enrollment
-    await db.update(studentEnrollmentsTable)
-      .set({
-        isArchived: true,
-        archivedAt: new Date(),
-        withdrawalPeriod: withdrawalPeriod.trim(),
-        withdrawalReason: withdrawalReason.trim(),
-        withdrawalNotes: withdrawalNotes?.trim() || null,
-      })
-      .where(
-        and(
+    const updated = await db.transaction(async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+      await tx.update(studentEnrollmentsTable)
+        .set({
+          isArchived: true,
+          archivedAt: new Date(),
+          withdrawalPeriod: withdrawalPeriod.trim(),
+          withdrawalReason: withdrawalReason.trim(),
+          withdrawalNotes: withdrawalNotes?.trim() || null,
+        })
+        .where(and(
           eq(studentEnrollmentsTable.studentId, id),
           eq(studentEnrollmentsTable.circleId, circleId),
-        ),
-      );
+          eq(studentEnrollmentsTable.isArchived, false),
+        ));
 
-    // If this was the student's primary circle, clear it
-    if (before.circleId === circleId) {
-      // Find another active enrollment to promote as primary
-      const [otherEnrollment] = await db.select()
-        .from(studentEnrollmentsTable)
-        .where(
-          and(
+      if (before.circleId === circleId) {
+        const [otherEnrollment] = await tx.select({ circleId: studentEnrollmentsTable.circleId })
+          .from(studentEnrollmentsTable)
+          .where(and(
             eq(studentEnrollmentsTable.studentId, id),
             eq(studentEnrollmentsTable.isArchived, false),
             ne(studentEnrollmentsTable.circleId, circleId),
-          ),
-        )
-        .limit(1);
-      const newCircleId = otherEnrollment?.circleId ?? null;
-      await db.update(studentsTable)
-        .set({ circleId: newCircleId })
-        .where(eq(studentsTable.id, id));
-      // Sync user account circleId
-      await db.update(usersTable)
-        .set({ circleId: newCircleId })
-        .where(and(eq(usersTable.studentId, id), eq(usersTable.role, "student")));
-    }
+          ))
+          .limit(1);
+        const newCircleId = otherEnrollment?.circleId ?? null;
+        await tx.update(studentsTable).set({ circleId: newCircleId }).where(eq(studentsTable.id, id));
+        await tx.update(usersTable)
+          .set({ circleId: newCircleId })
+          .where(and(eq(usersTable.studentId, id), eq(usersTable.role, "student")));
+      }
 
-    await db.insert(studentArchiveEventsTable).values({
-      studentId: id, eventType: "archived", circleIdAtTime: circleId, performedById: req.userId ?? null,
+      await tx.insert(studentArchiveEventsTable).values({
+        studentId: id, eventType: "archived", circleIdAtTime: circleId, performedById: req.userId ?? null,
+      });
+      const [student] = await tx.select().from(studentsTable).where(eq(studentsTable.id, id));
+      return student;
     });
-
-    const [updated] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
     res.json(updated);
   } else {
     // Global archive (leader-only)
@@ -555,36 +560,36 @@ router.patch("/students/:id/archive", authenticate, async (req, res): Promise<vo
       res.status(400).json({ error: "يجب اختيار فترة الانسحاب وكتابة السبب" });
       return;
     }
-    const [student] = await db.update(studentsTable)
-      .set({
-        isArchived: true,
-        circleId: null,
-        archivedAt: new Date(),
-        withdrawalPeriod: withdrawalPeriod.trim(),
-        withdrawalReason: withdrawalReason.trim(),
-        withdrawalNotes: withdrawalNotes?.trim() || null,
-      })
-      .where(eq(studentsTable.id, id)).returning();
-    if (!student) { res.status(404).json({ error: "Student not found" }); return; }
+    const student = await db.transaction(async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+      const [updated] = await tx.update(studentsTable)
+        .set({
+          isArchived: true,
+          circleId: null,
+          archivedAt: new Date(),
+          withdrawalPeriod: withdrawalPeriod.trim(),
+          withdrawalReason: withdrawalReason.trim(),
+          withdrawalNotes: withdrawalNotes?.trim() || null,
+        })
+        .where(and(eq(studentsTable.id, id), eq(studentsTable.isArchived, false)))
+        .returning();
+      if (!updated) throw new Error("ARCHIVE_CONFLICT");
 
-    // Archive all enrollments
-    await db.update(studentEnrollmentsTable)
-      .set({
-        isArchived: true,
-        archivedAt: new Date(),
-        withdrawalPeriod: withdrawalPeriod.trim(),
-        withdrawalReason: withdrawalReason.trim(),
-        withdrawalNotes: withdrawalNotes?.trim() || null,
-      })
-      .where(eq(studentEnrollmentsTable.studentId, id));
-
-    // Sync user account: archive and clear circleId
-    await db.update(usersTable)
-      .set({ isArchived: true, circleId: null })
-      .where(and(eq(usersTable.studentId, id), eq(usersTable.role, "student")));
-
-    await db.insert(studentArchiveEventsTable).values({
-      studentId: id, eventType: "archived", circleIdAtTime: before?.circleId ?? null, performedById: req.userId ?? null,
+      await tx.update(studentEnrollmentsTable)
+        .set({
+          isArchived: true,
+          archivedAt: new Date(),
+          withdrawalPeriod: withdrawalPeriod.trim(),
+          withdrawalReason: withdrawalReason.trim(),
+          withdrawalNotes: withdrawalNotes?.trim() || null,
+        })
+        .where(and(eq(studentEnrollmentsTable.studentId, id), eq(studentEnrollmentsTable.isArchived, false)));
+      await tx.update(usersTable)
+        .set({ isArchived: true, circleId: null })
+        .where(and(eq(usersTable.studentId, id), eq(usersTable.role, "student")));
+      await tx.insert(studentArchiveEventsTable).values({
+        studentId: id, eventType: "archived", circleIdAtTime: before.circleId ?? null, performedById: req.userId ?? null,
+      });
+      return updated;
     });
     res.json(student);
   }
@@ -595,75 +600,94 @@ router.patch("/students/:id/archive", authenticate, async (req, res): Promise<vo
 // If circleId → restore/upsert enrollment + make student active
 // If no circleId → restore globally (no circle assignment)
 router.patch("/students/:id/restore", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "track_supervisor", "data_entry"].includes(req.userRole!)) {
+  if (!["leader", "deputy", "track_supervisor", "data_entry"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
   const id = parseId(req.params.id);
-  // data_entry: can only restore students who have an archived enrollment in their assigned circles
+  const { circleId } = req.body as { circleId?: number | null };
+  const [before] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
+  if (!before) { res.status(404).json({ error: "Student not found" }); return; }
+  if (circleId === undefined || circleId === null) {
+    if (req.userRole !== "leader" || !before.isArchived) {
+      res.status(403).json({ error: "حددي حلقة نشطة للاستعادة" });
+      return;
+    }
+    const student = await db.transaction(async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+      const [updated] = await tx.update(studentsTable)
+        .set({ isArchived: false, archivedAt: null, circleId: null })
+        .where(eq(studentsTable.id, id)).returning();
+      await tx.update(usersTable)
+        .set({ isArchived: false, circleId: null })
+        .where(and(eq(usersTable.studentId, id), eq(usersTable.role, "student")));
+      await tx.insert(studentArchiveEventsTable).values({
+        studentId: id, eventType: "restored", circleIdAtTime: null, performedById: req.userId ?? null,
+      });
+      return updated;
+    });
+    res.json(student);
+    return;
+  }
+  if (!Number.isInteger(circleId) || circleId <= 0) {
+    res.status(400).json({ error: "معرّف الحلقة غير صالح" });
+    return;
+  }
+  const [circle] = await db.select({
+    id: circlesTable.id,
+    track: circlesTable.track,
+    isArchived: circlesTable.isArchived,
+  }).from(circlesTable).where(eq(circlesTable.id, circleId));
+  if (!circle || circle.isArchived) {
+    res.status(400).json({ error: "الحلقة المختارة غير متاحة" });
+    return;
+  }
+  if (req.userRole === "track_supervisor" && circle.track !== req.userTrack) {
+    res.status(403).json({ error: "الحلقة خارج نطاق المسار" });
+    return;
+  }
   if (req.userRole === "data_entry") {
-    const { circleId } = req.body as { circleId?: number | null };
-    if (!circleId) { res.status(403).json({ error: "Forbidden: data_entry must specify a circleId" }); return; }
-    // Verify target circle is assigned to this data_entry user
-    const [assignment] = await db
-      .select({ circleId: dataEntryCircleAssignmentsTable.circleId })
+    const [assignment] = await db.select({ circleId: dataEntryCircleAssignmentsTable.circleId })
       .from(dataEntryCircleAssignmentsTable)
       .where(and(
         eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId!),
         eq(dataEntryCircleAssignmentsTable.circleId, circleId),
       ));
-    if (!assignment) { res.status(403).json({ error: "Forbidden: not assigned to this circle" }); return; }
-    // Verify there is an archived enrollment for this student in one of their assigned circles
-    const assignedCircles = await db
-      .select({ circleId: dataEntryCircleAssignmentsTable.circleId })
-      .from(dataEntryCircleAssignmentsTable)
-      .where(eq(dataEntryCircleAssignmentsTable.dataEntryUserId, req.userId!));
-    const assignedIds = assignedCircles.map(a => a.circleId);
-    const [archivedEnrollment] = await db.select()
-      .from(studentEnrollmentsTable)
-      .where(and(
-        eq(studentEnrollmentsTable.studentId, id),
-        eq(studentEnrollmentsTable.isArchived, true),
-        inArray(studentEnrollmentsTable.circleId, assignedIds),
-      ))
-      .limit(1);
-    // Also allow globally archived students (no enrollment) to be enrolled
-    const [student] = await db.select({ isArchived: studentsTable.isArchived })
-      .from(studentsTable).where(eq(studentsTable.id, id));
-    if (!archivedEnrollment && !student?.isArchived) {
-      res.status(403).json({ error: "Forbidden: student has no archived enrollment in your circles" });
-      return;
+    if (!assignment) { res.status(403).json({ error: "لا تملكين صلاحية هذه الحلقة" }); return; }
+  }
+  const [archivedEnrollment] = await db.select({ id: studentEnrollmentsTable.id })
+    .from(studentEnrollmentsTable)
+    .where(and(
+      eq(studentEnrollmentsTable.studentId, id),
+      eq(studentEnrollmentsTable.circleId, circleId),
+      eq(studentEnrollmentsTable.isArchived, true),
+    ))
+    .limit(1);
+  if (!archivedEnrollment) {
+    res.status(409).json({ error: "لا يوجد تسجيل مؤرشف للطالبة في الحلقة المختارة" });
+    return;
+  }
+
+  const student = await db.transaction(async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+    await tx.update(studentEnrollmentsTable)
+      .set({ isArchived: false, archivedAt: null })
+      .where(eq(studentEnrollmentsTable.id, archivedEnrollment.id));
+    const shouldSetPrimaryCircle = before.circleId === null;
+    const [updated] = await tx.update(studentsTable)
+      .set({
+        isArchived: false,
+        archivedAt: null,
+        ...(shouldSetPrimaryCircle ? { circleId } : {}),
+      })
+      .where(eq(studentsTable.id, id)).returning();
+    if (before.isArchived || shouldSetPrimaryCircle) {
+      await tx.update(usersTable)
+        .set({ isArchived: false, ...(shouldSetPrimaryCircle ? { circleId } : {}) })
+        .where(and(eq(usersTable.studentId, id), eq(usersTable.role, "student")));
     }
-  }
-  const { circleId } = req.body as { circleId?: number | null };
-
-  const updateData: { isArchived: boolean; archivedAt: null; circleId?: number | null } = {
-    isArchived: false, archivedAt: null,
-  };
-  if (circleId !== undefined) updateData.circleId = circleId;
-
-  const [before] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
-  if (!before) { res.status(404).json({ error: "Student not found" }); return; }
-
-  const [student] = await db.update(studentsTable).set(updateData).where(eq(studentsTable.id, id)).returning();
-  if (!student) { res.status(404).json({ error: "Student not found" }); return; }
-
-  if (circleId) {
-    await db.insert(studentEnrollmentsTable)
-      .values({ studentId: id, circleId, isArchived: false })
-      .onConflictDoUpdate({
-        target: [studentEnrollmentsTable.studentId, studentEnrollmentsTable.circleId],
-        set: { isArchived: false, archivedAt: null },
-      });
-  }
-
-  // Sync user account: restore and update circleId
-  await db.update(usersTable)
-    .set({ isArchived: false, circleId: circleId ?? null })
-    .where(and(eq(usersTable.name, before.fullName), eq(usersTable.role, "student")));
-
-  await db.insert(studentArchiveEventsTable).values({
-    studentId: id, eventType: "restored", circleIdAtTime: circleId ?? null, performedById: req.userId ?? null,
+    await tx.insert(studentArchiveEventsTable).values({
+      studentId: id, eventType: "restored", circleIdAtTime: circleId, performedById: req.userId ?? null,
+    });
+    return updated;
   });
   res.json(student);
 });

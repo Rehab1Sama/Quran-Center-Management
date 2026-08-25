@@ -324,6 +324,10 @@ router.post("/circles/:id/remove-staff", authenticate, async (req, res): Promise
     res.status(404).json({ error: "Circle not found" });
     return;
   }
+  if (circle.isArchived) {
+    res.status(400).json({ error: "لا يمكن إدارة كادر حلقة مؤرشفة" });
+    return;
+  }
 
   // مسؤولة المسار: فقط حلقات مسارها
   const [circleTrack] = circle.trackId
@@ -334,14 +338,18 @@ router.post("/circles/:id/remove-staff", authenticate, async (req, res): Promise
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  if (req.userRole === "track_supervisor" && targetCircleId) {
-    const [targetCircle] = await db.select({ track: circlesTable.track, trackId: circlesTable.trackId, isArchived: circlesTable.isArchived, teacherId: circlesTable.teacherId, supervisorId: circlesTable.supervisorId })
+  let targetCircle: { id: number; track: string | null; trackId: number | null; isArchived: boolean; teacherId: number | null; supervisorId: number | null } | undefined;
+  if (targetCircleId) {
+    [targetCircle] = await db.select({ id: circlesTable.id, track: circlesTable.track, trackId: circlesTable.trackId, isArchived: circlesTable.isArchived, teacherId: circlesTable.teacherId, supervisorId: circlesTable.supervisorId })
       .from(circlesTable).where(eq(circlesTable.id, targetCircleId));
     const [targetTrack] = targetCircle?.trackId
       ? await db.select({ name: tracksTable.name }).from(tracksTable).where(eq(tracksTable.id, targetCircle.trackId))
       : [];
     const targetTrackName = targetCircle?.track ?? targetTrack?.name;
-    if (!targetCircle || targetCircle.isArchived || targetTrackName !== req.userTrack) {
+    if (!targetCircle || targetCircle.isArchived || targetCircle.id === circleId) {
+      res.status(400).json({ error: "الحلقة الهدف غير متاحة للنقل" }); return;
+    }
+    if (req.userRole === "track_supervisor" && targetTrackName !== req.userTrack) {
       res.status(403).json({ error: "الحلقة الهدف خارج نطاق المسار" }); return;
     }
     if ((staffRole === "teacher" && targetCircle.teacherId) || (staffRole === "supervisor" && targetCircle.supervisorId)) {
@@ -354,26 +362,39 @@ router.post("/circles/:id/remove-staff", authenticate, async (req, res): Promise
     res.status(400).json({ error: "لا يوجد مستخدم مسند لهذا الدور في الحلقة" });
     return;
   }
-
-  // إزالة من الحلقة الحالية
-  if (staffRole === "teacher") {
-    await db.update(circlesTable).set({ teacherId: null }).where(eq(circlesTable.id, circleId));
-  } else {
-    await db.update(circlesTable).set({ supervisorId: null }).where(eq(circlesTable.id, circleId));
+  const [staffUser] = await db.select({ id: usersTable.id, role: usersTable.role, isArchived: usersTable.isArchived })
+    .from(usersTable).where(eq(usersTable.id, userId));
+  if (!staffUser || staffUser.isArchived || staffUser.role !== staffRole) {
+    res.status(409).json({ error: "الحساب المسند غير نشط أو لا يطابق الدور" });
+    return;
   }
 
-  if (action === "archive") {
-    await db.update(usersTable).set({ isArchived: true, circleId: null }).where(eq(usersTable.id, userId));
-  } else if (action === "transfer" && targetCircleId) {
-    // تحديث بيانات المستخدم
-    await db.update(usersTable).set({ circleId: targetCircleId }).where(eq(usersTable.id, userId));
-    // ربطها بالحلقة الجديدة
+  await db.transaction(async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
     if (staffRole === "teacher") {
-      await db.update(circlesTable).set({ teacherId: userId }).where(eq(circlesTable.id, targetCircleId));
+      await tx.update(circlesTable)
+        .set({ teacherId: null })
+        .where(and(eq(circlesTable.id, circleId), eq(circlesTable.teacherId, userId)));
     } else {
-      await db.update(circlesTable).set({ supervisorId: userId }).where(eq(circlesTable.id, targetCircleId));
+      await tx.update(circlesTable)
+        .set({ supervisorId: null })
+        .where(and(eq(circlesTable.id, circleId), eq(circlesTable.supervisorId, userId)));
     }
-  }
+
+    if (action === "archive") {
+      await tx.update(usersTable).set({ isArchived: true, circleId: null }).where(eq(usersTable.id, userId));
+      return;
+    }
+    if (targetCircleId && targetCircle) {
+      await tx.update(usersTable)
+        .set({ circleId: targetCircleId, track: targetCircle.track })
+        .where(eq(usersTable.id, userId));
+      if (staffRole === "teacher") {
+        await tx.update(circlesTable).set({ teacherId: userId }).where(eq(circlesTable.id, targetCircleId));
+      } else {
+        await tx.update(circlesTable).set({ supervisorId: userId }).where(eq(circlesTable.id, targetCircleId));
+      }
+    }
+  });
 
   res.json({ success: true });
 });
