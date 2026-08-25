@@ -406,7 +406,11 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
                 <div>
                   <p className="font-bold text-base text-[#1A2260]">{semester.title}</p>
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    {index === 0 ? "فصل منتهٍ — اضغطي لعرض التفاصيل" : "الفصل الحالي والمواعيد القادمة"}
+                    {index === 0
+                      ? "فصل منتهٍ — اضغطي لعرض التفاصيل"
+                      : index === 1
+                      ? "الفصل الحالي والمواعيد القادمة"
+                      : "الفصل القادم ومواعيده"}
                   </p>
                 </div>
                 {openSemesters[index] ?? index !== 0
