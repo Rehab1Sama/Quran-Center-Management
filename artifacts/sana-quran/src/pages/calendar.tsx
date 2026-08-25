@@ -423,13 +423,12 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
                     ["أسبوع الاختبار", semester.exam],
                     ["الإجازة", semester.holiday],
                   ].map(([label, event]: any, eventIndex) => {
-                    const typeInfo = event ? getTypeInfo(event.eventType) : null;
                     const title = event?.title?.replace(/^بداية\s*/, "").trim() || label;
                     return (
-                      <div key={label} className="grid grid-cols-[1.35fr_1fr_1fr] items-center gap-2 px-3 py-2.5 border-b border-[#C8CDE8]/40 last:border-0" style={{ borderRight: `4px solid ${typeInfo?.color ?? (eventIndex === 0 ? "#2B3784" : "#C4A76A")}` }}>
-                        <span className="font-semibold text-[#3D477E]">{title}</span>
-                        <span className="text-center text-[#59658F]">{formatHijriDate(event?.date)}</span>
-                        <span className="text-center text-[#59658F]">{formatGregorianDate(event?.date)}</span>
+                      <div key={label} className="grid grid-cols-[1.35fr_1fr_1fr] items-center gap-2 px-3 py-2.5 border-b border-[#C8CDE8]/40 last:border-0 border-r-4 border-r-[#2B3784]">
+                        <span className="text-right font-bold leading-5 text-[#2B3784]">{title}</span>
+                        <span className="text-center leading-5 text-[#66708F]">{formatHijriDate(event?.date)}</span>
+                        <span className="text-center leading-5 text-[#66708F]">{formatGregorianDate(event?.date)}</span>
                       </div>
                     );
                   })}
