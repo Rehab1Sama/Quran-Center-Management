@@ -37,7 +37,9 @@ function ImportExcel({ termId, onDone }: { termId?: number; onDone: (termId?: nu
     if (!files?.length) return;
     setBusy(true); setMessage("جارٍ قراءة الملفات...");
     try {
-      const ExcelJS = (await import("exceljs")).default;
+      // Use ExcelJS's browser bundle so Rollup does not traverse Node-only
+      // modules (fs, stream, crypto) while building the client.
+      const ExcelJS = (await import("exceljs/dist/exceljs.min.js")).default;
       const rows: any[] = [];
       for (const file of Array.from(files)) {
         const workbook = new ExcelJS.Workbook();
