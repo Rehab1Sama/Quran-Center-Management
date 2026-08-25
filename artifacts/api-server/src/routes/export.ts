@@ -593,7 +593,7 @@ router.get("/export/withdrawal-cards", authenticate, requireRole("leader", "depu
     .innerJoin(circlesTable, eq(studentEnrollmentsTable.circleId, circlesTable.id))
     .where(and(
       eq(studentEnrollmentsTable.isArchived, true),
-      ...(req.userRole === "track_supervisor" ? [eq(circlesTable.track, req.userTrack)] : []),
+       ...(req.userRole === "track_supervisor" && req.userTrack ? [eq(circlesTable.track, req.userTrack)] : []),
     ));
   const wb = new ExcelJS.Workbook();
   addSheet(wb, "بطاقات الانسحاب",
