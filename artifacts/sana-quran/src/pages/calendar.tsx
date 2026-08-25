@@ -449,6 +449,26 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
         </a>
       </div>
 
+      <div className="relative mx-auto mt-12 mb-4 flex h-56 w-56 items-center justify-center md:mt-16 md:h-64 md:w-64">
+        <div className="absolute h-56 w-56 rounded-full bg-[#ECEEF7] opacity-75 md:h-64 md:w-64" />
+        <div className="absolute h-44 w-44 rounded-full border border-dashed border-[#C8CDE8] md:h-52 md:w-52" />
+        <div className="absolute left-7 top-5 h-2 w-2 rounded-full bg-[#C4A76A] md:left-9 md:top-7" />
+        <div className="absolute bottom-7 right-8 h-1.5 w-1.5 rounded-full bg-[#9EA8CC] md:bottom-9 md:right-10" />
+        <img
+          src="/logo.webp"
+          alt="شعار مقرأة سَنا الآي"
+          className="relative z-10 rounded-full"
+          style={{
+            width: 150,
+            height: 150,
+            objectFit: "cover",
+            background: "#ECEEF7",
+            boxShadow: "0 8px 40px rgba(43,55,132,0.18)",
+            border: "3px solid rgba(200,205,232,0.7)",
+          }}
+        />
+      </div>
+
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent dir="rtl" className="max-w-sm">
           <DialogHeader>
