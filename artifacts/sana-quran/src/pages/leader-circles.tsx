@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
-  ChevronDown, ChevronUp, Users, Clock, Link2, Settings2, X,
+  ChevronDown, ChevronUp, Users, Clock, Link2, X,
   Check, Phone, Search, ArrowLeftRight, UserX, BookOpen,
   Archive, PlaneTakeoff, ExternalLink, Pencil,
 } from "lucide-react";
@@ -583,9 +583,9 @@ export default function LeaderCirclesPage() {
                                 <button
                                   onClick={() => isEditing ? setEditingId(null) : startEdit(circle)}
                                   className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
-                                  title="تعديل"
+                                   title={isEditing ? "إلغاء التعديل" : "تعديل اسم الحلقة وبياناتها"}
                                 >
-                                  {isEditing ? <X className="w-3.5 h-3.5" /> : <Settings2 className="w-3.5 h-3.5" />}
+                                   {isEditing ? <X className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
                                 </button>
                               </div>
                             </div>
@@ -715,9 +715,15 @@ export default function LeaderCirclesPage() {
 
                             {/* Volunteers */}
                             <div className="mt-2 rounded-xl bg-violet-50/60 border border-violet-100 p-3">
-                              <p className="text-xs font-semibold text-violet-800 mb-1.5">المتطوعات ({circle.volunteers.length})</p>
+                              <p className="text-xs font-semibold text-violet-800 mb-1.5">
+                                الكادر والمتطوعات ({
+                                  circle.volunteers.length +
+                                  (circle.teacherName ? 1 : 0) +
+                                  (circle.supervisorName ? 1 : 0)
+                                })
+                              </p>
                               {circle.volunteers.length === 0 ? (
-                                <p className="text-xs text-muted-foreground">لا توجد متطوعات مسندات لهذه الحلقة</p>
+                                <p className="text-xs text-muted-foreground">المعلمة والمشرفة موضحتان أعلاه، ولا توجد متطوعات إضافيات مسندات لهذه الحلقة</p>
                               ) : (
                                 <div className="space-y-1.5">
                                   {circle.volunteers.map(volunteer => (
