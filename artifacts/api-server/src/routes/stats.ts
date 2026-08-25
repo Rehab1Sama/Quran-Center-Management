@@ -65,17 +65,20 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
 
   const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
 
-  const girlsTracks = ["البهور", "إشراق", "قبس", "ضياء", "وهج"];
-  const childrenTracks = ["سراج", "ألق"];
-  const mothersTracks = ["مهج"];
-
-  const girlsCircleIds = circles.filter(c => girlsTracks.some(t => c.track.startsWith(t))).map(c => c.id);
-  const childrenCircleIds = circles.filter(c => childrenTracks.some(t => c.track.startsWith(t))).map(c => c.id);
-  const mothersCircleIds = circles.filter(c => mothersTracks.some(t => c.track.startsWith(t))).map(c => c.id);
-
-  const totalGirls = students.filter(s => s.circleId && girlsCircleIds.includes(s.circleId)).length;
-  const totalChildren = students.filter(s => s.circleId && childrenCircleIds.includes(s.circleId)).length;
-  const totalMothers = students.filter(s => s.circleId && mothersCircleIds.includes(s.circleId)).length;
+  // لا نعتمد على اسم المسار في التصنيف؛ الاسم قابل للتغيير (مثل إضافة/إزالة "مسار").
+  // نوع المسار هو المصدر الثابت حتى لا تظهر بطاقات الأعداد بصفر رغم وجود الطالبات.
+  const trackTypeByCircleId = new Map(
+    circles.map(c => [
+      c.id,
+      c.trackId
+        ? (allTracks.find(t => t.id === c.trackId)?.dataEntryType ?? c.trackType ?? "girls")
+        : (c.trackType ?? "girls"),
+    ]),
+  );
+  const girlsTypes = new Set(["girls", "girls_near", "girls_far", "girls_no_review", "simple_review", "fixation"]);
+  const totalGirls = students.filter(s => s.circleId && girlsTypes.has(trackTypeByCircleId.get(s.circleId) ?? "girls")).length;
+  const totalChildren = students.filter(s => s.circleId && trackTypeByCircleId.get(s.circleId) === "children").length;
+  const totalMothers = students.filter(s => s.circleId && trackTypeByCircleId.get(s.circleId) === "mothers").length;
 
   const totalMemorizePages = Math.round(sum(records.map(r => r.memorizePages ?? 0)) * 2) / 2;
   const totalReviewNearPages = Math.round(sum(records.map(r => r.reviewNearPages ?? 0)) * 2) / 2;
