@@ -126,6 +126,10 @@ export default function TrackPage() {
   const [expandedCircle, setExpandedCircle] = useState<number | null>(null);
   const [transferStudent, setTransferStudent] = useState<{ student: Student; circleId: number } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [archiveRequest, setArchiveRequest] = useState<{ student: Student; circleId: number } | null>(null);
+  const [withdrawalPeriod, setWithdrawalPeriod] = useState("");
+  const [withdrawalReason, setWithdrawalReason] = useState("");
+  const [withdrawalNotes, setWithdrawalNotes] = useState("");
 
   // نافذة إضافة حساب طالبة (مسؤولة المسار فقط)
   const [addStudentOpen, setAddStudentOpen] = useState(false);
@@ -164,13 +168,24 @@ export default function TrackPage() {
     (allStudents ?? []).filter(s => s.circleId === circleId);
 
   const handleArchive = (student: Student, circleId: number) => {
-    if (!confirm(`هل أنتِ متأكدة من إخراج "${student.fullName}" من هذه الحلقة؟ ستبقى في الحلقات الأخرى التي هي فيها.`)) return;
+    setArchiveRequest({ student, circleId });
+    setWithdrawalPeriod("");
+    setWithdrawalReason("");
+    setWithdrawalNotes("");
+  };
+
+  const confirmArchive = () => {
+    if (!archiveRequest || !withdrawalPeriod || !withdrawalReason.trim()) {
+      toast({ title: "اختاري فترة الانسحاب واكتبي السبب", variant: "destructive" }); return;
+    }
     archiveStudent.mutate(
-      { id: student.id, data: { circleId } },
+      { id: archiveRequest.student.id, data: { circleId: archiveRequest.circleId, withdrawalPeriod, withdrawalReason, withdrawalNotes } },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["allStudents"] });
-          toast({ title: "تمت الأرشفة", description: `تم إخراج ${student.fullName} من الحلقة` });
+          toast({ title: "تمت الأرشفة", description: `تم إخراج ${archiveRequest.student.fullName} من الحلقة` });
+          setArchiveRequest(null);
+          navigate("/archived-students");
         },
         onError: () => toast({ title: "خطأ", description: "فشلت عملية الأرشفة", variant: "destructive" }),
       }
@@ -956,6 +971,42 @@ export default function TrackPage() {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(archiveRequest)} onOpenChange={open => { if (!open) setArchiveRequest(null); }}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader><DialogTitle>بطاقة انسحاب الطالبة</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">الطالبة: <strong>{archiveRequest?.student.fullName}</strong></p>
+            <div className="space-y-2">
+              <Label>فترة الانسحاب <span className="text-destructive">*</span></Label>
+              <Select value={withdrawalPeriod} onValueChange={setWithdrawalPeriod}>
+                <SelectTrigger><SelectValue placeholder="اختاري فترة الانسحاب" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="بداية الفصل">بداية الفصل</SelectItem>
+                  <SelectItem value="أسابيع التسميع">أسابيع التسميع</SelectItem>
+                  <SelectItem value="أسبوع المراجعات">أسبوع المراجعات</SelectItem>
+                  <SelectItem value="أسبوع الاختبارات">أسبوع الاختبارات</SelectItem>
+                  <SelectItem value="تم حذفها">تم حذفها</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>سبب الانسحاب <span className="text-destructive">*</span></Label>
+              <Input value={withdrawalReason} onChange={e => setWithdrawalReason(e.target.value)} placeholder="اكتبي سبب الانسحاب" />
+            </div>
+            <div className="space-y-2">
+              <Label>ملاحظاتك - إن وُجدت -</Label>
+              <Input value={withdrawalNotes} onChange={e => setWithdrawalNotes(e.target.value)} placeholder="ملاحظات إضافية" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setArchiveRequest(null)}>إلغاء</Button>
+            <Button onClick={confirmArchive} disabled={archiveStudent.isPending} className="bg-amber-600 hover:bg-amber-700">
+              {archiveStudent.isPending ? "جاري الأرشفة..." : "تأكيد الأرشفة"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
