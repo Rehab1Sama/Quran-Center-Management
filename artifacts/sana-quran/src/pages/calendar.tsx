@@ -195,8 +195,12 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const { data: events = [] } = useListCalendarEvents({ year: currentYear });
-  const { data: nextYearEvents = [] } = useListCalendarEvents({ year: currentYear + 1 });
+  const { data: events = [] } = useListCalendarEvents({ year: currentYear }, {
+    query: { enabled: !publicView },
+  });
+  const { data: nextYearEvents = [] } = useListCalendarEvents({ year: currentYear + 1 }, {
+    query: { enabled: !publicView },
+  });
   useEffect(() => {
     if (!publicView) return;
     fetch("/api/public/calendar-events")
