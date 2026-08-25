@@ -151,8 +151,8 @@ export default function MyProgressPage() {
   const currentRecords = visibleRecords.filter((r: any) =>
     secondTermStart ? r.date >= secondTermStart : !archivePeriods.some(p => r.date >= p.from && r.date <= p.to)
   );
-  const totalMemorize = Math.round(currentRecords.reduce((s, r) => s + (r.memorizePages ?? 0), 0) * 2) / 2;
-  const latestRecord = currentRecords.find(r => !r.isAbsent);
+  const totalMemorize = Math.round(visibleRecords.reduce((s, r) => s + (r.memorizePages ?? 0), 0) * 2) / 2;
+  const latestRecord = visibleRecords.find(r => !r.isAbsent);
   const TOTAL_QURAN_PAGES = 604;
   const progressPct = Math.min(100, Math.round((totalMemorize / TOTAL_QURAN_PAGES) * 1000) / 10);
 
@@ -421,40 +421,6 @@ export default function MyProgressPage() {
             </Card>
           )}
 
-          {/* Shortcomings (التقصير) */}
-          {user?.role === "student" && (
-            <Card className="border-0 shadow-sm">
-              <button className="w-full p-4 flex items-center justify-between text-right" onClick={() => setArchiveOpen(v => !v)}>
-                <span className="font-bold">السجل الكامل — الفصل السابق</span>
-                <span className="text-xs text-muted-foreground">{archiveOpen ? "إخفاء السجل" : `${archivedRecords.length} سجل`}</span>
-              </button>
-              {archiveOpen && <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/50 border-b border-border">
-                      <tr>
-                        <th className="text-right py-3 px-4 font-semibold text-muted-foreground">التاريخ</th>
-                        <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الحلقة</th>
-                        <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الحفظ</th>
-                        <th className="text-right py-3 px-4 font-semibold text-muted-foreground">المراجعة</th>
-                      </tr>
-                    </thead>
-                    <tbody>{archivedRecords.map(record => {
-                      const recCircle = (allCircles as any[]).find((c: any) => c.id === (record as any).circleId);
-                      return <tr key={record.id} className="border-b border-border/50 opacity-70">
-                        <td className="py-2.5 px-4 text-xs">{record.date}</td>
-                        <td className="py-2.5 px-4 text-xs text-muted-foreground">{recCircle?.name ?? "—"}</td>
-                        <td className="py-2.5 px-4 text-teal-600 font-semibold">{formatPages(record.memorizePages)}</td>
-                        <td className="py-2.5 px-4 text-blue-600 font-medium">{formatPages((record.reviewNearPages ?? 0) + (record.reviewFarPages ?? 0) + ((record as any).reviewPages ?? 0))}</td>
-                      </tr>;
-                    })}</tbody>
-                  </table>
-                </div>
-                <p className="px-4 py-3 text-xs text-muted-foreground">فترة سابقة مؤرشفة؛ لا تُحتسب في تقدمك الحالي ولا تعرض الغياب أو التقصير.</p>
-              </CardContent>}
-            </Card>
-          )}
-
           {/* Attendance trend */}
           {monthlyTrend.some(m => m.sessions > 0) && (
             <Card className="border-0 shadow-sm">
@@ -631,6 +597,39 @@ export default function MyProgressPage() {
               )}
             </CardContent>
           </Card>
+
+          {user?.role === "student" && (
+            <Card className="border-0 shadow-sm opacity-80">
+              <button className="w-full p-4 flex items-center justify-between text-right" onClick={() => setArchiveOpen(v => !v)}>
+                <span className="font-bold text-[#4A5590]">السجل الكامل — الفصل الأول</span>
+                <span className="text-xs text-muted-foreground">{archiveOpen ? "إخفاء السجل" : `${archivedRecords.length} سجل سابق`}</span>
+              </button>
+              {archiveOpen && <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[#F1F2F8] border-b border-[#C8CDE8]/50">
+                      <tr>
+                        <th className="text-right py-3 px-4 font-semibold text-[#5A6490]">التاريخ</th>
+                        <th className="text-right py-3 px-4 font-semibold text-[#5A6490]">الحلقة</th>
+                        <th className="text-right py-3 px-4 font-semibold text-[#5A6490]">الحفظ</th>
+                        <th className="text-right py-3 px-4 font-semibold text-[#5A6490]">المراجعة</th>
+                      </tr>
+                    </thead>
+                    <tbody>{archivedRecords.map(record => {
+                      const recCircle = (allCircles as any[]).find((c: any) => c.id === (record as any).circleId);
+                      return <tr key={record.id} className="border-b border-[#C8CDE8]/30 opacity-75">
+                        <td className="py-2.5 px-4 text-xs">{record.date}</td>
+                        <td className="py-2.5 px-4 text-xs text-muted-foreground">{recCircle?.name ?? "—"}</td>
+                        <td className="py-2.5 px-4 text-teal-600 font-semibold">{formatPages(record.memorizePages)}</td>
+                        <td className="py-2.5 px-4 text-blue-600 font-medium">{formatPages((record.reviewNearPages ?? 0) + (record.reviewFarPages ?? 0) + ((record as any).reviewPages ?? 0))}</td>
+                      </tr>;
+                    })}</tbody>
+                  </table>
+                </div>
+                <p className="px-4 py-3 text-xs text-muted-foreground">الفصل الأول مغلق؛ الغياب والتقصير لا يظهران هنا.</p>
+              </CardContent>}
+            </Card>
+          )}
 
         </div>
       )}
