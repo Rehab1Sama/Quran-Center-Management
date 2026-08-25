@@ -1366,7 +1366,7 @@ export default function DataEntryPage() {
   // Set of circle IDs fully done for the selected date
   const doneCircleIds = useMemo(() => {
     if (!missingData) return new Set<number>();
-    const all = (missingData as any[]);
+    const all = (missingData as unknown as any[]);
     const byCircle: Record<number, any[]> = {};
     for (const s of all) {
       const cid = Number(s.circleId);
@@ -1385,7 +1385,7 @@ export default function DataEntryPage() {
   // Circles progress for selected date
   const circlesProgress = useMemo(() => {
     if (!missingData) return { done: 0, total: 0 };
-    const all = (missingData as any[]);
+    const all = (missingData as unknown as any[]);
     const byCircle: Record<number, any[]> = {};
     for (const s of all) {
       const cid = Number(s.circleId);
