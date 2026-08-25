@@ -162,7 +162,7 @@ export default function LeaderCirclesPage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const isLeader = user?.role === "leader";
-  const isDeputy = user?.role === "deputy";
+  const isDeputy = (user?.role as string | undefined) === "deputy";
   const isTrackSup = user?.role === "track_supervisor";
   const canManage = isLeader || isDeputy || isTrackSup;
 
