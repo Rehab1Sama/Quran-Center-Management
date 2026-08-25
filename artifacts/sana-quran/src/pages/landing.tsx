@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Menu, X, ArrowLeft, BookOpen, CalendarCheck, BarChart3, Award, Users, Layers, MessageSquare, Heart, Sparkles, Star } from "lucide-react";
-const NAV_LINKS = [{ label: "الرئيسية", href: "#" }, { label: "عن المقرأة", href: "#about" }, { label: "برامجنا", href: "#programs" }, { label: "مميزاتنا", href: "#features" }];
+const NAV_LINKS = [{ label: "الرئيسية", href: "#" }, { label: "عن المقرأة", href: "#about" }, { label: "برامجنا", href: "#programs" }, { label: "مميزاتنا", href: "#features" }, { label: "التقويم", href: "/calendar-public" }];
 const STATS = [{ value: "+700", label: "طالبة" }, { value: "+300", label: "متطوعة" }, { value: "+10", label: "مسارات وبرامج" }, { value: "+50", label: "حلقة" }];
 const FEATURES = [
   { icon: BookOpen, title: "متابعة الحفظ", desc: "تتبّعي تقدمك في حفظ القرآن الكريم خطوةً بخطوة." }, { icon: CalendarCheck, title: "المراجعة والتثبيت", desc: "خطة واضحة للمراجعة اليومية والأسبوعية وتثبيت المحفوظ." }, { icon: Users, title: "صحبة قرآنية", desc: "كوني بين معلمات وطالبات يشاركنك شغف القرآن." }, { icon: Layers, title: "حلقات متنوعة", desc: "مسارات مرنة تناسب مستواك ووقتك وهدفك." }, { icon: Star, title: "عناية بالمعلمات", desc: "أدوات منظمة تعين المعلمات على رعاية طالباتهن." }, { icon: BarChart3, title: "إحصائيات وتقارير", desc: "رؤية واضحة لتقدمك وإنجازاتك في كل مرحلة." }, { icon: Award, title: "بيئة منظمة", desc: "منظومة واحدة تجمع الطالبة والمعلمة والمشرفة." }, { icon: MessageSquare, title: "تواصل مستمر", desc: "رسائل ومتابعة تبقيك قريبة من حلقتك وداعمتك." }
