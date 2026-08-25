@@ -1,6 +1,6 @@
 import { useGetStatsSummary, useGetCirclesStats, useGetCurrentUser, useGetRepeatedAbsences, useGetMonthlyComparison, useGetDailySnapshot, useListStudentsNearCompletion } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, Users, Calendar, Star, TrendingUp, TrendingDown, Minus, Award, CheckCircle2, AlertTriangle, Plane, ClipboardCheck, AlertCircle, GraduationCap, ShieldCheck, ChevronLeft, ChevronRight } from "lucide-react";
+import { BookOpen, Users, Calendar, Star, TrendingUp, TrendingDown, Minus, Award, CheckCircle2, AlertTriangle, Plane, ClipboardCheck, AlertCircle, GraduationCap, ShieldCheck, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { formatPages } from "@/lib/quran";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
