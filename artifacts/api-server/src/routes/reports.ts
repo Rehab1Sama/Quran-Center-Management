@@ -91,7 +91,6 @@ router.get("/reports/weekly", authenticate, async (req, res): Promise<void> => {
       avgReviewFarPages,
       avgReviewPages,
       avgTotalReviewPages,
-      uniqueStudents: new Set(records.map(r => r.studentId)).size,
     };
   };
 
