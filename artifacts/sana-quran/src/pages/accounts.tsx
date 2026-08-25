@@ -396,7 +396,12 @@ export default function AccountsPage() {
     );
   };
 
-  const allPersons = groupByEmail((users ?? []) as UserRow[]);
+  // حماية إضافية في الواجهة: مسؤولة المسار لا ترى الحسابات المؤرشفة
+  // حتى لو بقيت استجابة قديمة في cache قبل تحديثها من الخادم.
+  const visibleUsers = isTrackSupervisor
+    ? (users ?? []).filter((user: any) => !user.isArchived)
+    : (users ?? []);
+  const allPersons = groupByEmail(visibleUsers as UserRow[]);
   const persons = allPersons.filter(p => {
     if (searchTerm.trim() && !p.name.includes(searchTerm) && !p.email.toLowerCase().includes(searchTerm.toLowerCase())) return false;
     if (roleFilter && !p.accounts.some(a => a.role === roleFilter)) return false;
