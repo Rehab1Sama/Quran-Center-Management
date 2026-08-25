@@ -1187,8 +1187,8 @@ router.get("/review-plans/circle-day-quota", authenticate, async (req, res): Pro
     if (dayIdx < 0) continue;
     const dayNumber = dayIdx + 1;
     const planDay = allDays.find(d => d.planId === plan.id && d.dayNumber === dayNumber);
-    if (planDay && planDay.pages > 0) {
-      quotas[plan.studentId] = { pages: planDay.pages, dayNumber };
+    if (planDay && (planDay.pages ?? 0) > 0) {
+      quotas[plan.studentId] = { pages: planDay.pages ?? 0, dayNumber };
     }
   }
 
