@@ -582,6 +582,30 @@ router.get("/export/registrations", authenticate, requireRole("leader"), async (
   await sendWorkbook(res, wb, `بيانات_التسجيل_${new Date().toISOString().slice(0, 10)}`);
 });
 
+router.get("/export/withdrawal-cards", authenticate, requireRole("leader", "deputy", "track_supervisor"), async (req, res): Promise<void> => {
+  const rows = await db.select({
+    name: studentsTable.fullName, studentId: studentsTable.id, phone: studentsTable.phone,
+    circle: circlesTable.name, track: circlesTable.track, period: studentEnrollmentsTable.withdrawalPeriod,
+    reason: studentEnrollmentsTable.withdrawalReason, notes: studentEnrollmentsTable.withdrawalNotes,
+    archivedAt: studentEnrollmentsTable.archivedAt,
+  }).from(studentEnrollmentsTable)
+    .innerJoin(studentsTable, eq(studentEnrollmentsTable.studentId, studentsTable.id))
+    .innerJoin(circlesTable, eq(studentEnrollmentsTable.circleId, circlesTable.id))
+    .where(and(
+      eq(studentEnrollmentsTable.isArchived, true),
+      ...(req.userRole === "track_supervisor" ? [eq(circlesTable.track, req.userTrack)] : []),
+    ));
+  const wb = new ExcelJS.Workbook();
+  addSheet(wb, "بطاقات الانسحاب",
+    ["الاسم الرباعي", "الرقم", "حلقة الانسحاب", "المسار", "الحالة", "فترة الانسحاب", "سبب الانسحاب", "الملاحظات", "تاريخ الأرشفة"],
+    [28, 12, 24, 18, 14, 20, 32, 40, 18],
+    rows.map(r => ({ "الاسم الرباعي": r.name, "الرقم": r.studentId, "حلقة الانسحاب": r.circle, "المسار": r.track,
+      "الحالة": r.period === "تم حذفها" ? "محذوفة" : "منسحبة",
+      "فترة الانسحاب": r.period ?? "", "سبب الانسحاب": r.reason ?? "", "الملاحظات": r.notes ?? "", "تاريخ الأرشفة": formatDate(r.archivedAt) })),
+  );
+  await sendWorkbook(res, wb, `بطاقات_الانسحاب_${new Date().toISOString().slice(0, 10)}`);
+});
+
 // ─── Backup: list + download + generate now ───────────────────────────────────
 router.get("/export/backups", authenticate, requireRole("leader", "deputy"), async (_req, res): Promise<void> => {
   res.json(listBackups());
