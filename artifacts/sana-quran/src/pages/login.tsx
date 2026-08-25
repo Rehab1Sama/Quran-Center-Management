@@ -56,10 +56,11 @@ export default function LoginPage() {
             window.location.reload();
           }
         },
-        onError: () => {
+        onError: (error: any) => {
+          const message = error?.data?.error ?? error?.message;
           toast({
             title: "خطأ في تسجيل الدخول",
-            description: "البريد الإلكتروني أو كلمة المرور غير صحيحة",
+            description: message ?? "البريد الإلكتروني أو كلمة المرور غير صحيحة",
             variant: "destructive",
           });
         },
@@ -78,10 +79,11 @@ export default function LoginPage() {
             window.location.reload();
           }
         },
-        onError: () => {
+        onError: (error: any) => {
+          const message = error?.data?.error ?? error?.message;
           toast({
             title: "خطأ في تسجيل الدخول",
-            description: "حدث خطأ، يرجى المحاولة مرة أخرى",
+            description: message ?? "حدث خطأ، يرجى المحاولة مرة أخرى",
             variant: "destructive",
           });
         },

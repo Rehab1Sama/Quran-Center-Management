@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, messagesTable, recordsTable, usersTable, studentArchiveEventsTable, studentLeaveHistoryTable, studentEnrollmentsTable, dataEntryCircleAssignmentsTable } from "@workspace/db";
+import { db, studentsTable, circlesTable, studentTransfersTable, studentNotesTable, studentMemorizationsTable, messagesTable, recordsTable, usersTable, studentArchiveEventsTable, studentLeaveHistoryTable, studentEnrollmentsTable, dataEntryCircleAssignmentsTable } from "@workspace/db";
 import { eq, and, gte, desc, sql, ne, isNull, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateStudentBody, UpdateStudentBody } from "@workspace/api-zod";
@@ -14,6 +14,121 @@ function parseId(raw: string | string[]): number {
 const STAFF_ROLES = ["leader", "deputy", "track_supervisor", "teacher", "supervisor"];
 const sortArabicNames = <T extends { fullName: string }>(rows: T[]): T[] =>
   [...rows].sort((a, b) => a.fullName.localeCompare(b.fullName, "ar", { sensitivity: "base" }));
+
+// Cumulative wajhs at the end of each juz in Mushaf Madinah. Historical
+// memorization is entered as exact complete juzs when possible, so the server
+// owns the credit calculation instead of trusting a number sent by the client.
+const JUZ_CUMULATIVE = [
+  21, 41, 61, 81.5, 101, 120.5, 141, 161, 181, 200.5,
+  221, 241, 261, 281, 301, 321, 341, 361, 381, 401,
+  421, 441, 461, 481, 501.5, 521, 541, 561, 581, 603.5,
+];
+
+function normalizeDigits(value: string): string {
+  return value.replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)));
+}
+
+function normalizeJuzNumbers(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 30))]
+    .sort((a, b) => a - b);
+}
+
+function pagesForJuzNumbers(juzNumbers: number[]): number {
+  return Math.round(juzNumbers.reduce((total, juz) => {
+    const end = JUZ_CUMULATIVE[juz - 1];
+    const start = juz === 1 ? 0 : JUZ_CUMULATIVE[juz - 2];
+    return total + end - start;
+  }, 0) * 2) / 2;
+}
+
+function parseLegacyJuzNumbers(value: string): number[] {
+  const match = normalizeDigits(value).match(/أجزاء?\s*:\s*([0-9\s،,]+)/);
+  if (!match) return [];
+  return [...new Set((match[1].match(/\d+/g) ?? []).map(Number).filter(n => n >= 1 && n <= 30))]
+    .sort((a, b) => a - b);
+}
+
+function parseExtraData(raw: string | null): Record<string, unknown> {
+  try {
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function ensureLegacyMemorization(student: typeof studentsTable.$inferSelect): Promise<void> {
+  const extra = parseExtraData(student.extraData);
+  if (extra.__memorizationMigrated === true) return;
+
+  const legacyValue = typeof extra["المحفوظات"] === "string" ? extra["المحفوظات"].trim() : "";
+  if (!legacyValue) return;
+
+  const juzNumbers = parseLegacyJuzNumbers(legacyValue);
+  await db.insert(studentMemorizationsTable).values({
+    studentId: student.id,
+    label: legacyValue,
+    juzNumbers: juzNumbers.length ? JSON.stringify(juzNumbers) : null,
+    pages: juzNumbers.length ? pagesForJuzNumbers(juzNumbers) : 0,
+  }).onConflictDoNothing();
+
+  extra.__memorizationMigrated = true;
+  await db.update(studentsTable)
+    .set({ extraData: JSON.stringify(extra) })
+    .where(eq(studentsTable.id, student.id));
+}
+
+async function canAccessStudentMemorization(req: Express.Request, studentId: number): Promise<boolean> {
+  if (req.userRole !== "track_supervisor") return true;
+  if (!req.userTrack) return false;
+  const [allowed] = await db
+    .select({ id: studentEnrollmentsTable.id })
+    .from(studentEnrollmentsTable)
+    .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))
+    .where(and(
+      eq(studentEnrollmentsTable.studentId, studentId),
+      eq(studentEnrollmentsTable.isArchived, false),
+      eq(circlesTable.track, req.userTrack),
+    ))
+    .limit(1);
+  return !!allowed;
+}
+
+function serializeMemorization(row: typeof studentMemorizationsTable.$inferSelect) {
+  let juzNumbers: number[] = [];
+  try { juzNumbers = normalizeJuzNumbers(row.juzNumbers ? JSON.parse(row.juzNumbers) : []); } catch { /* legacy malformed value */ }
+  return {
+    id: row.id,
+    studentId: row.studentId,
+    label: row.label,
+    juzNumbers,
+    pages: row.pages,
+    createdById: row.createdById,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function getMemorizationCreditError(
+  rows: Array<typeof studentMemorizationsTable.$inferSelect>,
+  juzNumbers: number[],
+  pages: number,
+  exceptMemorizationId?: number,
+): string | null {
+  const otherRows = rows.filter(row => row.id !== exceptMemorizationId);
+  const usedJuzNumbers = new Set<number>();
+  for (const row of otherRows) {
+    try {
+      for (const juz of normalizeJuzNumbers(row.juzNumbers ? JSON.parse(row.juzNumbers) : [])) usedJuzNumbers.add(juz);
+    } catch { /* malformed historical value does not block corrections */ }
+  }
+  if (juzNumbers.some(juz => usedJuzNumbers.has(juz))) {
+    return "لا يمكن احتساب الجزء نفسه أكثر من مرة";
+  }
+  const total = otherRows.reduce((sum, row) => sum + (row.pages ?? 0), 0) + pages;
+  return total > 604 ? "إجمالي رصيد المحفوظات لا يمكن أن يتجاوز 604 صفحات" : null;
+}
 
 // ── List students ──────────────────────────────────────────────────────────────
 router.get("/students", authenticate, async (req, res): Promise<void> => {
@@ -1130,6 +1245,17 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
 
   const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
+  if (!(await canAccessStudentMemorization(req, id))) {
+    res.status(403).json({ error: "الطالبة خارج نطاق المسار" });
+    return;
+  }
+
+  await ensureLegacyMemorization(student);
+  const [currentStudent] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
+  if (!currentStudent) { res.status(404).json({ error: "Student not found" }); return; }
+  const studentMemorizations = await db.select().from(studentMemorizationsTable)
+    .where(eq(studentMemorizationsTable.studentId, id))
+    .orderBy(desc(studentMemorizationsTable.createdAt));
 
   const [circle] = student.circleId
     ? await db.select().from(circlesTable).where(eq(circlesTable.id, student.circleId))
@@ -1261,7 +1387,9 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
   });
 
   const presentRecords = allRecords.filter(r => !r.isAbsent);
-  const totalMemorizePages = presentRecords.reduce((s, r) => s + (r.memorizePages ?? 0), 0);
+  const recordedMemorizePages = presentRecords.reduce((s, r) => s + (r.memorizePages ?? 0), 0);
+  const memorizationCreditPages = studentMemorizations.reduce((sum, row) => sum + (row.pages ?? 0), 0);
+  const totalMemorizePages = Math.round((recordedMemorizePages + memorizationCreditPages) * 2) / 2;
   const totalReviewPages = presentRecords.reduce((s, r) => s + (r.reviewPages ?? 0) + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0), 0);
   const totalRecitationPages = presentRecords.reduce((s, r) => s + (r.recitationPages ?? 0), 0);
 
@@ -1343,18 +1471,18 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     }));
 
   res.json({
-    id: student.id,
-    fullName: student.fullName,
-    phone: student.phone,
-    country: student.country,
-    ageRange: student.ageRange,
-    educationLevel: student.educationLevel,
-    memorizeFrom: student.memorizeFrom,
-    isArchived: student.isArchived,
-    leaveStart: student.leaveStart,
-    leaveEnd: student.leaveEnd,
-    createdAt: student.createdAt.toISOString(),
-    extraData: student.extraData ?? null,
+    id: currentStudent.id,
+    fullName: currentStudent.fullName,
+    phone: currentStudent.phone,
+    country: currentStudent.country,
+    ageRange: currentStudent.ageRange,
+    educationLevel: currentStudent.educationLevel,
+    memorizeFrom: currentStudent.memorizeFrom,
+    isArchived: currentStudent.isArchived,
+    leaveStart: currentStudent.leaveStart,
+    leaveEnd: currentStudent.leaveEnd,
+    createdAt: currentStudent.createdAt.toISOString(),
+    extraData: currentStudent.extraData ?? null,
     circle: circle ? { id: circle.id, name: circle.name, track: circle.track, trackType: circle.trackType } : null,
     enrollments,
     recentAbsences,
@@ -1368,6 +1496,9 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     notes,
     messages,
     totalMemorizePages,
+    recordedMemorizePages,
+    memorizationCreditPages,
+    memorizations: studentMemorizations.map(serializeMemorization),
     totalReviewPages,
     totalRecitationPages,
     totalShortcomings,
@@ -1375,6 +1506,116 @@ router.get("/students/:id/profile", authenticate, async (req, res): Promise<void
     heatmapData,
     recentRecords,
   });
+});
+
+// ── Historical memorization ────────────────────────────────────────────────────
+// These rows are separate from daily entries and are never used to rewrite
+// attendance, data-entry records, or historical exam records.
+router.post("/students/:id/memorizations", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const studentId = parseId(req.params.id);
+  const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
+  if (!student) { res.status(404).json({ error: "Student not found" }); return; }
+  if (!(await canAccessStudentMemorization(req, studentId))) {
+    res.status(403).json({ error: "الطالبة خارج نطاق المسار" }); return;
+  }
+  await ensureLegacyMemorization(student);
+
+  const juzNumbers = normalizeJuzNumbers(req.body?.juzNumbers);
+  const labelFromBody = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, 180) : "";
+  const label = labelFromBody || (juzNumbers.length ? `أجزاء: ${juzNumbers.join("، ")}` : "");
+  const rawPages = Number(req.body?.pages);
+  const pages = juzNumbers.length ? pagesForJuzNumbers(juzNumbers) : Math.round(rawPages * 2) / 2;
+  if (!label || !Number.isFinite(pages) || pages < 0 || pages > 604) {
+    res.status(400).json({ error: "أدخلي وصف المحفوظة ورصيد صفحات صحيحًا" }); return;
+  }
+  const result = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${studentId})`);
+    const rows = await tx.select().from(studentMemorizationsTable)
+      .where(eq(studentMemorizationsTable.studentId, studentId));
+    const creditError = getMemorizationCreditError(rows, juzNumbers, pages);
+    if (creditError) return { creditError };
+    const [row] = await tx.insert(studentMemorizationsTable).values({
+      studentId,
+      label,
+      juzNumbers: juzNumbers.length ? JSON.stringify(juzNumbers) : null,
+      pages,
+      createdById: req.userId!,
+    }).returning();
+    return { row };
+  });
+  if ("creditError" in result) { res.status(400).json({ error: result.creditError }); return; }
+  res.status(201).json(serializeMemorization(result.row));
+});
+
+router.patch("/students/:id/memorizations/:memorizationId", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const studentId = parseId(req.params.id);
+  const memorizationId = parseId(req.params.memorizationId);
+  const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
+  if (!student) { res.status(404).json({ error: "Student not found" }); return; }
+  if (!(await canAccessStudentMemorization(req, studentId))) {
+    res.status(403).json({ error: "الطالبة خارج نطاق المسار" }); return;
+  }
+  await ensureLegacyMemorization(student);
+
+  const juzNumbers = normalizeJuzNumbers(req.body?.juzNumbers);
+  const labelFromBody = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, 180) : "";
+  const rawPages = Number(req.body?.pages);
+  const pages = juzNumbers.length ? pagesForJuzNumbers(juzNumbers) : Math.round(rawPages * 2) / 2;
+  if (!Number.isFinite(pages) || pages < 0 || pages > 604) {
+    res.status(400).json({ error: "أدخلي وصف المحفوظة ورصيد صفحات صحيحًا" }); return;
+  }
+  const result = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${studentId})`);
+    const [existing] = await tx.select().from(studentMemorizationsTable).where(and(
+      eq(studentMemorizationsTable.id, memorizationId),
+      eq(studentMemorizationsTable.studentId, studentId),
+    ));
+    if (!existing) return { notFound: true };
+    const label = labelFromBody || (juzNumbers.length ? `أجزاء: ${juzNumbers.join("، ")}` : existing.label);
+    if (!label) return { invalid: true };
+    const rows = await tx.select().from(studentMemorizationsTable)
+      .where(eq(studentMemorizationsTable.studentId, studentId));
+    const creditError = getMemorizationCreditError(rows, juzNumbers, pages, memorizationId);
+    if (creditError) return { creditError };
+    const [row] = await tx.update(studentMemorizationsTable).set({
+      label,
+      juzNumbers: juzNumbers.length ? JSON.stringify(juzNumbers) : null,
+      pages,
+    }).where(and(
+      eq(studentMemorizationsTable.id, memorizationId),
+      eq(studentMemorizationsTable.studentId, studentId),
+    )).returning();
+    return { row };
+  });
+  if ("notFound" in result) { res.status(404).json({ error: "المحفوظة غير موجودة" }); return; }
+  if ("invalid" in result) { res.status(400).json({ error: "أدخلي وصف المحفوظة ورصيد صفحات صحيحًا" }); return; }
+  if ("creditError" in result) { res.status(400).json({ error: result.creditError }); return; }
+  res.json(serializeMemorization(result.row));
+});
+
+router.delete("/students/:id/memorizations/:memorizationId", authenticate, async (req, res): Promise<void> => {
+  if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const studentId = parseId(req.params.id);
+  const memorizationId = parseId(req.params.memorizationId);
+  const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
+  if (!student) { res.status(404).json({ error: "Student not found" }); return; }
+  if (!(await canAccessStudentMemorization(req, studentId))) {
+    res.status(403).json({ error: "الطالبة خارج نطاق المسار" }); return;
+  }
+  const [row] = await db.delete(studentMemorizationsTable).where(and(
+    eq(studentMemorizationsTable.id, memorizationId),
+    eq(studentMemorizationsTable.studentId, studentId),
+  )).returning();
+  if (!row) { res.status(404).json({ error: "المحفوظة غير موجودة" }); return; }
+  res.status(204).send();
 });
 
 export default router;

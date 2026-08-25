@@ -112,6 +112,7 @@ import type {
   StoreProduct,
   Student,
   StudentGoal,
+  StudentMemorization,
   StudentNearCompletion,
   StudentNote,
   StudentProfile,
@@ -129,6 +130,7 @@ import type {
   UpdateStudentGoalBody,
   UpdateTrackBody,
   UpdateUserBody,
+  UpsertStudentMemorizationBody,
   User
 } from './api.schemas';
 
@@ -5246,6 +5248,222 @@ export function useGetStudentProfile<TData = Awaited<ReturnType<typeof getStuden
 
 
 
+
+export const getCreateStudentMemorizationUrl = (id: number,) => {
+
+
+
+
+  return `/api/students/${id}/memorizations`
+}
+
+/**
+ * @summary Add historical memorization for a student
+ */
+export const createStudentMemorization = async (id: number,
+    upsertStudentMemorizationBody: UpsertStudentMemorizationBody, options?: RequestInit): Promise<StudentMemorization> => {
+
+  return customFetch<StudentMemorization>(getCreateStudentMemorizationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(upsertStudentMemorizationBody)
+  }
+);}
+
+
+
+
+export const getCreateStudentMemorizationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStudentMemorization>>, TError,{id: number;data: BodyType<UpsertStudentMemorizationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createStudentMemorization>>, TError,{id: number;data: BodyType<UpsertStudentMemorizationBody>}, TContext> => {
+
+const mutationKey = ['createStudentMemorization'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createStudentMemorization>>, {id: number;data: BodyType<UpsertStudentMemorizationBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createStudentMemorization(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateStudentMemorizationMutationResult = NonNullable<Awaited<ReturnType<typeof createStudentMemorization>>>
+    export type CreateStudentMemorizationMutationBody = BodyType<UpsertStudentMemorizationBody>
+    export type CreateStudentMemorizationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add historical memorization for a student
+ */
+export const useCreateStudentMemorization = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStudentMemorization>>, TError,{id: number;data: BodyType<UpsertStudentMemorizationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createStudentMemorization>>,
+        TError,
+        {id: number;data: BodyType<UpsertStudentMemorizationBody>},
+        TContext
+      > => {
+      return useMutation(getCreateStudentMemorizationMutationOptions(options));
+    }
+
+export const getUpdateStudentMemorizationUrl = (id: number,
+    memorizationId: number,) => {
+
+
+
+
+  return `/api/students/${id}/memorizations/${memorizationId}`
+}
+
+/**
+ * @summary Update historical memorization for a student
+ */
+export const updateStudentMemorization = async (id: number,
+    memorizationId: number,
+    upsertStudentMemorizationBody: UpsertStudentMemorizationBody, options?: RequestInit): Promise<StudentMemorization> => {
+
+  return customFetch<StudentMemorization>(getUpdateStudentMemorizationUrl(id,memorizationId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(upsertStudentMemorizationBody)
+  }
+);}
+
+
+
+
+export const getUpdateStudentMemorizationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStudentMemorization>>, TError,{id: number;memorizationId: number;data: BodyType<UpsertStudentMemorizationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateStudentMemorization>>, TError,{id: number;memorizationId: number;data: BodyType<UpsertStudentMemorizationBody>}, TContext> => {
+
+const mutationKey = ['updateStudentMemorization'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateStudentMemorization>>, {id: number;memorizationId: number;data: BodyType<UpsertStudentMemorizationBody>}> = (props) => {
+          const {id,memorizationId,data} = props ?? {};
+
+          return  updateStudentMemorization(id,memorizationId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateStudentMemorizationMutationResult = NonNullable<Awaited<ReturnType<typeof updateStudentMemorization>>>
+    export type UpdateStudentMemorizationMutationBody = BodyType<UpsertStudentMemorizationBody>
+    export type UpdateStudentMemorizationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update historical memorization for a student
+ */
+export const useUpdateStudentMemorization = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStudentMemorization>>, TError,{id: number;memorizationId: number;data: BodyType<UpsertStudentMemorizationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateStudentMemorization>>,
+        TError,
+        {id: number;memorizationId: number;data: BodyType<UpsertStudentMemorizationBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateStudentMemorizationMutationOptions(options));
+    }
+
+export const getDeleteStudentMemorizationUrl = (id: number,
+    memorizationId: number,) => {
+
+
+
+
+  return `/api/students/${id}/memorizations/${memorizationId}`
+}
+
+/**
+ * @summary Delete historical memorization for a student
+ */
+export const deleteStudentMemorization = async (id: number,
+    memorizationId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteStudentMemorizationUrl(id,memorizationId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteStudentMemorizationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteStudentMemorization>>, TError,{id: number;memorizationId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteStudentMemorization>>, TError,{id: number;memorizationId: number}, TContext> => {
+
+const mutationKey = ['deleteStudentMemorization'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteStudentMemorization>>, {id: number;memorizationId: number}> = (props) => {
+          const {id,memorizationId} = props ?? {};
+
+          return  deleteStudentMemorization(id,memorizationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteStudentMemorizationMutationResult = NonNullable<Awaited<ReturnType<typeof deleteStudentMemorization>>>
+
+    export type DeleteStudentMemorizationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete historical memorization for a student
+ */
+export const useDeleteStudentMemorization = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteStudentMemorization>>, TError,{id: number;memorizationId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteStudentMemorization>>,
+        TError,
+        {id: number;memorizationId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteStudentMemorizationMutationOptions(options));
+    }
 
 export const getListRecordsUrl = (params?: ListRecordsParams,) => {
   const normalizedParams = new URLSearchParams();

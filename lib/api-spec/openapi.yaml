@@ -1423,6 +1423,67 @@ paths:
               schema:
                 $ref: "#/components/schemas/StudentProfile"
 
+  /students/{id}/memorizations:
+    post:
+      operationId: createStudentMemorization
+      tags: [students]
+      summary: Add historical memorization for a student
+      parameters:
+        - $ref: "#/components/parameters/StudentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertStudentMemorizationBody"
+      responses:
+        "201":
+          description: Historical memorization created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentMemorization"
+
+  /students/{id}/memorizations/{memorizationId}:
+    patch:
+      operationId: updateStudentMemorization
+      tags: [students]
+      summary: Update historical memorization for a student
+      parameters:
+        - $ref: "#/components/parameters/StudentId"
+        - name: memorizationId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertStudentMemorizationBody"
+      responses:
+        "200":
+          description: Historical memorization updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentMemorization"
+    delete:
+      operationId: deleteStudentMemorization
+      tags: [students]
+      summary: Delete historical memorization for a student
+      parameters:
+        - $ref: "#/components/parameters/StudentId"
+        - name: memorizationId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Historical memorization deleted
+
   /records:
     get:
       operationId: listRecords
@@ -2333,6 +2394,12 @@ components:
   parameters:
     CertificateTermId:
       name: termId
+      in: path
+      required: true
+      schema:
+        type: integer
+    StudentId:
+      name: id
       in: path
       required: true
       schema:
@@ -3313,11 +3380,19 @@ components:
             $ref: "#/components/schemas/SessionRecord"
         totalMemorizePages:
           type: number
+        recordedMemorizePages:
+          type: number
+        memorizationCreditPages:
+          type: number
+        memorizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentMemorization"
         totalReviewPages:
           type: number
         totalRecitationPages:
           type: number
-      required: [id, fullName, isArchived, createdAt, attendanceSummary, recentAbsences, monthlyTrend, transfers, notes, messages, recentRecords, totalMemorizePages, totalReviewPages, totalRecitationPages]
+      required: [id, fullName, isArchived, createdAt, attendanceSummary, recentAbsences, monthlyTrend, transfers, notes, messages, recentRecords, totalMemorizePages, recordedMemorizePages, memorizationCreditPages, memorizations, totalReviewPages, totalRecitationPages]
 
     SessionRecord:
       type: object
@@ -3788,6 +3863,46 @@ components:
         updatedAt:
           type: ["string", "null"]
       required: [id, studentId, title, createdById, isCompleted, createdAt]
+
+    StudentMemorization:
+      type: object
+      properties:
+        id:
+          type: integer
+        studentId:
+          type: integer
+        label:
+          type: string
+        juzNumbers:
+          type: array
+          items:
+            type: integer
+        pages:
+          type: number
+        createdById:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, studentId, label, juzNumbers, pages, createdAt, updatedAt]
+
+    UpsertStudentMemorizationBody:
+      type: object
+      properties:
+        label:
+          type: string
+        juzNumbers:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 30
+        pages:
+          type: number
+          minimum: 0
+          maximum: 604
+      required: [pages]
 
     CreateStudentGoalBody:
       type: object

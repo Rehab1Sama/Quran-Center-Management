@@ -14,8 +14,13 @@ import {
   useDeleteStudentGoal,
   useListCircleNames,
   useEnrollStudent,
+  useCreateStudentMemorization,
+  useUpdateStudentMemorization,
+  useDeleteStudentMemorization,
   type CreateStudentGoalBody,
+  type StudentMemorization,
   type UpdateStudentGoalBody,
+  type UpsertStudentMemorizationBody,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +31,7 @@ import {
   Phone, Globe, GraduationCap, StickyNote, Archive, RotateCcw,
   Plane, MessageSquare, Trash2, Plus, Printer, TrendingUp, ListChecks, AlertTriangle,
   Target, CheckCircle2, Circle, PlaneTakeoff, XCircle, PlusCircle, Layers,
-  Mail, MessageCircle,
+  Mail, MessageCircle, Pencil, Save, X,
 } from "lucide-react";
 import ReviewPlanSection from "@/components/ReviewPlanSection";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -167,6 +172,9 @@ export default function StudentProfilePage({ id }: { id: number }) {
   const createGoal = useCreateStudentGoal();
   const updateGoal = useUpdateStudentGoal();
   const deleteGoal = useDeleteStudentGoal();
+  const createMemorization = useCreateStudentMemorization();
+  const updateMemorization = useUpdateStudentMemorization();
+  const deleteMemorization = useDeleteStudentMemorization();
 
   const { data: allCircleNames } = useListCircleNames({ query: { queryKey: ["circleNames"] } });
 
@@ -179,6 +187,11 @@ export default function StudentProfilePage({ id }: { id: number }) {
   const [withdrawalPeriod, setWithdrawalPeriod] = useState("");
   const [withdrawalReason, setWithdrawalReason] = useState("");
   const [withdrawalNotes, setWithdrawalNotes] = useState("");
+  const [memorizationEditorOpen, setMemorizationEditorOpen] = useState(false);
+  const [editingMemorizationId, setEditingMemorizationId] = useState<number | null>(null);
+  const [memorizationLabel, setMemorizationLabel] = useState("");
+  const [memorizationPages, setMemorizationPages] = useState("");
+  const [memorizationJuzNumbers, setMemorizationJuzNumbers] = useState<number[]>([]);
 
   useEffect(() => {
     if (!profile || archiveRequest) return;
@@ -240,6 +253,74 @@ export default function StudentProfilePage({ id }: { id: number }) {
       onSuccess: () => { toast({ title: "تم حذف الهدف" }); invalidateGoals(); },
     });
   };
+
+  const closeMemorizationEditor = () => {
+    setMemorizationEditorOpen(false);
+    setEditingMemorizationId(null);
+    setMemorizationLabel("");
+    setMemorizationPages("");
+    setMemorizationJuzNumbers([]);
+  };
+
+  const openNewMemorization = () => {
+    closeMemorizationEditor();
+    setMemorizationEditorOpen(true);
+  };
+
+  const openEditMemorization = (memorization: StudentMemorization) => {
+    setEditingMemorizationId(memorization.id);
+    setMemorizationLabel(memorization.label);
+    setMemorizationPages(String(memorization.pages));
+    setMemorizationJuzNumbers(memorization.juzNumbers ?? []);
+    setMemorizationEditorOpen(true);
+  };
+
+  const toggleMemorizationJuz = (juz: number) => {
+    setMemorizationJuzNumbers(current =>
+      current.includes(juz) ? current.filter(item => item !== juz) : [...current, juz].sort((a, b) => a - b),
+    );
+  };
+
+  const handleSaveMemorization = async () => {
+    const pages = Number(memorizationPages);
+    if (!memorizationLabel.trim() && memorizationJuzNumbers.length === 0) {
+      toast({ title: "أدخلي وصف المحفوظة أو اختاري أجزاءً", variant: "destructive" });
+      return;
+    }
+    if (memorizationJuzNumbers.length === 0 && (!Number.isFinite(pages) || pages < 0 || pages > 604)) {
+      toast({ title: "أدخلي رصيد صفحات بين 0 و604", variant: "destructive" });
+      return;
+    }
+    const data: UpsertStudentMemorizationBody = {
+      label: memorizationLabel.trim() || undefined,
+      juzNumbers: memorizationJuzNumbers.length ? memorizationJuzNumbers : undefined,
+      pages: memorizationJuzNumbers.length ? 0 : Math.round(pages * 2) / 2,
+    };
+    try {
+      if (editingMemorizationId !== null) {
+        await updateMemorization.mutateAsync({ id, memorizationId: editingMemorizationId, data });
+        toast({ title: "تم تحديث المحفوظة" });
+      } else {
+        await createMemorization.mutateAsync({ id, data });
+        toast({ title: "تمت إضافة المحفوظة" });
+      }
+      closeMemorizationEditor();
+      invalidate();
+    } catch (error: any) {
+      toast({ title: "تعذر حفظ المحفوظة", description: error?.message ?? "تحققي من البيانات", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteMemorization = async (memorizationId: number) => {
+    if (!confirm("هل تريدين حذف هذه المحفوظة؟ لن تتأثر سجلات الإدخال أو الاختبارات.")) return;
+    try {
+      await deleteMemorization.mutateAsync({ id, memorizationId });
+      toast({ title: "تم حذف المحفوظة" });
+      invalidate();
+    } catch (error: any) {
+      toast({ title: "تعذر حذف المحفوظة", description: error?.message ?? "حاولي مرة أخرى", variant: "destructive" });
+    }
+  };
   const handleToggleGoal = (goalId: number, current: boolean) => {
     updateGoal.mutate({ id, goalId, data: { isCompleted: !current } }, {
       onSuccess: () => invalidateGoals(),
@@ -255,6 +336,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
       profile.country ? `<p>الدولة: ${profile.country}</p>` : "",
       profile.educationLevel ? `<p>المستوى التعليمي: ${profile.educationLevel}</p>` : "",
       profile.memorizeFrom ? `<p>تحفظ من: ${profile.memorizeFrom}</p>` : "",
+      `<p>إجمالي الحفظ المعتمد: ${profile.totalMemorizePages} صفحة</p>`,
       `<p>تاريخ الانضمام: ${formatDate(profile.createdAt)}</p>`,
       `<hr/>`,
       `<h3>ملخص الحضور</h3>`,
@@ -605,7 +687,10 @@ export default function StudentProfilePage({ id }: { id: number }) {
 
         // Quran memorization keys
         const QURAN_KEYS = ["المحفوظات", "المسموع", "ما حفظتِ", "المحفوظ", "الأجزاء المحفوظة", "السور المحفوظة"];
-        const quranFields = Object.entries(extra).filter(([k]) => QURAN_KEYS.includes(k) || k.includes("حفظ") || k.includes("سورة") || k.includes("جزء") || k.includes("مسموع"));
+        const quranFields = Object.entries(extra).filter(([k]) =>
+          (k !== "المحفوظات" || ((profile as any).memorizations ?? []).length === 0) &&
+          (QURAN_KEYS.includes(k) || k.includes("حفظ") || k.includes("سورة") || k.includes("جزء") || k.includes("مسموع"))
+        );
         const otherFields = Object.entries(extra).filter(([k]) => !k.startsWith("__") && !quranFields.find(([qk]) => qk === k));
 
         // WhatsApp link from phone
@@ -700,6 +785,123 @@ export default function StudentProfilePage({ id }: { id: number }) {
                     <div key={key} className="bg-muted/40 rounded-lg px-3 py-2 flex gap-2 flex-wrap">
                       <span className="text-[11px] text-muted-foreground font-medium">{key}:</span>
                       <span className="text-[11px] text-foreground break-all">{String(val)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* Historical memorization */}
+      {(() => {
+        const memorizations: StudentMemorization[] = (profile.memorizations ?? []);
+        const isSavingMemorization = createMemorization.isPending || updateMemorization.isPending;
+        return (
+          <Card className="border-emerald-200 shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-emerald-600" />
+                  المحفوظات المعتمدة
+                </CardTitle>
+                {canEdit && !profile.isArchived && (
+                  <Button size="sm" className="h-7 px-2 gap-1 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={openNewMemorization}>
+                    <Plus className="w-3.5 h-3.5" /> إضافة محفوظة
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                تُضاف هذه المحفوظات إلى نصاب الاختبار دون تغيير سجل الإدخال اليومي.
+              </p>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-2.5">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
+                  <p className="text-[11px] text-emerald-700">رصيد المحفوظات</p>
+                  <p className="text-base font-bold text-emerald-800">{profile.memorizationCreditPages} صفحة</p>
+                </div>
+                <div className="rounded-lg bg-teal-50 border border-teal-100 px-3 py-2">
+                  <p className="text-[11px] text-teal-700">إجمالي الحفظ المعتمد</p>
+                  <p className="text-base font-bold text-teal-800">{profile.totalMemorizePages} صفحة</p>
+                </div>
+              </div>
+
+              {memorizationEditorOpen && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold text-emerald-900">{editingMemorizationId === null ? "إضافة محفوظة" : "تعديل محفوظة"}</p>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeMemorizationEditor} disabled={isSavingMemorization}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">الوصف</p>
+                    <Input value={memorizationLabel} onChange={event => setMemorizationLabel(event.target.value)}
+                      placeholder="مثال: حفظ سابق من سورة الملك إلى الناس" className="h-9 text-sm" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1.5">الأجزاء الكاملة (اختياري)</p>
+                    <div className="flex flex-wrap gap-1">
+                      {Array.from({ length: 30 }, (_, index) => index + 1).map(juz => (
+                        <button key={juz} type="button" onClick={() => toggleMemorizationJuz(juz)}
+                          className={`w-8 h-7 rounded-md text-[11px] font-semibold border transition-colors ${
+                            memorizationJuzNumbers.includes(juz)
+                              ? "bg-emerald-600 border-emerald-600 text-white"
+                              : "bg-white border-emerald-200 text-emerald-800 hover:border-emerald-500"
+                          }`}>
+                          {juz}
+                        </button>
+                      ))}
+                    </div>
+                    {memorizationJuzNumbers.length > 0 && (
+                      <p className="text-[11px] text-emerald-700 mt-1.5">يُحسب الرصيد تلقائيًا من الأجزاء المختارة.</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">رصيد الصفحات {memorizationJuzNumbers.length > 0 ? "(يُحسب تلقائيًا)" : ""}</p>
+                    <Input type="number" min="0" max="604" step="0.5" value={memorizationPages}
+                      disabled={memorizationJuzNumbers.length > 0}
+                      onChange={event => setMemorizationPages(event.target.value)}
+                      placeholder="مثال: 20" className="h-9 text-sm" />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="outline" onClick={closeMemorizationEditor} disabled={isSavingMemorization}>إلغاء</Button>
+                    <Button size="sm" className="gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={handleSaveMemorization} disabled={isSavingMemorization}>
+                      <Save className="w-3.5 h-3.5" />{isSavingMemorization ? "جاري الحفظ..." : "حفظ"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {memorizations.length === 0 ? (
+                <p className="text-sm text-center text-muted-foreground rounded-lg border border-dashed py-4">
+                  لا توجد محفوظات معتمدة بعد.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {memorizations.map(memorization => (
+                    <div key={memorization.id} className="rounded-lg border bg-white px-3 py-2.5 flex items-start gap-2">
+                      <BookOpen className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold">{memorization.label}</p>
+                        <div className="flex flex-wrap gap-x-2 gap-y-1 mt-1 text-[11px] text-muted-foreground">
+                          <span>{memorization.pages} صفحة معتمدة</span>
+                          {memorization.juzNumbers.length > 0 && <span>الأجزاء: {memorization.juzNumbers.join("، ")}</span>}
+                        </div>
+                      </div>
+                      {canEdit && !profile.isArchived && (
+                        <div className="flex shrink-0">
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditMemorization(memorization)} title="تعديل المحفوظة">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:text-rose-700" onClick={() => handleDeleteMemorization(memorization.id)} title="حذف المحفوظة"
+                            disabled={deleteMemorization.isPending}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

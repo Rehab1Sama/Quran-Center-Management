@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, recordsTable, studentsTable, studentEnrollmentsTable, circlesTable, usersTable, teacherAbsencesTable, tracksTable, dailyCircleTasksTable, examRecordsTable } from "@workspace/db";
+import { db, recordsTable, studentsTable, studentEnrollmentsTable, studentMemorizationsTable, circlesTable, usersTable, teacherAbsencesTable, tracksTable, dailyCircleTasksTable, examRecordsTable } from "@workspace/db";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { getMakkahDay, getMakkahDaysAgo, getMakkahWeekStart, getMakkahLastWeekStart, getMakkahLastWeekEnd } from "../lib/date";
@@ -71,6 +71,10 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
         [...(circleIds ?? [])].some(circleId => !registrationCircleIds.has(circleId));
     });
   const allUsers = (await db.select().from(usersTable)).filter(u => u.isArchived !== true);
+  const allMemorizations = await db.select({
+    studentId: studentMemorizationsTable.studentId,
+    pages: studentMemorizationsTable.pages,
+  }).from(studentMemorizationsTable);
 
   let records = allRecords;
   let students = allStudents;
@@ -146,7 +150,11 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
   const totalMothers = students.filter(isMother).length;
   const totalGirls = students.filter(s => !isChild(s) && !isMother(s)).length;
 
-  const totalMemorizePages = Math.round(sum(records.map(r => r.memorizePages ?? 0)) * 2) / 2;
+  const selectedStudentIds = new Set(students.map(student => student.id));
+  const historicalMemorizePages = allMemorizations
+    .filter(memorization => selectedStudentIds.has(memorization.studentId))
+    .reduce((total, memorization) => total + (memorization.pages ?? 0), 0);
+  const totalMemorizePages = Math.round((sum(records.map(r => r.memorizePages ?? 0)) + historicalMemorizePages) * 2) / 2;
   const totalReviewNearPages = Math.round(sum(records.map(r => r.reviewNearPages ?? 0)) * 2) / 2;
   const totalReviewFarPages = Math.round(sum(records.map(r => (r.reviewFarPages ?? 0) + (r.reviewFar2Pages ?? 0))) * 2) / 2;
   const totalReviewPages = Math.round(sum(records.map(r => r.reviewPages ?? 0)) * 2) / 2;

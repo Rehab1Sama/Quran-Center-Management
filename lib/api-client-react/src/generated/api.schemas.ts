@@ -798,6 +798,18 @@ export interface SessionRecord {
   recitationSurahEnd?: string | null;
 }
 
+export interface StudentMemorization {
+  id: number;
+  studentId: number;
+  label: string;
+  juzNumbers: number[];
+  pages: number;
+  /** @nullable */
+  createdById?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StudentProfile {
   id: number;
   fullName: string;
@@ -828,6 +840,9 @@ export interface StudentProfile {
   messages: Message[];
   recentRecords: SessionRecord[];
   totalMemorizePages: number;
+  recordedMemorizePages: number;
+  memorizationCreditPages: number;
+  memorizations: StudentMemorization[];
   totalReviewPages: number;
   totalRecitationPages: number;
 }
@@ -1013,6 +1028,20 @@ export interface StudentGoal {
   createdAt: string;
   /** @nullable */
   updatedAt?: string | null;
+}
+
+export interface UpsertStudentMemorizationBody {
+  label?: string;
+  /**
+     * @items.minimum 1
+     * @items.maximum 30
+     */
+  juzNumbers?: number[];
+  /**
+     * @minimum 0
+     * @maximum 604
+     */
+  pages: number;
 }
 
 export interface CreateStudentGoalBody {

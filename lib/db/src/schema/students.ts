@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, boolean, pgEnum, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, real, pgEnum, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -45,6 +45,22 @@ export const studentNotesTable = pgTable("student_notes", {
   content: text("content").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Historical memorization is deliberately independent from daily records.
+// A row represents memorization the student joined with or that staff verified
+// later; its credit is included in the student's overall progress and exam quota.
+export const studentMemorizationsTable = pgTable("student_memorizations", {
+  id: serial("id").primaryKey(),
+  studentId: integer("student_id").notNull(),
+  label: text("label").notNull(),
+  juzNumbers: text("juz_numbers"),
+  pages: real("pages").notNull().default(0),
+  createdById: integer("created_by_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export type StudentMemorization = typeof studentMemorizationsTable.$inferSelect;
 
 export const studentArchiveEventsTable = pgTable("student_archive_events", {
   id: serial("id").primaryKey(),

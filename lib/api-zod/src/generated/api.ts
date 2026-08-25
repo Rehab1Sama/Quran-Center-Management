@@ -1308,8 +1308,83 @@ export const GetStudentProfileResponse = zod.object({
   "recitationSurahEnd": zod.string().nullish()
 })),
   "totalMemorizePages": zod.number(),
+  "recordedMemorizePages": zod.number(),
+  "memorizationCreditPages": zod.number(),
+  "memorizations": zod.array(zod.object({
+  "id": zod.number(),
+  "studentId": zod.number(),
+  "label": zod.string(),
+  "juzNumbers": zod.array(zod.number()),
+  "pages": zod.number(),
+  "createdById": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})),
   "totalReviewPages": zod.number(),
   "totalRecitationPages": zod.number()
+})
+
+
+/**
+ * @summary Add historical memorization for a student
+ */
+export const CreateStudentMemorizationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const createStudentMemorizationBodyJuzNumbersItemMax = 30;
+
+export const createStudentMemorizationBodyPagesMin = 0;
+export const createStudentMemorizationBodyPagesMax = 604;
+
+
+
+export const CreateStudentMemorizationBody = zod.object({
+  "label": zod.string().optional(),
+  "juzNumbers": zod.array(zod.number().min(1).max(createStudentMemorizationBodyJuzNumbersItemMax)).optional(),
+  "pages": zod.number().min(createStudentMemorizationBodyPagesMin).max(createStudentMemorizationBodyPagesMax)
+})
+
+
+/**
+ * @summary Update historical memorization for a student
+ */
+export const UpdateStudentMemorizationParams = zod.object({
+  "id": zod.coerce.number(),
+  "memorizationId": zod.coerce.number()
+})
+
+export const updateStudentMemorizationBodyJuzNumbersItemMax = 30;
+
+export const updateStudentMemorizationBodyPagesMin = 0;
+export const updateStudentMemorizationBodyPagesMax = 604;
+
+
+
+export const UpdateStudentMemorizationBody = zod.object({
+  "label": zod.string().optional(),
+  "juzNumbers": zod.array(zod.number().min(1).max(updateStudentMemorizationBodyJuzNumbersItemMax)).optional(),
+  "pages": zod.number().min(updateStudentMemorizationBodyPagesMin).max(updateStudentMemorizationBodyPagesMax)
+})
+
+export const UpdateStudentMemorizationResponse = zod.object({
+  "id": zod.number(),
+  "studentId": zod.number(),
+  "label": zod.string(),
+  "juzNumbers": zod.array(zod.number()),
+  "pages": zod.number(),
+  "createdById": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete historical memorization for a student
+ */
+export const DeleteStudentMemorizationParams = zod.object({
+  "id": zod.coerce.number(),
+  "memorizationId": zod.coerce.number()
 })
 
 
