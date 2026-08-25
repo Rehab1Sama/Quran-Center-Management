@@ -755,7 +755,7 @@ function TeacherStats({ summary, circleStats }: { summary: any; circleStats: any
 
 function StudentStats({ userId }: { userId: number }) {
   const { data: records } = useListRecords(
-    { studentId: userId },
+    undefined,
     { query: { queryKey: ["myRecords", userId] } }
   );
 
@@ -887,10 +887,10 @@ export default function StatisticsPage() {
     dateTo: hasCustomRange ? customTo : today,
   };
 
-  const { data: summary } = useGetStatsSummary(dateParams, {
+  const { data: summary, isError: summaryError } = useGetStatsSummary(dateParams, {
     query: { queryKey: ["statsSummary", dateParams] }
   });
-  const { data: circleStats } = useGetCirclesStats(dateParams, {
+  const { data: circleStats, isError: circleStatsError } = useGetCirclesStats(dateParams, {
     query: { queryKey: ["circlesStats", dateParams] }
   });
 
@@ -940,7 +940,11 @@ export default function StatisticsPage() {
               <TeacherStats summary={summary} circleStats={circleStats ?? []} />
             )
           ) : (
-            <div className="text-center py-10 text-muted-foreground text-sm">جاري التحميل...</div>
+            <div className="text-center py-10 text-muted-foreground text-sm">
+              {summaryError || circleStatsError
+                ? "تعذر تحميل الإحصائيات. حدّثي الصفحة أو سجّلي الدخول من جديد."
+                : "جاري التحميل..."}
+            </div>
           )}
         </>
       )}
