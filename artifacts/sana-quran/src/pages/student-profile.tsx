@@ -175,6 +175,10 @@ export default function StudentProfilePage({ id }: { id: number }) {
   const [perCircleLeaveOpen, setPerCircleLeaveOpen] = useState<number | null>(null);
   const [perCircleLeaveStart, setPerCircleLeaveStart] = useState("");
   const [perCircleLeaveEnd, setPerCircleLeaveEnd] = useState("");
+  const [archiveRequest, setArchiveRequest] = useState<{ circleId: number; circleName: string } | null>(null);
+  const [withdrawalPeriod, setWithdrawalPeriod] = useState("");
+  const [withdrawalReason, setWithdrawalReason] = useState("");
+  const [withdrawalNotes, setWithdrawalNotes] = useState("");
 
   const canEdit = ["leader", "deputy", "track_supervisor"].includes(user?.role ?? "");
   const canNote = ["leader", "deputy", "track_supervisor", "teacher", "supervisor"].includes(user?.role ?? "");
@@ -254,12 +258,38 @@ export default function StudentProfilePage({ id }: { id: number }) {
   const enrollStudentMutation = useEnrollStudent();
 
   const handleArchiveFromCircle = (circleId: number, circleName: string) => {
-    if (!confirm(`هل تريدين إخراج "${profile?.fullName}" من حلقة "${circleName}"؟`)) return;
+    setArchiveRequest({ circleId, circleName });
+    setWithdrawalPeriod("");
+    setWithdrawalReason("");
+    setWithdrawalNotes("");
+  };
+
+  const confirmArchiveFromCircle = () => {
+    if (!archiveRequest || !withdrawalPeriod || !withdrawalReason.trim()) {
+      toast({ title: "اختاري فترة الانسحاب واكتبي السبب", variant: "destructive" });
+      return;
+    }
     archiveStudent.mutate(
-      { id, data: { circleId } },
       {
-        onSuccess: () => { toast({ title: "تم الإخراج من الحلقة" }); invalidate(); },
-        onError: () => toast({ title: "خطأ في الإخراج", variant: "destructive" }),
+        id,
+        data: {
+          circleId: archiveRequest.circleId,
+          withdrawalPeriod,
+          withdrawalReason: withdrawalReason.trim(),
+          withdrawalNotes: withdrawalNotes.trim() || null,
+        },
+      },
+      {
+        onSuccess: () => {
+          toast({ title: "تم الإخراج من الحلقة", description: `تم حفظ بطاقة انسحاب ${profile?.fullName}` });
+          setArchiveRequest(null);
+          invalidate();
+        },
+        onError: (error: any) => toast({
+          title: "فشلت عملية الإخراج",
+          description: error?.message ?? "تحققي من بيانات الانسحاب",
+          variant: "destructive",
+        }),
       }
     );
   };
@@ -1076,6 +1106,69 @@ export default function StudentProfilePage({ id }: { id: number }) {
                 <p className="text-xs text-muted-foreground mt-1">{msg.senderName}</p>
               </div>
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {archiveRequest && (
+        <Card className="border border-rose-200 shadow-sm bg-rose-50/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold text-rose-700 flex items-center gap-2">
+              <Archive className="w-4 h-4" /> بطاقة انسحاب الطالبة
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              الحلقة: <strong>{archiveRequest.circleName}</strong>
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold">
+                فترة الانسحاب <span className="text-destructive">*</span>
+              </label>
+              <select
+                value={withdrawalPeriod}
+                onChange={e => setWithdrawalPeriod(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">اختاري فترة الانسحاب</option>
+                <option value="بداية الفصل">بداية الفصل</option>
+                <option value="أسابيع التسميع">أسابيع التسميع</option>
+                <option value="أسبوع المراجعات">أسبوع المراجعات</option>
+                <option value="أسبوع الاختبارات">أسبوع الاختبارات</option>
+                <option value="تم حذفها">تم حذفها</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold">
+                سبب الانسحاب <span className="text-destructive">*</span>
+              </label>
+              <Input
+                value={withdrawalReason}
+                onChange={e => setWithdrawalReason(e.target.value)}
+                placeholder="اكتبي سبب الانسحاب"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold">ملاحظات إضافية</label>
+              <Input
+                value={withdrawalNotes}
+                onChange={e => setWithdrawalNotes(e.target.value)}
+                placeholder="ملاحظات — إن وُجدت"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={confirmArchiveFromCircle}
+                disabled={archiveStudent.isPending}
+                className="flex-1 bg-rose-600 hover:bg-rose-700"
+              >
+                {archiveStudent.isPending ? "جاري الحفظ..." : "تأكيد الإخراج"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setArchiveRequest(null)} className="flex-1">
+                إلغاء
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
