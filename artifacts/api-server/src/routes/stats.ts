@@ -27,9 +27,10 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
   const circles = await db.select().from(circlesTable);
   const allTracks = await db.select().from(tracksTable);
   const registrationCircleIds = new Set(circles.filter(c => c.trackType === "registration").map(c => c.id));
-  const allStudents = (await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false)))
+  const allStudents = (await db.select().from(studentsTable))
+    .filter(s => s.isArchived !== true)
     .filter(s => !s.circleId || !registrationCircleIds.has(s.circleId));
-  const allUsers = await db.select().from(usersTable).where(eq(usersTable.isArchived, false));
+  const allUsers = (await db.select().from(usersTable)).filter(u => u.isArchived !== true);
 
   let records = allRecords;
   let students = allStudents;
@@ -225,8 +226,8 @@ router.get("/stats/circles", authenticate, async (req, res): Promise<void> => {
 
   let circles = await db.select().from(circlesTable);
   const allTracksCircles = await db.select().from(tracksTable);
-  const students = await db.select().from(studentsTable).where(eq(studentsTable.isArchived, false));
-  const allUsers = await db.select().from(usersTable).where(eq(usersTable.isArchived, false));
+  const students = (await db.select().from(studentsTable)).filter(s => s.isArchived !== true);
+  const allUsers = (await db.select().from(usersTable)).filter(u => u.isArchived !== true);
 
   if (userRole === "track_supervisor" || userRole === "data_entry") {
     const userRecord = allUsers.find(u => u.id === userId);
