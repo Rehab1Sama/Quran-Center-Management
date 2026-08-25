@@ -222,6 +222,11 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
       .then(setPublicEvents)
       .catch(() => setPublicEvents([]));
   }, [publicView]);
+  useEffect(() => {
+    if (window.location.hash === "#homepage-return") {
+      requestAnimationFrame(() => document.getElementById("homepage-return")?.scrollIntoView({ block: "center" }));
+    }
+  }, []);
 
   const allEvents = publicView ? publicEvents : [...events, ...nextYearEvents];
 
