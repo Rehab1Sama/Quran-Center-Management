@@ -5,6 +5,12 @@ import { authenticate } from "../middlewares/authenticate";
 
 const router: IRouter = Router();
 
+// Public read-only calendar for sharing with people who do not have an account.
+router.get("/public/calendar-events", async (_req, res): Promise<void> => {
+  const events = await db.select().from(calendarEventsTable);
+  res.json(events.map(e => ({ ...e, createdAt: e.createdAt.toISOString(), updatedAt: e.updatedAt?.toISOString() })));
+});
+
 router.get("/calendar-events", authenticate, async (req, res): Promise<void> => {
   const { year, month } = req.query as Record<string, string | undefined>;
   let events = await db.select().from(calendarEventsTable);
