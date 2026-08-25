@@ -19,6 +19,9 @@ interface ArchivedEntry {
   archivedAt: string | null;
   circleName: string;
   circleTrack: string;
+  withdrawalPeriod: string | null;
+  withdrawalReason: string | null;
+  withdrawalNotes: string | null;
 }
 
 const getToken = () => localStorage.getItem("sana_auth_token");
@@ -184,6 +187,17 @@ export default function ArchivedStudentsPage() {
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-foreground truncate">{e.fullName}</p>
+                        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/60 p-2 text-xs text-amber-950 space-y-1">
+                          <div>
+                            <b>الحالة:</b>{" "}
+                            <span className={e.withdrawalPeriod === "تم حذفها" ? "font-bold text-red-700" : "font-bold text-amber-700"}>
+                              {e.withdrawalPeriod === "تم حذفها" ? "محذوفة" : "منسحبة"}
+                            </span>
+                            <span className="mx-1">|</span>
+                            <b>الفترة:</b> {e.withdrawalPeriod || "—"} <span className="mx-1">|</span> <b>السبب:</b> {e.withdrawalReason || "—"}
+                          </div>
+                          {e.withdrawalNotes && <div><b>الملاحظات:</b> {e.withdrawalNotes}</div>}
+                        </div>
                         <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                           <span className="text-xs text-muted-foreground">{e.circleName}</span>
                           {e.circleTrack && (
