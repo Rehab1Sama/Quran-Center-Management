@@ -50,7 +50,7 @@ router.post("/white-label/configs", authenticate, requireRole("leader"), async (
 });
 
 router.patch("/white-label/configs/:id", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(String(req.params.id));
   const b = req.body as Record<string, string | undefined>;
   const [updated] = await db.update(whitelabelConfigsTable).set({
     ...(b.schoolName !== undefined && { schoolName: b.schoolName }),
@@ -72,14 +72,14 @@ router.patch("/white-label/configs/:id", authenticate, requireRole("leader"), as
 });
 
 router.delete("/white-label/configs/:id", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
-  await db.delete(whitelabelConfigsTable).where(eq(whitelabelConfigsTable.id, parseInt(req.params.id)));
+  await db.delete(whitelabelConfigsTable).where(eq(whitelabelConfigsTable.id, parseInt(String(req.params.id))));
   res.json({ ok: true });
 });
 
 // ─── Deploy Status ────────────────────────────────────────────────────────────
 
 router.get("/white-label/configs/:id/deploy-status", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(String(req.params.id));
   const [config] = await db.select().from(whitelabelConfigsTable).where(eq(whitelabelConfigsTable.id, id));
   if (!config) { res.status(404).json({ error: "Not found" }); return; }
 
@@ -113,7 +113,7 @@ router.get("/white-label/configs/:id/deploy-status", authenticate, requireRole("
 // ─── Deploy ───────────────────────────────────────────────────────────────────
 
 router.post("/white-label/configs/:id/deploy", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(String(req.params.id));
   const [config] = await db.select().from(whitelabelConfigsTable).where(eq(whitelabelConfigsTable.id, id));
   if (!config) { res.status(404).json({ error: "Not found" }); return; }
 
