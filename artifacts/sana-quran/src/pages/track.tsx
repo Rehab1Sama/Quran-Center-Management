@@ -187,7 +187,11 @@ export default function TrackPage() {
           setArchiveRequest(null);
           navigate("/archived-students");
         },
-        onError: () => toast({ title: "خطأ", description: "فشلت عملية الأرشفة", variant: "destructive" }),
+        onError: (error: any) => toast({
+          title: "فشلت عملية الأرشفة",
+          description: error?.response?.data?.error ?? error?.message ?? "تحققي من بيانات الطالبة والحلقة",
+          variant: "destructive",
+        }),
       }
     );
   };
