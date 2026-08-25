@@ -13,6 +13,7 @@ import {
   Archive, PlaneTakeoff, ExternalLink, Pencil,
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
+import { StudentArchiveDialog } from "@/components/StudentArchiveDialog";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -183,6 +184,12 @@ export default function LeaderCirclesPage() {
   const [leaveEnd, setLeaveEnd] = useState("");
   const [leaveReason, setLeaveReason] = useState("");
   const [leaveSaving, setLeaveSaving] = useState(false);
+  const [archiveModal, setArchiveModal] = useState<{
+    studentId: number;
+    studentName: string;
+    circleId: number;
+    circleName: string;
+  } | null>(null);
 
   const [transferModal, setTransferModal] = useState<{
     type: "teacher" | "supervisor" | "student" | "volunteer";
@@ -197,8 +204,8 @@ export default function LeaderCirclesPage() {
   const token = getToken();
   const headers = useCallback(() => ({ "Content-Type": "application/json", Authorization: `Bearer ${token}` }), [token]);
 
-  const handleArchiveStudent = async (studentId: number, _studentName: string, circleId: number) => {
-    navigate(`/students/${studentId}?archive=1&circleId=${circleId}&returnTo=/leader-circles`);
+  const handleArchiveStudent = (studentId: number, studentName: string, circleId: number, circleName: string) => {
+    setArchiveModal({ studentId, studentName, circleId, circleName });
   };
 
   const handleSetLeave = async () => {
@@ -513,7 +520,7 @@ export default function LeaderCirclesPage() {
                                         <button onClick={() => navigate(`/students/${s.id}`)} className="p-1 rounded bg-muted/60 hover:bg-muted text-muted-foreground" title="ملف الطالبة"><ExternalLink className="w-3 h-3" /></button>
                                         <button onClick={() => setTransferModal({ type: "student", circleId: circle.id, label: "نقل طالبة", studentId: s.id, studentName: s.fullName })} className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100" title="نقل"><ArrowLeftRight className="w-3 h-3" /></button>
                                         <button onClick={() => { setLeaveModal({ studentId: s.id, studentName: s.fullName, circleId: circle.id }); setLeaveStart(""); setLeaveEnd(""); setLeaveReason(""); }} className="p-1 rounded bg-amber-50 text-amber-600 hover:bg-amber-100" title="إجازة"><PlaneTakeoff className="w-3 h-3" /></button>
-                                        <button onClick={() => handleArchiveStudent(s.id, s.fullName, circle.id)} className="p-1 rounded bg-rose-50 text-rose-600 hover:bg-rose-100" title="إخراج"><Archive className="w-3 h-3" /></button>
+                                        <button onClick={() => handleArchiveStudent(s.id, s.fullName, circle.id, circle.name)} className="p-1 rounded bg-rose-50 text-rose-600 hover:bg-rose-100" title="أرشفة مباشرة"><Archive className="w-3 h-3" /></button>
                                       </div>
                                     </div>
                                   ))}
@@ -808,7 +815,7 @@ export default function LeaderCirclesPage() {
                                               <PlaneTakeoff className="w-3 h-3" />
                                             </button>
                                             <button
-                                              onClick={() => handleArchiveStudent(s.id, s.fullName, circle.id)}
+                                              onClick={() => handleArchiveStudent(s.id, s.fullName, circle.id, circle.name)}
                                               className="p-1 rounded bg-rose-50 text-rose-600 hover:bg-rose-100"
                                               title="إخراج من الحلقة"
                                             >
@@ -901,6 +908,16 @@ export default function LeaderCirclesPage() {
             </div>
           </div>
         </div>
+      )}
+      {archiveModal && (
+        <StudentArchiveDialog
+          {...archiveModal}
+          onClose={() => setArchiveModal(null)}
+          onSuccess={async () => {
+            setArchiveModal(null);
+            await load();
+          }}
+        />
       )}
     </div>
   );

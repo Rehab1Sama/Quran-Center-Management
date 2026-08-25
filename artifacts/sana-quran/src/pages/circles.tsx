@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListCircles, useUpdateCircle, useListStudents, useArchiveStudent, useRestoreStudent, useGetCurrentUser, useUpdateStudent, useUpdateUser } from "@workspace/api-client-react";
+import { useListCircles, useUpdateCircle, useListStudents, useRestoreStudent, useGetCurrentUser, useUpdateStudent, useUpdateUser } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { Search, Users, BookOpen, Settings2, X, Check, Clock, UserPlus, ChevronD
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { StudentArchiveDialog } from "@/components/StudentArchiveDialog";
 
 type LeaveModal = {
   studentId: number;
@@ -32,6 +33,7 @@ function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRol
   const [leaveEnd, setLeaveEnd] = useState("");
   const [leaveReason, setLeaveReason] = useState("");
   const [leaveSaving, setLeaveSaving] = useState(false);
+  const [archiveModal, setArchiveModal] = useState<{ studentId: number; studentName: string } | null>(null);
 
   const [transferModal, setTransferModal] = useState<{ studentId: number; studentName: string } | null>(null);
   const [transferTargetId, setTransferTargetId] = useState<number | null>(null);
@@ -70,7 +72,6 @@ function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRol
     a.fullName.localeCompare(b.fullName, "ar", { sensitivity: "base" }),
   );
 
-  const archiveStudent = useArchiveStudent();
   const restoreStudent = useRestoreStudent();
   const updateStudent = useUpdateStudent();
   const updateUser = useUpdateUser();
@@ -114,7 +115,7 @@ function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRol
   };
 
   const handleArchive = (s: any) => {
-    navigate(`/students/${s.id}?archive=1&circleId=${circleId}&returnTo=/circles`);
+    setArchiveModal({ studentId: s.id, studentName: s.fullName });
   };
 
   const handleRestore = (s: any) => {
@@ -316,7 +317,7 @@ function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRol
                       : <button onClick={() => openLeaveModal(sAny)} className="p-1 rounded bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors" title="إجازة"><PlaneTakeoff className="w-3 h-3" /></button>
                     }
                     <button onClick={() => { setTransferModal({ studentId: s.id, studentName: s.fullName }); setTransferTargetId(null); setTransferSearch(""); }} className="p-1 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors" title="نقل"><MoveRight className="w-3 h-3" /></button>
-                    <button onClick={() => handleArchive(sAny)} className="p-1 rounded bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors" title="أرشفة"><Archive className="w-3 h-3" /></button>
+                    {["leader", "deputy", "track_supervisor", "data_entry"].includes(userRole) && <button onClick={() => handleArchive(sAny)} className="p-1 rounded bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors" title="أرشفة مباشرة"><Archive className="w-3 h-3" /></button>}
                     <button onClick={() => { setAssignRoleModal({ studentId: s.id, studentName: s.fullName }); setLookupEmail(""); setFoundUser(null); setLookupError(false); setNewRole("teacher"); setNewRoleCircleId(circleId); }} className="p-1 rounded bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors" title="إعطاء دور"><Crown className="w-3 h-3" /></button>
                   </>
                 )}
@@ -327,11 +328,11 @@ function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRol
                       className={`p-1 rounded transition-colors ${isInlineOpen ? "bg-amber-100 text-amber-700" : "bg-amber-50 text-amber-600 hover:bg-amber-100"}`}
                       title="إجازة"
                     ><PlaneTakeoff className="w-3 h-3" /></button>
-                    <button onClick={() => handleArchive(sAny)} className="p-1 rounded bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors" title="أرشفة"><Archive className="w-3 h-3" /></button>
+                    {["leader", "deputy", "track_supervisor", "data_entry"].includes(userRole) && <button onClick={() => handleArchive(sAny)} className="p-1 rounded bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors" title="أرشفة مباشرة"><Archive className="w-3 h-3" /></button>}
                   </>
                 )}
-                {!isLeaderOrDeputy && !isTrackSupervisor && (
-                  <button onClick={() => handleArchive(sAny)} className="p-1 rounded bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors" title="أرشفة"><Archive className="w-3 h-3" /></button>
+                {userRole === "data_entry" && (
+                  <button onClick={() => handleArchive(sAny)} className="p-1 rounded bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors" title="أرشفة مباشرة"><Archive className="w-3 h-3" /></button>
                 )}
               </div>
             </div>
@@ -363,6 +364,24 @@ function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRol
             </div>
           ))}
         </div>
+      )}
+
+      {archiveModal && (
+        <StudentArchiveDialog
+          studentId={archiveModal.studentId}
+          studentName={archiveModal.studentName}
+          circleId={circleId}
+          onClose={() => setArchiveModal(null)}
+          onSuccess={async () => {
+            setArchiveModal(null);
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] }),
+              queryClient.invalidateQueries({ queryKey: ["circle-students-archived", circleId] }),
+              queryClient.invalidateQueries({ queryKey: ["circles"] }),
+              queryClient.invalidateQueries({ queryKey: ["users"] }),
+            ]);
+          }}
+        />
       )}
 
       {/* Leave Modal */}
