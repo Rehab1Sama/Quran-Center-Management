@@ -28,7 +28,7 @@ router.post("/users/:id/restore", authenticate, async (req, res): Promise<void> 
   if (!["leader", "deputy"].includes(req.userRole ?? "")) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
-  const id = parseInt(req.params.id);
+   const id = parseInt(String(req.params.id));
   const [user] = await db.update(usersTable).set({ isArchived: false }).where(eq(usersTable.id, id)).returning();
   if (!user) { res.status(404).json({ error: "المستخدم غير موجود" }); return; }
   res.json({ success: true });
@@ -58,7 +58,7 @@ router.get("/users/unlinked-staff", authenticate, async (req, res): Promise<void
     (u.role === "supervisor" && !linkedSupervisorIds.has(u.id))
   );
 
-  res.json({ unlinked, circles: circles.filter(c => !c.isArchived) });
+   res.json({ unlinked, circles });
 });
 
 router.get("/users", authenticate, async (req, res): Promise<void> => {
