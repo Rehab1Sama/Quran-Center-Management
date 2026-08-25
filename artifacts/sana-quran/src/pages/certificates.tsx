@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ClipboardCheck, Plus, CalendarDays, FileSpreadsheet, Send, RefreshCw, BookOpenCheck, AlertCircle, Check, X, Pencil, Info, Upload, ShieldCheck } from "lucide-react";
 import { getToken } from "@/lib/auth";
+import ExcelJS from "exceljs";
 
 const dateLabel = (value?: string | null) => value ? new Date(value).toLocaleDateString("ar-SA", { day: "numeric", month: "short", year: "numeric" }) : "—";
 const statusLabel = (s: string) => s === "published" ? "منشور" : "مسودة";
@@ -37,9 +38,6 @@ function ImportExcel({ termId, onDone }: { termId?: number; onDone: (termId?: nu
     if (!files?.length) return;
     setBusy(true); setMessage("جارٍ قراءة الملفات...");
     try {
-      // Use ExcelJS's browser bundle so Rollup does not traverse Node-only
-      // modules (fs, stream, crypto) while building the client.
-      const ExcelJS = (await import("exceljs/dist/exceljs.min.js")).default;
       const rows: any[] = [];
       for (const file of Array.from(files)) {
         const workbook = new ExcelJS.Workbook();
