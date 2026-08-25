@@ -37,38 +37,41 @@ const EVENT_TYPES = [
   { value: "general",  label: "عام",     color: "#2b3784", bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
 ];
 
+const GREGORIAN_LOCALE = "ar-SA-u-ca-gregory";
+const HIJRI_LOCALE = "ar-SA-u-ca-islamic-umalqura";
+
 function getTypeInfo(eventType: string) {
   return EVENT_TYPES.find(t => t.value === eventType) ?? EVENT_TYPES[EVENT_TYPES.length - 1];
 }
 
 function formatArabicDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("ar-SA", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  return d.toLocaleDateString(GREGORIAN_LOCALE, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 }
 
 function formatShortDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("ar-SA", { month: "short", day: "numeric" });
+  return d.toLocaleDateString(GREGORIAN_LOCALE, { month: "short", day: "numeric" });
 }
 
 function formatDualDate(dateStr?: string | null): string {
   if (!dateStr) return "—";
   const d = new Date(dateStr + "T00:00:00");
-  const gregorian = d.toLocaleDateString("ar-SA", { year: "numeric", month: "short", day: "numeric" });
-  const hijri = d.toLocaleDateString("ar-SA-u-ca-islamic-umalqura", { year: "numeric", month: "short", day: "numeric" });
+  const gregorian = d.toLocaleDateString(GREGORIAN_LOCALE, { year: "numeric", month: "short", day: "numeric" });
+  const hijri = d.toLocaleDateString(HIJRI_LOCALE, { year: "numeric", month: "short", day: "numeric" });
   return `${hijri} هـ · ${gregorian} م`;
 }
 
 function formatHijriDate(dateStr?: string | null): string {
   if (!dateStr) return "—";
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("ar-SA-u-ca-islamic-umalqura", {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString(HIJRI_LOCALE, {
     year: "numeric", month: "short", day: "numeric",
   });
 }
 
 function formatGregorianDate(dateStr?: string | null): string {
   if (!dateStr) return "—";
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("ar-SA", {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString(GREGORIAN_LOCALE, {
     year: "numeric", month: "short", day: "numeric",
   });
 }
