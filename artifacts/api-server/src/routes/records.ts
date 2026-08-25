@@ -97,6 +97,16 @@ router.get("/records", authenticate, async (req, res): Promise<void> => {
     records = records.filter(r => permitted.has(r.circleId));
   }
 
+  // سجلات الفصل المؤرشف تبقى للإدارة والتقارير، ولا تظهر للمعلمة أو المشرفة.
+  if (req.userRole === "teacher" || req.userRole === "supervisor") {
+    const [setting] = await db.select({ value: globalSettingsTable.value })
+      .from(globalSettingsTable).where(eq(globalSettingsTable.key, "student_record_archive_periods"));
+    try {
+      const periods = JSON.parse(setting?.value ?? "[]") as { from: string; to: string }[];
+      records = records.filter(r => !periods.some(p => r.date >= p.from && r.date <= p.to));
+    } catch { /* invalid setting: keep current records */ }
+  }
+
   if (circleId) records = records.filter(r => r.circleId === parseInt(circleId, 10));
   if (studentId) records = records.filter(r => r.studentId === parseInt(studentId, 10));
   if (date) records = records.filter(r => r.date === date);
