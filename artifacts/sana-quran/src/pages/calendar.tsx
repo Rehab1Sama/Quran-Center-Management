@@ -59,6 +59,20 @@ function formatDualDate(dateStr?: string | null): string {
   return `${hijri} هـ · ${gregorian} م`;
 }
 
+function formatHijriDate(dateStr?: string | null): string {
+  if (!dateStr) return "—";
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("ar-SA-u-ca-islamic-umalqura", {
+    year: "numeric", month: "short", day: "numeric",
+  });
+}
+
+function formatGregorianDate(dateStr?: string | null): string {
+  if (!dateStr) return "—";
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("ar-SA", {
+    year: "numeric", month: "short", day: "numeric",
+  });
+}
+
 function semesterCards(events: any[]) {
   const starts = events.filter(e => /بداية الفصل/.test(e.title)).sort((a, b) => a.date.localeCompare(b.date));
   return starts.map((start, index) => {
@@ -367,7 +381,7 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
       )}
 
       {semesters.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="max-w-3xl mx-auto w-full space-y-3">
           {semesters.map((semester, index) => (
             <Card key={`${semester.start.id}-${index}`} className={`border-0 shadow-sm overflow-hidden ring-1 ${index === 0 ? "ring-slate-200" : "ring-indigo-200/70"}`}>
               <button
@@ -387,7 +401,12 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
                   : <ChevronDown className="w-5 h-5 text-[#9EA8CC]" />}
               </button>
               {(openSemesters[index] ?? index !== 0) && (
-                <CardContent className="p-0 text-sm">
+                <CardContent className="p-0 text-xs">
+                  <div className="grid grid-cols-[1.35fr_1fr_1fr] bg-[#FAFAFD] border-b border-[#C8CDE8]/60 px-3 py-2 text-[11px] font-bold text-[#4A5590]">
+                    <span>المناسبة</span>
+                    <span className="text-center">التاريخ الهجري</span>
+                    <span className="text-center">التاريخ الميلادي</span>
+                  </div>
                   {[
                     ["تاريخ البدء", semester.start],
                     ["أسبوع المراجعة", semester.review],
@@ -395,12 +414,12 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
                     ["الإجازة", semester.holiday],
                   ].map(([label, event]: any, eventIndex) => {
                     const typeInfo = event ? getTypeInfo(event.eventType) : null;
+                    const title = event?.title?.replace(/^بداية\s*/, "").trim() || label;
                     return (
-                      <div key={label} className="flex items-start justify-between gap-3 px-4 py-3 border-b border-[#C8CDE8]/40 last:border-0" style={{ borderRight: `4px solid ${typeInfo?.color ?? (eventIndex === 0 ? "#2B3784" : "#C4A76A")}` }}>
-                        <span className="font-semibold text-[#4A5590] shrink-0">{label}</span>
-                        <span className="text-left text-xs leading-5 text-[#3D4E9C]">
-                          {event ? `${formatDualDate(event.date)}${event.endDate && event.endDate !== event.date ? ` — ${formatDualDate(event.endDate)}` : ""}` : "—"}
-                        </span>
+                      <div key={label} className="grid grid-cols-[1.35fr_1fr_1fr] items-center gap-2 px-3 py-2.5 border-b border-[#C8CDE8]/40 last:border-0" style={{ borderRight: `4px solid ${typeInfo?.color ?? (eventIndex === 0 ? "#2B3784" : "#C4A76A")}` }}>
+                        <span className="font-semibold text-[#3D477E]">{title}</span>
+                        <span className="text-center text-[#59658F]">{formatHijriDate(event?.date)}</span>
+                        <span className="text-center text-[#59658F]">{formatGregorianDate(event?.date)}</span>
                       </div>
                     );
                   })}
