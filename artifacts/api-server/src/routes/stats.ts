@@ -11,8 +11,8 @@ function getDateRange(dateFrom?: string, dateTo?: string): { from: string; to: s
   if (dateFrom && dateTo) {
     return { from: dateFrom, to: dateTo, label: `${dateFrom} إلى ${dateTo}` };
   }
-  const weekStart = getMakkahWeekStart();
-  return { from: weekStart, to: today, label: "هذا الأسبوع" };
+  const yearStart = getMakkahDaysAgo(365);
+  return { from: yearStart, to: today, label: "آخر 365 يومًا" };
 }
 
 router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
@@ -48,12 +48,10 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
       students = allStudents.filter(s => s.circleId === circleId);
     }
   } else if (userRole === "student") {
-    const userRecord = allUsers.find(u => u.id === userId);
-    const circleId = userRecord?.circleId;
-    if (circleId) {
-      records = allRecords.filter(r => r.circleId === circleId && r.studentId === userId);
-      students = students.filter(s => s.id === userId);
-    }
+    const studentId = req.userStudentId;
+    const circleId = req.userCircleId;
+    records = allRecords.filter(r => r.studentId === studentId && (!circleId || r.circleId === circleId));
+    students = students.filter(s => s.id === studentId);
   }
 
   // فلترة صارمة بـ circleId من الرابط — يتجاوز الفلترة بالدور ويعزل بيانات الحلقة تماماً
@@ -290,8 +288,10 @@ router.get("/stats/my-progress", authenticate, async (req, res): Promise<void> =
   const user = userRecord[0];
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
-  const records = await db.select().from(recordsTable)
-    .where(eq(recordsTable.studentId, userId));
+  const studentId = req.userStudentId;
+  const records = studentId
+    ? await db.select().from(recordsTable).where(eq(recordsTable.studentId, studentId))
+    : [];
 
   const sortedRecords = records.sort((a, b) => b.date.localeCompare(a.date));
   const latestRecord = sortedRecords.find(r => !r.isAbsent);
@@ -306,7 +306,7 @@ router.get("/stats/my-progress", authenticate, async (req, res): Promise<void> =
   const progressPercent = Math.min(100, Math.round((totalMemorize / TOTAL_QURAN_PAGES) * 100 * 10) / 10);
 
   res.json({
-    userId,
+    userId: studentId ?? userId,
     name: user.name,
     totalMemorizePages: totalMemorize,
     totalReviewPages: totalReview,
