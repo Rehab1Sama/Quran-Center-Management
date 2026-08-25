@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Pencil, CalendarDays, Clock, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, Pencil, CalendarDays, Clock, CheckCircle2, ChevronDown, ChevronUp, Home } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const EVENT_TYPES = [
@@ -434,6 +434,16 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
           ))}
         </div>
       )}
+
+      <div className="flex justify-center pt-2">
+        <a
+          href="/"
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#2B3784] px-7 py-3 text-sm font-bold text-white shadow-md shadow-[#2B3784]/20 transition-all hover:bg-[#1A2260] hover:-translate-y-0.5"
+        >
+          <Home className="h-4 w-4 text-[#C4A76A]" />
+          العودة للصفحة الرئيسية
+        </a>
+      </div>
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent dir="rtl" className="max-w-sm">
