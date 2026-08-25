@@ -194,6 +194,9 @@ router.get("/students/archived-search", authenticate, async (req, res): Promise<
       circleId: studentEnrollmentsTable.circleId,
       circleName: circlesTable.name,
       archivedAt: studentEnrollmentsTable.archivedAt,
+      withdrawalPeriod: studentEnrollmentsTable.withdrawalPeriod,
+      withdrawalReason: studentEnrollmentsTable.withdrawalReason,
+      withdrawalNotes: studentEnrollmentsTable.withdrawalNotes,
     })
     .from(studentEnrollmentsTable)
     .innerJoin(studentsTable, eq(studentsTable.id, studentEnrollmentsTable.studentId))
@@ -229,6 +232,9 @@ router.get("/students/enrollment-archived", authenticate, async (req, res): Prom
       enrollmentId: studentEnrollmentsTable.id,
       circleId: studentEnrollmentsTable.circleId,
       archivedAt: studentEnrollmentsTable.archivedAt,
+      withdrawalPeriod: studentEnrollmentsTable.withdrawalPeriod,
+      withdrawalReason: studentEnrollmentsTable.withdrawalReason,
+      withdrawalNotes: studentEnrollmentsTable.withdrawalNotes,
       circleName: circlesTable.name,
       circleTrack: circlesTable.track,
     })
@@ -381,11 +387,13 @@ router.delete("/students/:id", authenticate, async (req, res): Promise<void> => 
 });
 
 // ── Archive student (per-circle or global) ─────────────────────────────────────
-// Body: { circleId?: number }
+// Body: { circleId?: number, withdrawalPeriod?: string, withdrawalReason?: string, withdrawalNotes?: string }
 // If circleId → archive only that enrollment
 // If no circleId → global archive (leader only): archive student + all enrollments
 router.patch("/students/:id/archive", authenticate, async (req, res): Promise<void> => {
-  const { circleId } = req.body as { circleId?: number };
+  const { circleId, withdrawalPeriod, withdrawalReason, withdrawalNotes } = req.body as {
+    circleId?: number; withdrawalPeriod?: string; withdrawalReason?: string; withdrawalNotes?: string;
+  };
   // Per-circle archive: leader + track_supervisor + data_entry (own circles only)
   // Global archive (no circleId): leader only
   const canPerCircle = ["leader", "track_supervisor", "data_entry"].includes(req.userRole!);
@@ -411,6 +419,15 @@ router.patch("/students/:id/archive", authenticate, async (req, res): Promise<vo
   if (!before) { res.status(404).json({ error: "Student not found" }); return; }
 
   if (circleId) {
+    if (req.userRole === "track_supervisor") {
+      const [targetCircle] = await db.select({ track: circlesTable.track }).from(circlesTable).where(eq(circlesTable.id, circleId));
+      if (!targetCircle || targetCircle.track !== req.userTrack) {
+        res.status(403).json({ error: "الحلقة خارج نطاق المسار" }); return;
+      }
+    }
+    if (!withdrawalPeriod || !withdrawalReason?.trim()) {
+      res.status(400).json({ error: "يجب اختيار فترة الانسحاب وكتابة السبب" }); return;
+    }
     // Verify an active enrollment exists before archiving
     const [enrollment] = await db.select()
       .from(studentEnrollmentsTable)
@@ -427,7 +444,13 @@ router.patch("/students/:id/archive", authenticate, async (req, res): Promise<vo
 
     // Per-circle archive: archive the enrollment
     await db.update(studentEnrollmentsTable)
-      .set({ isArchived: true, archivedAt: new Date() })
+      .set({
+        isArchived: true,
+        archivedAt: new Date(),
+        withdrawalPeriod: withdrawalPeriod.trim(),
+        withdrawalReason: withdrawalReason.trim(),
+        withdrawalNotes: withdrawalNotes?.trim() || null,
+      })
       .where(
         and(
           eq(studentEnrollmentsTable.studentId, id),
