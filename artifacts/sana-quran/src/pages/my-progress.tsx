@@ -3,6 +3,7 @@ import {
   useGetCurrentUser, useListRecords, useListCircles, useListStudents,
   useListUsers, useListBadgeAssignments, useGetMyMessages,
   useListStudentGoals, useCreateStudentGoal, useUpdateStudentGoal, useDeleteStudentGoal,
+  useListCalendarEvents,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,6 +43,13 @@ export default function MyProgressPage() {
   const [archiveOpen, setArchiveOpen] = useState(false);
 
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
+  const calendarYear = new Date().getFullYear();
+  const { data: calendarEvents = [] } = useListCalendarEvents({ year: calendarYear }, {
+    query: { queryKey: ["calendarEvents", calendarYear] },
+  });
+  const { data: nextCalendarEvents = [] } = useListCalendarEvents({ year: calendarYear + 1 }, {
+    query: { queryKey: ["calendarEvents", calendarYear + 1] },
+  });
   useEffect(() => {
     const token = localStorage.getItem("sana_auth_token");
     fetch(`${BASE}/api/settings`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
@@ -129,9 +137,20 @@ export default function MyProgressPage() {
   // Progress data
   const sortedRecords = (records ?? []).filter(r => (r as any).circleId === effectiveCircleId).slice().sort((a: any, b: any) => b.date.localeCompare(a.date));
   const visibleRecords = sortedRecords.filter((r: any) => (!dateFrom || r.date >= dateFrom) && (!dateTo || r.date <= dateTo));
-  const isArchivedRecord = (date: string) => archivePeriods.some(p => date >= p.from && date <= p.to);
-  const currentRecords = visibleRecords.filter((r: any) => !isArchivedRecord(r.date));
-  const archivedRecords = visibleRecords.filter((r: any) => isArchivedRecord(r.date));
+  const allCalendarEvents = [...(calendarEvents as any[]), ...(nextCalendarEvents as any[])];
+  const semesterStarts = allCalendarEvents
+    .filter(e => /بداية\s+الفصل/.test(e.title ?? ""))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const firstTermStart = semesterStarts.find(e => /الفصل\s*الأول/.test(e.title ?? ""))?.date;
+  const secondTermStart = semesterStarts.find(e => /الفصل\s*الثاني/.test(e.title ?? ""))?.date
+    ?? semesterStarts[1]?.date;
+  // الفصل الأول مغلق، وكل ما يبدأ من تاريخ الفصل الثاني يتبع السجل الجديد.
+  const archivedRecords = visibleRecords.filter((r: any) =>
+    secondTermStart ? r.date < secondTermStart : archivePeriods.some(p => r.date >= p.from && r.date <= p.to)
+  );
+  const currentRecords = visibleRecords.filter((r: any) =>
+    secondTermStart ? r.date >= secondTermStart : !archivePeriods.some(p => r.date >= p.from && r.date <= p.to)
+  );
   const totalMemorize = Math.round(currentRecords.reduce((s, r) => s + (r.memorizePages ?? 0), 0) * 2) / 2;
   const latestRecord = currentRecords.find(r => !r.isAbsent);
   const TOTAL_QURAN_PAGES = 604;
@@ -403,11 +422,11 @@ export default function MyProgressPage() {
           )}
 
           {/* Shortcomings (التقصير) */}
-          {user?.role === "student" && archivedRecords.length > 0 && (
+          {user?.role === "student" && (
             <Card className="border-0 shadow-sm">
               <button className="w-full p-4 flex items-center justify-between text-right" onClick={() => setArchiveOpen(v => !v)}>
                 <span className="font-bold">السجل الكامل — الفصل السابق</span>
-                <span className="text-xs text-muted-foreground">{archiveOpen ? "إخفاء السجل" : `${archivedRecords.length} سجل مؤرشف`}</span>
+                <span className="text-xs text-muted-foreground">{archiveOpen ? "إخفاء السجل" : `${archivedRecords.length} سجل`}</span>
               </button>
               {archiveOpen && <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -474,12 +493,15 @@ export default function MyProgressPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-bold flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-primary" />
-                سجل الفصل الحالي
+                سجل الفصل الثاني
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               {currentRecords.length === 0 ? (
-                <p className="text-center py-8 text-muted-foreground text-sm">لا توجد سجلات بعد</p>
+                <p className="text-center py-8 text-muted-foreground text-sm">
+                  لم يبدأ الفصل الثاني بعد — ستظهر هنا أي سجلات جديدة مباشرة.
+                  {secondTermStart && <span className="block mt-1 text-xs">يبدأ في {secondTermStart}</span>}
+                </p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
