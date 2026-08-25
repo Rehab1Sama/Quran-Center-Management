@@ -838,7 +838,7 @@ const PERIOD_OPTIONS = [
 
 export default function StatisticsPage() {
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
-  const [periodDays, setPeriodDays] = useState(30);
+  const [periodDays, setPeriodDays] = useState(365);
 
   const today = new Date().toISOString().slice(0, 10);
   const fromDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
