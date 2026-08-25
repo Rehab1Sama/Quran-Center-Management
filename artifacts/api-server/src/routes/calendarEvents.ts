@@ -8,7 +8,15 @@ const router: IRouter = Router();
 // Public read-only calendar for sharing with people who do not have an account.
 router.get("/public/calendar-events", async (_req, res): Promise<void> => {
   const events = await db.select().from(calendarEventsTable);
-  res.json(events.map(e => ({ ...e, createdAt: e.createdAt.toISOString(), updatedAt: e.updatedAt?.toISOString() })));
+  res.json(events.map(e => ({
+    id: e.id,
+    title: e.title,
+    date: e.date,
+    endDate: e.endDate,
+    color: e.color,
+    eventType: e.eventType,
+    description: e.description,
+  })));
 });
 
 router.get("/calendar-events", authenticate, async (req, res): Promise<void> => {
