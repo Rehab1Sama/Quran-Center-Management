@@ -32,9 +32,9 @@ import { useToast } from "@/hooks/use-toast";
 const EVENT_TYPES = [
   { value: "holiday",  label: "إجازة",   color: "#ef4444", bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200"    },
   { value: "exam",     label: "اختبار",  color: "#f59e0b", bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-200"  },
-  { value: "activity", label: "نشاط",    color: "#10b981", bg: "bg-emerald-50",text: "text-emerald-700",border: "border-emerald-200" },
-  { value: "reminder", label: "تذكير",   color: "#8b5cf6", bg: "bg-teal-50", text: "text-teal-700", border: "border-teal-200" },
-  { value: "general",  label: "عام",     color: "#6366f1", bg: "bg-teal-100", text: "text-teal-600", border: "border-teal-200" },
+  { value: "activity", label: "نشاط",    color: "#c08457", bg: "bg-amber-50", text: "text-amber-800", border: "border-amber-200" },
+  { value: "reminder", label: "تذكير",   color: "#7c3aed", bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-200" },
+  { value: "general",  label: "عام",     color: "#2b3784", bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
 ];
 
 function getTypeInfo(eventType: string) {
@@ -369,10 +369,10 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
       {semesters.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2">
           {semesters.map((semester, index) => (
-            <Card key={`${semester.start.id}-${index}`} className={`border-0 shadow-sm overflow-hidden ring-1 ${index === 0 ? "ring-slate-200" : "ring-teal-200/70"}`}>
+            <Card key={`${semester.start.id}-${index}`} className={`border-0 shadow-sm overflow-hidden ring-1 ${index === 0 ? "ring-slate-200" : "ring-indigo-200/70"}`}>
               <button
                 type="button"
-                className={`w-full text-right px-4 py-3 flex items-center justify-between transition-colors ${index === 0 ? "bg-[#F1F2F8] hover:bg-[#E8EAF4]" : "bg-gradient-to-l from-[#E8F8F6] to-[#EEF0FA] hover:from-[#DDF4F0] hover:to-[#E6E8F5]"}`}
+                className={`w-full text-right px-4 py-3 flex items-center justify-between transition-colors ${index === 0 ? "bg-[#F1F2F8] hover:bg-[#E8EAF4]" : "bg-gradient-to-l from-[#F0EEFA] to-[#EEF0FA] hover:from-[#E8E5F6] hover:to-[#E6E8F5]"}`}
                 onClick={() => setOpenSemesters(s => ({ ...s, [index]: !(s[index] ?? index !== 0) }))}
                 aria-expanded={openSemesters[index] ?? index !== 0}
               >
@@ -383,7 +383,7 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
                   </p>
                 </div>
                 {openSemesters[index] ?? index !== 0
-                  ? <ChevronUp className="w-5 h-5 text-teal-600" />
+                   ? <ChevronUp className="w-5 h-5 text-[#2B3784]" />
                   : <ChevronDown className="w-5 h-5 text-[#9EA8CC]" />}
               </button>
               {(openSemesters[index] ?? index !== 0) && (
