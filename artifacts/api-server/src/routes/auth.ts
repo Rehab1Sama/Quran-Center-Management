@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, studentsTable, circlesTable, tracksTable, studentEnrollmentsTable, registrationSettingsTable } from "@workspace/db";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, inArray } from "drizzle-orm";
 import { hashPassword, verifyPassword, generateToken } from "../lib/auth";
 import { authenticate } from "../middlewares/authenticate";
 import { LoginBody, LoginSelectAccountBody } from "@workspace/api-zod";
@@ -332,8 +332,12 @@ router.get("/auth/me", authenticate, async (req, res): Promise<void> => {
       .innerJoin(circlesTable, eq(circlesTable.id, studentEnrollmentsTable.circleId))
       .leftJoin(tracksTable, eq(tracksTable.id, circlesTable.trackId))
       .where(and(eq(studentEnrollmentsTable.studentId, studentId), eq(studentEnrollmentsTable.isArchived, false), eq(circlesTable.isArchived, false)));
+    const staff = rows.length ? await db.select({ name: usersTable.name, role: usersTable.role, circleId: usersTable.circleId })
+      .from(usersTable).where(and(inArray(usersTable.circleId, rows.map(c => c.id)), or(eq(usersTable.role, "teacher"), eq(usersTable.role, "supervisor")))) : [];
     studentCircles = rows.map(c => ({
       ...c,
+      teacherName: staff.find(s => s.circleId === c.id && s.role === "teacher")?.name ?? null,
+      supervisorName: staff.find(s => s.circleId === c.id && s.role === "supervisor")?.name ?? null,
       dataEntryType: c.dataEntryType ?? (c.track === "مشكاة نور" ? "recitation" : c.track === "سُنى" ? "fixation" : ["girls", "children", "mothers"].includes(c.trackType ?? "") ? c.trackType : "girls"),
     }));
   }
@@ -357,7 +361,15 @@ router.get("/auth/me", authenticate, async (req, res): Promise<void> => {
     }
   }
 
-  res.json({ ...safeUser, studentId, circleDataEntryType, circleTrackType, circles: studentCircles });
+  const currentStaff = user.circleId
+    ? await db.select({ name: usersTable.name, role: usersTable.role }).from(usersTable)
+      .where(and(eq(usersTable.circleId, user.circleId), or(eq(usersTable.role, "teacher"), eq(usersTable.role, "supervisor"))))
+    : [];
+  res.json({
+    ...safeUser, studentId, circleDataEntryType, circleTrackType, circles: studentCircles,
+    circleTeacherName: currentStaff.find(s => s.role === "teacher")?.name ?? null,
+    circleSupervisorName: currentStaff.find(s => s.role === "supervisor")?.name ?? null,
+  });
 });
 
 export default router;
