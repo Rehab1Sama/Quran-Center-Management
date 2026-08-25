@@ -150,7 +150,11 @@ export default function DashboardPage() {
   // إذا لم يكن في الرابط، استخدم circleId المستخدم من الـ JWT
   const effectiveCircleId: number | null | undefined = circleId ?? ((user as any)?.circleId as number | null | undefined);
 
-  const circleParam = effectiveCircleId ? { circleId: effectiveCircleId } : {};
+  const dashboardToday = new Date().toISOString().slice(0, 10);
+  const dashboardFromDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const circleParam = effectiveCircleId
+    ? { circleId: effectiveCircleId, dateFrom: dashboardFromDate, dateTo: dashboardToday }
+    : { dateFrom: dashboardFromDate, dateTo: dashboardToday };
 
   const { data: summary } = useGetStatsSummary(circleParam as any, { query: { queryKey: ["statsSummary", effectiveCircleId] } });
   const { data: circleStats } = useGetCirclesStats(circleParam as any, { query: { queryKey: ["circlesStats", effectiveCircleId] } });
