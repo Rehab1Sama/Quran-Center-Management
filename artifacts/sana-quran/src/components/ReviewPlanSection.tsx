@@ -101,6 +101,7 @@ export interface ReviewPlan {
   quotaSurahEnd?: string;
   quotaAyahEnd?: number;
   extraRanges?: string | null;
+  reviewSourceSnapshot?: string | null;
   planMode?: string;
   totalPages?: number;
   quantity?: string;
@@ -126,6 +127,100 @@ interface SurahRange {
   ayahStart: number;
   surahEnd: string;
   ayahEnd: number;
+}
+
+interface GirlsReviewSourceSnapshot {
+  version: 1;
+  dailyRecordCount: number;
+  dailyRecordPages: number;
+  approvedMemorizationCount: number;
+  approvedMemorizationPages: number;
+  manualApprovedPages: number;
+  approvedJuzNumbers: number[];
+  recordRanges: DayQuotaRange[];
+}
+
+function getGirlsSourceSnapshot(plan: ReviewPlan): GirlsReviewSourceSnapshot | null {
+  if (!plan.reviewSourceSnapshot) return null;
+  try {
+    const parsed = JSON.parse(plan.reviewSourceSnapshot) as Partial<GirlsReviewSourceSnapshot>;
+    if (parsed.version !== 1 || !Array.isArray(parsed.recordRanges) || !Array.isArray(parsed.approvedJuzNumbers)) {
+      return null;
+    }
+    return {
+      version: 1,
+      dailyRecordCount: Number(parsed.dailyRecordCount) || 0,
+      dailyRecordPages: Number(parsed.dailyRecordPages) || 0,
+      approvedMemorizationCount: Number(parsed.approvedMemorizationCount) || 0,
+      approvedMemorizationPages: Number(parsed.approvedMemorizationPages) || 0,
+      manualApprovedPages: Number(parsed.manualApprovedPages) || 0,
+      approvedJuzNumbers: parsed.approvedJuzNumbers.filter(juz => Number.isInteger(juz) && juz >= 1 && juz <= 30),
+      recordRanges: parsed.recordRanges.filter(range =>
+        typeof range?.surahStart === "string" &&
+        typeof range?.surahEnd === "string" &&
+        typeof range?.ayahStart === "number" &&
+        typeof range?.ayahEnd === "number",
+      ),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getPlanRanges(plan: ReviewPlan): DayQuotaRange[] {
+  const sourceSnapshot = getGirlsSourceSnapshot(plan);
+  if (sourceSnapshot) {
+    return [
+      ...juzListToQuotaRanges(sourceSnapshot.approvedJuzNumbers),
+      ...sourceSnapshot.recordRanges,
+    ];
+  }
+
+  const ranges: DayQuotaRange[] = [];
+  if (plan.quotaType === "juz") {
+    if (plan.extraRanges) {
+      try {
+        const juzList = JSON.parse(plan.extraRanges) as number[];
+        if (Array.isArray(juzList) && juzList.length > 0 && typeof juzList[0] === "number") {
+          ranges.push(...juzListToQuotaRanges(juzList));
+        }
+      } catch {}
+    }
+    if (ranges.length === 0 && plan.quotaJuz && plan.quotaJuz > 0) {
+      ranges.push(...juzListToQuotaRanges(
+        Array.from({ length: Math.min(plan.quotaJuz, 30) }, (_, index) => index + 1),
+      ));
+    }
+  } else if (plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
+    ranges.push({
+      surahStart: plan.quotaSurahStart,
+      ayahStart: plan.quotaAyahStart,
+      surahEnd: plan.quotaSurahEnd,
+      ayahEnd: plan.quotaAyahEnd,
+    });
+    if (plan.extraRanges) {
+      try {
+        const extraParsed = JSON.parse(plan.extraRanges) as DayQuotaRange[];
+        if (Array.isArray(extraParsed) && extraParsed.length > 0 && typeof extraParsed[0] === "object") {
+          ranges.push(...extraParsed);
+        }
+      } catch {}
+    }
+  }
+  return ranges;
+}
+
+function getSourceSummary(plan: ReviewPlan): string | null {
+  const sourceSnapshot = getGirlsSourceSnapshot(plan);
+  if (!sourceSnapshot) return null;
+  const parts: string[] = [];
+  if (sourceSnapshot.dailyRecordCount > 0) {
+    parts.push(`${sourceSnapshot.dailyRecordCount} سجل حفظ للحلقة (${sourceSnapshot.dailyRecordPages} صفحة)`);
+  }
+  if (sourceSnapshot.approvedMemorizationCount > 0) {
+    parts.push(`${sourceSnapshot.approvedMemorizationCount} محفوظات معتمدة (${sourceSnapshot.approvedMemorizationPages} صفحة)`);
+  }
+  return parts.length > 0 ? parts.join(" + ") : "لا توجد مصادر حفظ مسجلة";
 }
 
 interface Props {
@@ -305,34 +400,12 @@ function printPlan(plan: ReviewPlan, totalDays: number, planMode: "girls" | "fix
   const dates = getDayDates(plan.startDate, totalDays, planMode);
   const currentDay = getCurrentPlanDay(plan.startDate, totalDays, planMode);
   const quotaLabel = buildQuotaLabel(plan);
+  const sourceSummary = getSourceSummary(plan);
   const endDate = dates[dates.length - 1] ?? plan.startDate;
 
-  // Build quota ranges for print — always, used as fallback for days without explicit surah data
-  const _quotaRangesPrint: DayQuotaRange[] = [];
-  if (plan.quotaType === "juz") {
-    if (plan.extraRanges) {
-      try {
-        const juzList = JSON.parse(plan.extraRanges) as number[];
-        if (Array.isArray(juzList) && juzList.length > 0 && typeof juzList[0] === "number") {
-          _quotaRangesPrint.push(...juzListToQuotaRanges(juzList));
-        }
-      } catch {}
-    }
-    if (_quotaRangesPrint.length === 0 && plan.quotaJuz && plan.quotaJuz > 0) {
-      const firstN = Array.from({ length: Math.min(plan.quotaJuz, 30) }, (_, i) => i + 1);
-      _quotaRangesPrint.push(...juzListToQuotaRanges(firstN));
-    }
-  } else if (plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
-    _quotaRangesPrint.push({ surahStart: plan.quotaSurahStart, ayahStart: plan.quotaAyahStart, surahEnd: plan.quotaSurahEnd, ayahEnd: plan.quotaAyahEnd });
-    if (plan.extraRanges) {
-      try {
-        const extraParsed = JSON.parse(plan.extraRanges) as DayQuotaRange[];
-        if (Array.isArray(extraParsed) && extraParsed.length > 0 && typeof extraParsed[0] === "object") {
-          _quotaRangesPrint.push(...extraParsed);
-        }
-      } catch {}
-    }
-  }
+  // Snapshot ranges take precedence, so printing remains faithful to the cycle
+  // even after more memorization is entered for the following renewal.
+  const _quotaRangesPrint = getPlanRanges(plan);
   const computedRanges = _quotaRangesPrint.length > 0 ? computeDayRanges(_quotaRangesPrint, plan.days) : null;
 
   const rows = plan.days.map((day, i) => {
@@ -352,7 +425,7 @@ function printPlan(plan: ReviewPlan, totalDays: number, planMode: "girls" | "fix
     return `<tr style="${style}"><td>${day.dayNumber}</td><td>${dateStr ? formatArDate(dateStr) : "—"}</td><td>${rangeStr}</td><td style="text-align:center">${day.pages ?? "—"}</td></tr>`;
   }).join("");
 
-  const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>خطة المراجعة</title><style>body{font-family:'Segoe UI',Tahoma,sans-serif;direction:rtl;padding:20px;font-size:12px;color:#333}h2{font-size:18px;margin-bottom:4px;color:#4c1d95}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0 14px}.meta-item{background:#f8f5ff;padding:8px 10px;border-radius:6px;border:1px solid #e9d5ff}.meta-label{font-size:10px;color:#7c3aed;margin-bottom:2px}.meta-value{font-weight:bold;font-size:12px}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#f5f3ff;padding:7px 8px;text-align:right;font-weight:bold;border:1px solid #e9d5ff;color:#4c1d95}td{padding:5px 8px;border:1px solid #e9e7ef;text-align:right}@media print{button{display:none}}</style></head><body><h2>خطة المراجعة</h2><p style="color:#666;margin-top:0;font-size:11px">الطالبة: ${plan.studentName ?? ""}</p><div class="meta"><div class="meta-item"><div class="meta-label">بداية الخطة</div><div class="meta-value">${formatArDate(plan.startDate)}</div></div><div class="meta-item"><div class="meta-label">نهاية الخطة</div><div class="meta-value">${formatArDate(endDate)}</div></div>${quotaLabel ? `<div class="meta-item"><div class="meta-label">النصاب</div><div class="meta-value">${quotaLabel}</div></div>` : ""}${plan.totalPages ? `<div class="meta-item"><div class="meta-label">الكمية</div><div class="meta-value">${plan.totalPages} صفحة</div></div>` : ""}</div><table><thead><tr><th>اليوم</th><th>التاريخ</th><th>النطاق</th><th>صفحات</th></tr></thead><tbody>${rows}</tbody></table><button onclick="window.print()" style="margin-top:14px;padding:8px 16px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px">طباعة</button></body></html>`;
+  const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>خطة المراجعة</title><style>body{font-family:'Segoe UI',Tahoma,sans-serif;direction:rtl;padding:20px;font-size:12px;color:#333}h2{font-size:18px;margin-bottom:4px;color:#4c1d95}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0 14px}.meta-item{background:#f8f5ff;padding:8px 10px;border-radius:6px;border:1px solid #e9d5ff}.meta-label{font-size:10px;color:#7c3aed;margin-bottom:2px}.meta-value{font-weight:bold;font-size:12px}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#f5f3ff;padding:7px 8px;text-align:right;font-weight:bold;border:1px solid #e9d5ff;color:#4c1d95}td{padding:5px 8px;border:1px solid #e9e7ef;text-align:right}@media print{button{display:none}}</style></head><body><h2>خطة المراجعة</h2><p style="color:#666;margin-top:0;font-size:11px">الطالبة: ${plan.studentName ?? ""}</p><div class="meta"><div class="meta-item"><div class="meta-label">بداية الخطة</div><div class="meta-value">${formatArDate(plan.startDate)}</div></div><div class="meta-item"><div class="meta-label">نهاية الخطة</div><div class="meta-value">${formatArDate(endDate)}</div></div>${quotaLabel ? `<div class="meta-item"><div class="meta-label">النصاب</div><div class="meta-value">${quotaLabel}</div></div>` : ""}${plan.totalPages ? `<div class="meta-item"><div class="meta-label">الكمية</div><div class="meta-value">${plan.totalPages} صفحة</div></div>` : ""}${sourceSummary ? `<div class="meta-item"><div class="meta-label">مصادر الخطة</div><div class="meta-value">${sourceSummary}</div></div>` : ""}</div><table><thead><tr><th>اليوم</th><th>التاريخ</th><th>النطاق</th><th>صفحات</th></tr></thead><tbody>${rows}</tbody></table><button onclick="window.print()" style="margin-top:14px;padding:8px 16px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px">طباعة</button></body></html>`;
 
   const w = window.open('', '_blank', 'width=800,height=700');
   if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400); }
@@ -371,40 +444,16 @@ function PlanDisplay({ plan, totalDays, planMode, canCancel, onCancel, isLocked 
   const notStarted = today < plan.startDate;
 
   const quotaLabel = buildQuotaLabel(plan);
+  const sourceSummary = getSourceSummary(plan);
 
   const totalLabel = plan.totalPages != null
     ? `${plan.totalPages} صفحة`
     : plan.quantity === "half" ? "نصف وجه/يوم" : plan.quantity === "full" ? "وجه/يوم" : "";
 
-  // Build quota ranges from plan metadata — always, used as fallback when days lack explicit surah data
-  const _quotaRanges: DayQuotaRange[] = [];
-  if (plan.quotaType === "juz") {
-    // First try extraRanges (specific juz list), then fall back to first N juz
-    if (plan.extraRanges) {
-      try {
-        const juzList = JSON.parse(plan.extraRanges) as number[];
-        if (Array.isArray(juzList) && juzList.length > 0 && typeof juzList[0] === "number") {
-          _quotaRanges.push(...juzListToQuotaRanges(juzList));
-        }
-      } catch {}
-    }
-    if (_quotaRanges.length === 0 && plan.quotaJuz && plan.quotaJuz > 0) {
-      const firstN = Array.from({ length: Math.min(plan.quotaJuz, 30) }, (_, i) => i + 1);
-      _quotaRanges.push(...juzListToQuotaRanges(firstN));
-    }
-  } else if (plan.quotaType === "surah" && plan.quotaSurahStart && plan.quotaAyahStart && plan.quotaSurahEnd && plan.quotaAyahEnd) {
-    _quotaRanges.push({ surahStart: plan.quotaSurahStart, ayahStart: plan.quotaAyahStart, surahEnd: plan.quotaSurahEnd, ayahEnd: plan.quotaAyahEnd });
-    if (plan.extraRanges) {
-      try {
-        const extraParsed = JSON.parse(plan.extraRanges) as DayQuotaRange[];
-        if (Array.isArray(extraParsed) && extraParsed.length > 0 && typeof extraParsed[0] === "object") {
-          _quotaRanges.push(...extraParsed);
-        }
-      } catch {}
-    }
-  }
-  // computedRanges is used as fallback for days that don't have explicit surah fields stored
-  const computedRanges = _quotaRanges.length > 0 ? computeDayRanges(_quotaRanges, plan.days) : null;
+  // The immutable snapshot keeps this cycle fixed while later memorization is
+  // reserved for the next renewal.
+  const planRanges = getPlanRanges(plan);
+  const computedRanges = planRanges.length > 0 ? computeDayRanges(planRanges, plan.days) : null;
 
   const [expanded, setExpanded] = useState(false);
   const shownDays = expanded ? plan.days : plan.days.slice(0, 7);
@@ -447,6 +496,13 @@ function PlanDisplay({ plan, totalDays, planMode, canCancel, onCancel, isLocked 
           <div className="bg-muted/40 rounded-xl p-2.5">
             <p className="text-[10px] text-muted-foreground mb-0.5">الكمية</p>
             <p className="font-semibold text-xs">{totalLabel}</p>
+          </div>
+        )}
+        {sourceSummary && (
+          <div className="bg-violet-50/70 border border-violet-100 rounded-xl p-2.5 col-span-2">
+            <p className="text-[10px] text-violet-700 mb-0.5">مصادر الخطة عند إنشائها</p>
+            <p className="font-semibold text-xs text-violet-950">{sourceSummary}</p>
+            <p className="text-[10px] text-violet-700/80 mt-1">الحفظ الجديد يدخل تلقائيًا في الدورة التالية.</p>
           </div>
         )}
       </div>

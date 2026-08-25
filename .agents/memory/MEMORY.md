@@ -3,7 +3,7 @@
 - [Build pipeline](build-pipeline.md) — esbuild used (not tsc); TS errors in pre-existing files don't block build but should be fixed with explicit type annotations.
 - [White-label system](white-label-system.md) — whitelabel_configs table + /api/white-label/* + /api/school-config routes; env vars pattern for Render deployments; schoolConfig.ts frontend reader.
 - [ThemeProvider dark mode](theme-dark-mode.md) — ThemeProvider.tsx was colour-only (white-label); dark mode context added via useTheme()/toggleDark(); toggle button in Layout sidebar; CSS vars under .dark in index.css; key: sana_dark in localStorage.
-- [Lib declarations build](lib-declarations.md) — api-client-react and api-zod need `npx tsc -p tsconfig.json` run inside each package after fresh install to generate dist/*.d.ts; esbuild doesn't need this but tsc type-checking does.
+- [Lib declarations build](lib-declarations.md) — shared packages, including lib/db after schema changes, need generated dist/*.d.ts before dependent tsc checks; esbuild itself does not.
 - [Auth token key](auth-token-key.md) — frontend localStorage key is sana_auth_token (lib/auth.ts TOKEN_KEY); several pages had wrong key auth_token: my-circle.tsx, my-progress.tsx, student-profile.tsx (×3 occurrences).
 - [Startup sync functions](startup-sync.md) — index.ts runs auto-repair functions at boot: seedLeader, normalizeEmails, repairMissingEnrollments, syncCircleStaff, migrateAndLinkStudentIds.
 - [Student-user direct link](student-user-link.md) — users.student_id FK added to link accounts to students; migrateAndLinkStudentIds() backfills on startup; all create/update flows now set this field.
@@ -14,3 +14,4 @@
 - [Orval and Zod compatibility](orval-zod-compatibility.md) — current OpenAPI code generation emits Zod v4 APIs, so the workspace catalog must stay on v4.
 - [Archived student records](archived-student-records.md) — archive periods hide absence and shortcomings only from student-facing endpoints; admin data remains complete.
 - [Enrollment archive restoration](enrollment-archive-restoration.md) — restoring a per-circle archive always reactivates that same enrollment; moving to another circle is a separate authorized flow.
+- [Historical memorization migration](historical-memorization-migration.md) — backfill legacy credits before eligibility queries and fail startup if schema or migration preparation fails.

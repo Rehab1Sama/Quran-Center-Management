@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { db, usersTable, studentsTable, circlesTable, studentEnrollmentsTable } from "@workspace/db";
+import { db, usersTable, studentsTable, studentMemorizationsTable, circlesTable, studentEnrollmentsTable } from "@workspace/db";
 import { eq, and, isNull, isNotNull, sql } from "drizzle-orm";
 import { hashPassword } from "./lib/auth";
 import cron from "node-cron";
@@ -44,7 +44,9 @@ async function migrateReviewPlansTable() {
       ALTER COLUMN current_cycle_start DROP NOT NULL,
       ALTER COLUMN start_date DROP NOT NULL`,
     `ALTER TABLE review_plans DROP CONSTRAINT IF EXISTS review_plans_student_id_key`,
-    `ALTER TABLE review_plans ADD COLUMN IF NOT EXISTS extra_ranges text`,
+    `ALTER TABLE review_plans
+      ADD COLUMN IF NOT EXISTS extra_ranges text,
+      ADD COLUMN IF NOT EXISTS review_source_snapshot text`,
   ];
   let ok = 0;
   for (const step of steps) {
@@ -103,6 +105,109 @@ async function migrateRecordsUniqueConstraint() {
   } catch (err: any) {
     const errMsg = String(err?.message ?? err ?? "").slice(0, 300);
     logger.warn("records unique constraint migration skipped: " + errMsg);
+  }
+}
+
+const historicalJuzCumulative = [
+  21, 41, 61, 81.5, 101, 120.5, 141, 161, 181, 200.5,
+  221, 241, 261, 281, 301, 321, 341, 361, 381, 401,
+  421, 441, 461, 481, 501.5, 521, 541, 561, 581, 603.5,
+];
+
+function legacyJuzNumbers(value: string): number[] {
+  const normalized = value.replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)));
+  const match = normalized.match(/أجزاء?\s*:\s*([0-9\s،,]+)/);
+  if (!match) return [];
+  return [...new Set((match[1].match(/\d+/g) ?? []).map(Number).filter(number => number >= 1 && number <= 30))]
+    .sort((left, right) => left - right);
+}
+
+function legacyJuzCredit(juzNumbers: number[]): number {
+  return Math.round(juzNumbers.reduce((total, juz) => {
+    const end = historicalJuzCumulative[juz - 1];
+    const start = juz === 1 ? 0 : historicalJuzCumulative[juz - 2];
+    return total + end - start;
+  }, 0) * 2) / 2;
+}
+
+async function migrateStudentMemorizations() {
+  try {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS student_memorizations (
+        id SERIAL PRIMARY KEY,
+        student_id INTEGER NOT NULL,
+        label TEXT NOT NULL,
+        juz_numbers TEXT,
+        pages REAL NOT NULL DEFAULT 0,
+        created_by_id INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS student_memorizations_student_id_idx
+        ON student_memorizations (student_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS student_memorizations_legacy_per_student_idx
+        ON student_memorizations (student_id) WHERE created_by_id IS NULL;
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'student_memorizations_student_id_fk'
+        ) THEN
+          ALTER TABLE student_memorizations
+            ADD CONSTRAINT student_memorizations_student_id_fk
+            FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'student_memorizations_pages_range'
+        ) THEN
+          ALTER TABLE student_memorizations
+            ADD CONSTRAINT student_memorizations_pages_range
+            CHECK (pages >= 0 AND pages <= 604);
+        END IF;
+      END $$;
+    `));
+
+    const candidates = await db.select({
+      id: studentsTable.id,
+      extraData: studentsTable.extraData,
+    }).from(studentsTable).where(sql`
+      ${studentsTable.extraData} LIKE '%المحفوظات%'
+      AND ${studentsTable.extraData} NOT LIKE '%__memorizationMigrated%'
+    `);
+    let imported = 0;
+    for (let offset = 0; offset < candidates.length; offset += 30) {
+      const batch = candidates.slice(offset, offset + 30);
+      const results = await Promise.all(batch.map(async student => {
+      let extra: Record<string, unknown>;
+      try {
+        const value = student.extraData ? JSON.parse(student.extraData) : {};
+        extra = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+      } catch {
+        return false;
+      }
+      if (extra.__memorizationMigrated === true) return false;
+      const legacy = typeof extra["المحفوظات"] === "string" ? extra["المحفوظات"].trim() : "";
+      if (!legacy) return false;
+      const juzNumbers = legacyJuzNumbers(legacy);
+      await db.insert(studentMemorizationsTable).values({
+        studentId: student.id,
+        label: legacy,
+        juzNumbers: juzNumbers.length ? JSON.stringify(juzNumbers) : null,
+        pages: juzNumbers.length ? legacyJuzCredit(juzNumbers) : 0,
+      }).onConflictDoNothing();
+      extra.__memorizationMigrated = true;
+      await db.update(studentsTable)
+        .set({ extraData: JSON.stringify(extra) })
+        .where(eq(studentsTable.id, student.id));
+      return true;
+      }));
+      imported += results.filter(Boolean).length;
+    }
+    logger.info({ imported }, "student_memorizations migration complete");
+  } catch (err: any) {
+    logger.error({ msg: err?.message?.slice(0, 200) }, "student_memorizations migration failed");
+    throw err;
   }
 }
 
@@ -654,7 +759,9 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
+// review_plans must be migrated before accepting requests because girls-plan
+// reads include the immutable source snapshot column.
+void Promise.all([migrateStudentMemorizations(), migrateReviewPlansTable()]).then(() => app.listen(port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
@@ -663,7 +770,6 @@ app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
   // دوال المخطط والإعدادات — مستقلة، تشتغل معاً
   void migrateGlobalSettings();
-  void migrateReviewPlansTable();
   void migrateExamRotationsScope();
   void migrateRecordsUniqueConstraint();
   void normalizeEmails();
@@ -689,4 +795,7 @@ app.listen(port, (err) => {
       .catch((e: unknown) => logger.error({ err: e }, "Weekly backup failed"));
   }, { timezone: "Asia/Riyadh" });
   logger.info("Weekly backup cron scheduled (Sundays 2:00 AM Riyadh time)");
+})).catch(err => {
+  logger.fatal({ err }, "Cannot start without student_memorizations migration");
+  process.exit(1);
 });

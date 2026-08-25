@@ -21,6 +21,10 @@ export const reviewPlansTable = pgTable("review_plans", {
   quantity: text("quantity"), // 'full' | 'half' (fixation only)
 
   extraRanges: text("extra_ranges"),
+  // Immutable description of the memorization sources included when a girls
+  // review cycle was created. This keeps an active cycle stable while later
+  // daily records are reserved for its renewal.
+  reviewSourceSnapshot: text("review_source_snapshot"),
 
   startDate: text("start_date").notNull(),
   themeColor: text("theme_color").notNull().default("#E8D5F5"),

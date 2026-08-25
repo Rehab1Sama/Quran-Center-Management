@@ -8,6 +8,7 @@ import {
   usersTable,
   globalSettingsTable,
   recordsTable,
+  studentMemorizationsTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray, isNotNull, gte, lte, sql } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
@@ -80,6 +81,123 @@ function distribute(total: number, parts: number): number[] {
     arr.push(Math.round(val * 2) / 2);
   }
   return arr;
+}
+
+type GirlsReviewSourceSnapshot = {
+  version: 1;
+  dailyRecordCount: number;
+  dailyRecordPages: number;
+  approvedMemorizationCount: number;
+  approvedMemorizationPages: number;
+  manualApprovedPages: number;
+  approvedJuzNumbers: number[];
+  recordRanges: Array<{
+    surahStart: string;
+    ayahStart: number;
+    surahEnd: string;
+    ayahEnd: number;
+  }>;
+};
+
+type DailyMemorizationRow = {
+  memorizePages: number | null;
+  memorizeSurahStart: string | null;
+  memorizeAyahStart: number | null;
+  memorizeSurahEnd: string | null;
+  memorizeAyahEnd: number | null;
+  date: string;
+};
+
+type ApprovedMemorizationRow = {
+  pages: number | null;
+  juzNumbers: string | null;
+};
+
+function parseJuzNumbers(value: string | null): number[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((juz): juz is number => Number.isInteger(juz) && juz >= 1 && juz <= 30);
+  } catch {
+    return [];
+  }
+}
+
+function snapshotTotalPages(snapshot: GirlsReviewSourceSnapshot): number {
+  return Math.round((snapshot.dailyRecordPages + snapshot.approvedMemorizationPages) * 2) / 2;
+}
+
+// A girls review plan is a snapshot: daily memorization belongs to one circle,
+// whereas approved historical memorization belongs to the student and is shared
+// by every one of her girls-circle plans.
+async function buildGirlsReviewSourceSnapshot(
+  queryDb: any,
+  studentId: number,
+  circleId: number,
+  throughDate: string,
+): Promise<GirlsReviewSourceSnapshot> {
+  const records: DailyMemorizationRow[] = await queryDb.select({
+    memorizePages: recordsTable.memorizePages,
+    memorizeSurahStart: recordsTable.memorizeSurahStart,
+    memorizeAyahStart: recordsTable.memorizeAyahStart,
+    memorizeSurahEnd: recordsTable.memorizeSurahEnd,
+    memorizeAyahEnd: recordsTable.memorizeAyahEnd,
+    date: recordsTable.date,
+  })
+    .from(recordsTable)
+    .where(and(
+      eq(recordsTable.studentId, studentId),
+      eq(recordsTable.circleId, circleId),
+      eq(recordsTable.isAbsent, false),
+      lte(recordsTable.date, throughDate),
+      isNotNull(recordsTable.memorizePages),
+    ))
+    .orderBy(recordsTable.date);
+
+  const dailyRows = records.filter(record => (record.memorizePages ?? 0) > 0);
+  const recordRanges: GirlsReviewSourceSnapshot["recordRanges"] = dailyRows.flatMap(record => (
+    record.memorizeSurahStart && record.memorizeAyahStart &&
+    record.memorizeSurahEnd && record.memorizeAyahEnd
+      ? [{
+          surahStart: record.memorizeSurahStart,
+          ayahStart: record.memorizeAyahStart,
+          surahEnd: record.memorizeSurahEnd,
+          ayahEnd: record.memorizeAyahEnd,
+        }]
+      : []
+  ));
+
+  const memorizationRows: ApprovedMemorizationRow[] = await queryDb.select({
+    pages: studentMemorizationsTable.pages,
+    juzNumbers: studentMemorizationsTable.juzNumbers,
+  })
+    .from(studentMemorizationsTable)
+    .where(eq(studentMemorizationsTable.studentId, studentId));
+
+  const approvedJuzNumbers: number[] = [...new Set<number>(memorizationRows
+    .flatMap(row => parseJuzNumbers(row.juzNumbers)))].sort((a, b) => a - b);
+  const approvedMemorizationPages = memorizationRows.reduce((total, row) => total + (row.pages ?? 0), 0);
+  const juzPages = memorizationRows
+    .filter(row => parseJuzNumbers(row.juzNumbers).length > 0)
+    .reduce((total, row) => total + (row.pages ?? 0), 0);
+
+  return {
+    version: 1,
+    dailyRecordCount: dailyRows.length,
+    dailyRecordPages: dailyRows.reduce((total, row) => total + (row.memorizePages ?? 0), 0),
+    approvedMemorizationCount: memorizationRows.length,
+    approvedMemorizationPages,
+    manualApprovedPages: Math.max(0, approvedMemorizationPages - juzPages),
+    approvedJuzNumbers,
+    recordRanges,
+  };
+}
+
+function dayBefore(isoDate: string): string {
+  const date = new Date(`${isoDate}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
 }
 
 async function upsertSetting(key: string, value: string): Promise<void> {
@@ -173,34 +291,18 @@ async function autoRenewGirlsPlan(
       .limit(1);
     if (!stillActive) return null;
 
-    // Collect new memorization during old plan period (respecting a forced/scheduled
-    // cycle-end date if it shortened this plan's cycle, so days after the forced
-    // cutoff aren't counted toward the previous cycle's carry-over quota).
-    const oldEndDate = overrideEndDate ?? await getEffectiveEndDate(oldPlan);
-    const memRows = await tx.select({ memorizePages: recordsTable.memorizePages })
-      .from(recordsTable)
-      .where(and(
-        eq(recordsTable.studentId, studentId),
-        gte(recordsTable.date, oldPlan.startDate),
-        lte(recordsTable.date, oldEndDate),
-        isNotNull(recordsTable.memorizePages)
-      ));
-
-    const newMemPages = memRows.reduce((s, r) => s + (r.memorizePages ?? 0), 0);
-
-    // Compute new quota
-    let newQuotaJuz = oldPlan.quotaJuz;
-    let newTotalPages = oldPlan.totalPages;
-
-    if (oldPlan.quotaType === "juz" && oldPlan.quotaJuz) {
-      const extraJuz = Math.floor(newMemPages / 20);
-      newQuotaJuz = Math.min(30, oldPlan.quotaJuz + extraJuz);
-      newTotalPages = newQuotaJuz * 20;
-    } else if (newTotalPages) {
-      newTotalPages = newTotalPages + newMemPages;
-    }
-
-    const total = newTotalPages ?? (newQuotaJuz ?? 0) * 20;
+    // Every new cycle takes a fresh, immutable snapshot. It deliberately reads
+    // the full record history for this circle (including archived semesters) and
+    // all approved memorization for the student. Records written during the
+    // current cycle are only picked up here, not added to the active plan.
+    const throughDate = overrideEndDate ?? dayBefore(newCycleStart);
+    const sourceSnapshot = await buildGirlsReviewSourceSnapshot(
+      tx, studentId, circleId, throughDate,
+    );
+    const total = snapshotTotalPages(sourceSnapshot);
+    const hasRecordedSources = total > 0;
+    const fallbackTotal = oldPlan.totalPages ?? (oldPlan.quotaJuz ?? 0) * 20;
+    const effectiveTotal = hasRecordedSources ? total : fallbackTotal;
 
     // Archive old plan
     await tx.update(reviewPlansTable)
@@ -213,22 +315,25 @@ async function autoRenewGirlsPlan(
       circleId,
       planType: "girls_review",
       status: "active",
-      quotaType: oldPlan.quotaType,
-      quotaJuz: newQuotaJuz ?? null,
-      quotaSurahStart: oldPlan.quotaSurahStart ?? null,
-      quotaAyahStart: oldPlan.quotaAyahStart ?? null,
-      quotaSurahEnd: oldPlan.quotaSurahEnd ?? null,
-      quotaAyahEnd: oldPlan.quotaAyahEnd ?? null,
-      extraRanges: oldPlan.extraRanges ?? null,
+      // Preserve legacy user-entered quota only when there are no recorded
+      // memorization sources yet. Once sources exist, they are the plan's quota.
+      quotaType: hasRecordedSources ? null : oldPlan.quotaType,
+      quotaJuz: hasRecordedSources ? null : oldPlan.quotaJuz,
+      quotaSurahStart: hasRecordedSources ? null : oldPlan.quotaSurahStart ?? null,
+      quotaAyahStart: hasRecordedSources ? null : oldPlan.quotaAyahStart ?? null,
+      quotaSurahEnd: hasRecordedSources ? null : oldPlan.quotaSurahEnd ?? null,
+      quotaAyahEnd: hasRecordedSources ? null : oldPlan.quotaAyahEnd ?? null,
+      extraRanges: hasRecordedSources ? null : oldPlan.extraRanges ?? null,
+      reviewSourceSnapshot: hasRecordedSources ? JSON.stringify(sourceSnapshot) : null,
       planMode: "auto",
-      totalPages: total || null,
+      totalPages: effectiveTotal || null,
       startDate: newCycleStart,
       themeColor: oldPlan.themeColor,
     }).returning();
 
     let savedDays: typeof reviewPlanDaysTable.$inferSelect[] = [];
-    if (total > 0) {
-      const dist = distribute(total, 21);
+    if (effectiveTotal > 0) {
+      const dist = distribute(effectiveTotal, 21);
       const inserted = await tx.insert(reviewPlanDaysTable).values(
         dist.map((pages, i) => ({ planId: newPlan.id, dayNumber: i + 1, pages }))
       ).returning();
@@ -556,6 +661,18 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       startDate = req.body?.startDate ?? getTodayMecca();
     }
 
+    // A manually initiated girls plan uses the same immutable source snapshot as
+    // an automatic renewal. If no memorization has been recorded yet, retain the
+    // existing wizard-driven plan behavior.
+    const sourceSnapshot = planType === "girls_review"
+      ? await buildGirlsReviewSourceSnapshot(db, studentId, circleId, getTodayMecca())
+      : null;
+    const sourceTotal = sourceSnapshot ? snapshotTotalPages(sourceSnapshot) : 0;
+    const hasRecordedSources = sourceTotal > 0;
+    const sourceDays = hasRecordedSources
+      ? distribute(sourceTotal, 21).map((pages, index) => ({ dayNumber: index + 1, pages }))
+      : days;
+
     // Cancel any previous active plan
     await db.update(reviewPlansTable)
       .set({ status: "cancelled" })
@@ -570,23 +687,24 @@ router.post("/students/:id/review-plan", authenticate, async (req, res): Promise
       circleId,
       planType,
       status: "active",
-      quotaType: quotaType ?? null,
-      quotaJuz: quotaJuz ?? null,
-      quotaSurahStart: quotaSurahStart ?? null,
-      quotaAyahStart: quotaAyahStart ?? null,
-      quotaSurahEnd: quotaSurahEnd ?? null,
-      quotaAyahEnd: quotaAyahEnd ?? null,
-      extraRanges: extraRanges ?? null,
-      planMode: planMode ?? null,
-      totalPages: totalPages ?? null,
+      quotaType: hasRecordedSources ? null : quotaType ?? null,
+      quotaJuz: hasRecordedSources ? null : quotaJuz ?? null,
+      quotaSurahStart: hasRecordedSources ? null : quotaSurahStart ?? null,
+      quotaAyahStart: hasRecordedSources ? null : quotaAyahStart ?? null,
+      quotaSurahEnd: hasRecordedSources ? null : quotaSurahEnd ?? null,
+      quotaAyahEnd: hasRecordedSources ? null : quotaAyahEnd ?? null,
+      extraRanges: hasRecordedSources ? null : extraRanges ?? null,
+      reviewSourceSnapshot: hasRecordedSources ? JSON.stringify(sourceSnapshot) : null,
+      planMode: hasRecordedSources ? "auto" : planMode ?? null,
+      totalPages: hasRecordedSources ? sourceTotal : totalPages ?? null,
       quantity: quantity ?? null,
       startDate,
       themeColor: themeColor ?? "#E8D5F5",
     }).returning();
 
-    if (days.length > 0) {
+    if (sourceDays.length > 0) {
       await db.insert(reviewPlanDaysTable).values(
-        days.map((d: any) => ({
+        sourceDays.map((d: any) => ({
           planId: plan.id,
           dayNumber: d.dayNumber,
           surahStart: d.surahStart ?? null,
