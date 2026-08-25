@@ -1,10 +1,34 @@
 import { Router, type IRouter } from "express";
 import { db, recordsTable, studentsTable, circlesTable, usersTable, teacherAbsencesTable, tracksTable, dailyCircleTasksTable, examRecordsTable } from "@workspace/db";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { getMakkahDay, getMakkahDaysAgo, getMakkahWeekStart, getMakkahLastWeekStart, getMakkahLastWeekEnd } from "../lib/date";
 
 const router: IRouter = Router();
+
+type StatsStudent = {
+  id: number;
+  fullName: string;
+  circleId: number | null;
+  ageRange: string | null;
+  isArchived: boolean;
+};
+
+// استخدم الأعمدة التي تحتاجها الإحصائيات فقط. هذا يمنع تعطل الإحصائيات
+// إذا كان مخطط Supabase يحتوي على أعمدة إضافية أو ترحيلًا جاريًا.
+async function loadStatsStudents(): Promise<StatsStudent[]> {
+  const result = await db.execute(sql`
+    SELECT id, full_name, circle_id, age_range, is_archived
+    FROM students
+  `);
+  return (result as any).rows.map((row: any) => ({
+    id: Number(row.id),
+    fullName: row.full_name,
+    circleId: row.circle_id === null ? null : Number(row.circle_id),
+    ageRange: row.age_range ?? null,
+    isArchived: row.is_archived === true,
+  }));
+}
 
 function getDateRange(dateFrom?: string, dateTo?: string): { from: string; to: string; label: string } {
   const today = getMakkahDay();
@@ -27,7 +51,7 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
   const circles = await db.select().from(circlesTable);
   const allTracks = await db.select().from(tracksTable);
   const registrationCircleIds = new Set(circles.filter(c => c.trackType === "registration").map(c => c.id));
-  const allStudents = (await db.select().from(studentsTable))
+  const allStudents = (await loadStatsStudents())
     .filter(s => s.isArchived !== true)
     .filter(s => !s.circleId || !registrationCircleIds.has(s.circleId));
   const allUsers = (await db.select().from(usersTable)).filter(u => u.isArchived !== true);
@@ -227,7 +251,7 @@ router.get("/stats/circles", authenticate, async (req, res): Promise<void> => {
 
   let circles = await db.select().from(circlesTable);
   const allTracksCircles = await db.select().from(tracksTable);
-  const students = (await db.select().from(studentsTable)).filter(s => s.isArchived !== true);
+  const students = (await loadStatsStudents()).filter(s => s.isArchived !== true);
   const allUsers = (await db.select().from(usersTable)).filter(u => u.isArchived !== true);
 
   if (userRole === "track_supervisor" || userRole === "data_entry") {
