@@ -297,6 +297,158 @@ export interface UpdateStudentBody {
   isArchived?: boolean;
 }
 
+export type CertificateTermStatus = typeof CertificateTermStatus[keyof typeof CertificateTermStatus];
+
+
+export const CertificateTermStatus = {
+  draft: 'draft',
+  published: 'published',
+} as const;
+
+export interface CertificateTerm {
+  id: number;
+  name: string;
+  /** @nullable */
+  academicYear?: string | null;
+  startDate: string;
+  endDate: string;
+  /** @nullable */
+  reviewCycleOneStart?: string | null;
+  /** @nullable */
+  reviewCycleTwoStart?: string | null;
+  status: CertificateTermStatus;
+  /** @nullable */
+  publishedAt?: string | null;
+  createdAt: string;
+}
+
+export interface CreateCertificateTermBody {
+  name: string;
+  /** @nullable */
+  academicYear?: string | null;
+  startDate: string;
+  endDate: string;
+  /** @nullable */
+  reviewCycleOneStart?: string | null;
+  /** @nullable */
+  reviewCycleTwoStart?: string | null;
+}
+
+export interface UpdateCertificateTermBody {
+  name?: string;
+  /** @nullable */
+  academicYear?: string | null;
+  startDate?: string;
+  endDate?: string;
+  /** @nullable */
+  reviewCycleOneStart?: string | null;
+  /** @nullable */
+  reviewCycleTwoStart?: string | null;
+}
+
+export interface CertificateScoreBreakdown {
+  test: number;
+  testMax: number;
+  attendance: number;
+  attendanceMax: number;
+  shortcomings: number;
+  shortcomingsMax: number;
+  reviewPlan: number;
+  reviewPlanMax: number;
+}
+
+export type CertificateStudentResultStatus = typeof CertificateStudentResultStatus[keyof typeof CertificateStudentResultStatus];
+
+
+export const CertificateStudentResultStatus = {
+  ready: 'ready',
+  missing_exam: 'missing_exam',
+  ambiguous_import: 'ambiguous_import',
+} as const;
+
+export interface CertificateStudentResult {
+  studentId: number;
+  studentName: string;
+  /** @nullable */
+  circleId?: number | null;
+  /** @nullable */
+  circleName?: string | null;
+  /** @nullable */
+  trackId?: number | null;
+  /** @nullable */
+  trackName?: string | null;
+  trackType: string;
+  /** @nullable */
+  testScore?: number | null;
+  testMax: number;
+  /** @nullable */
+  priorNisab?: number | null;
+  /** @nullable */
+  currentNisab?: number | null;
+  /** @nullable */
+  cumulativeNisab?: number | null;
+  attendanceDays: number;
+  eligibleAttendanceDays: number;
+  shortcomingDays: number;
+  eligibleShortcomingDays: number;
+  reviewUnitsCompleted: number;
+  reviewUnitsPlanned: number;
+  totalScore: number;
+  breakdown: CertificateScoreBreakdown;
+  status: CertificateStudentResultStatus;
+}
+
+export interface CertificateGradeInput {
+  studentId: number;
+  score: number;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface SaveCertificateGradesBody {
+  /** @minItems 1 */
+  grades: CertificateGradeInput[];
+}
+
+export type CertificateImportCandidateConfidence = typeof CertificateImportCandidateConfidence[keyof typeof CertificateImportCandidateConfidence];
+
+
+export const CertificateImportCandidateConfidence = {
+  exact: 'exact',
+  likely: 'likely',
+  ambiguous: 'ambiguous',
+  unmatched: 'unmatched',
+} as const;
+
+export interface CertificateImportCandidate {
+  id: number;
+  sourceName: string;
+  /** @nullable */
+  sourceTrack?: string | null;
+  /** @nullable */
+  sourcePhone?: string | null;
+  /** @nullable */
+  importedScore?: number | null;
+  /** @nullable */
+  matchedStudentId?: number | null;
+  /** @nullable */
+  matchedStudentName?: string | null;
+  confidence: CertificateImportCandidateConfidence;
+  resolved: boolean;
+}
+
+export interface ResolveCertificateImportCandidateInput {
+  id: number;
+  /** @nullable */
+  studentId?: number | null;
+  accept: boolean;
+}
+
+export interface ResolveCertificateImportCandidatesBody {
+  /** @minItems 1 */
+  candidates: ResolveCertificateImportCandidateInput[];
+}
+
 export interface ShortcomingItem {
   recordId: number;
   studentId: number;
@@ -1317,6 +1469,12 @@ q?: string;
 export type ArchiveStudentBody = {
   /** If provided, archives only this enrollment. If omitted, archives globally (leader only). */
   circleId?: number;
+  /** Withdrawal period or deletion status shown on the withdrawal card. */
+  withdrawalPeriod?: string;
+  /** Reason for withdrawal or deletion. */
+  withdrawalReason?: string;
+  /** Optional notes on the withdrawal card. */
+  withdrawalNotes?: string | null;
 };
 
 export type EnrollStudentBody = {
@@ -1406,4 +1564,19 @@ date: string;
 export type BatchSendMessages201 = {
   count: number;
 };
+
+export type ListCertificateStudentResultsParams = {
+trackId?: number;
+status?: ListCertificateStudentResultsStatus;
+};
+
+export type ListCertificateStudentResultsStatus = typeof ListCertificateStudentResultsStatus[keyof typeof ListCertificateStudentResultsStatus];
+
+
+export const ListCertificateStudentResultsStatus = {
+  all: 'all',
+  ready: 'ready',
+  missing_exam: 'missing_exam',
+  ambiguous_import: 'ambiguous_import',
+} as const;
 
