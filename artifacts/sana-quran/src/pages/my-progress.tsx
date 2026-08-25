@@ -118,8 +118,10 @@ export default function MyProgressPage() {
   const circleChoices = ((user as any)?.circles ?? []).filter((c: any) => c?.id);
   const myTrackType: string = (user as any)?.circleTrackType ?? (myCircle as any)?.trackType ?? "";
   const circleMembers = (allStudents as any[]).filter((s: any) => s.circleId === circleId && s.fullName !== user?.name);
-  const circleTeacher = (allUsers as any[]).find((u: any) => u.role === "teacher" && u.circleId === circleId);
-  const circleSupervisor = (allUsers as any[]).find((u: any) => u.role === "supervisor" && u.circleId === circleId);
+  const circleTeacher = (allUsers as any[]).find((u: any) => u.role === "teacher" && u.circleId === circleId)
+    ?? ((user as any)?.circleTeacherName ? { name: (user as any).circleTeacherName } : null);
+  const circleSupervisor = (allUsers as any[]).find((u: any) => u.role === "supervisor" && u.circleId === circleId)
+    ?? ((user as any)?.circleSupervisorName ? { name: (user as any).circleSupervisorName } : null);
   const circleBadges = (allBadgeAssignments as any[]).filter((a: any) => a.entityType === "circle" && a.entityId === circleId);
   const myBadges = (allBadgeAssignments as any[]).filter((a: any) => a.entityType === "student" && a.entityId === user?.id);
   const circleMessages = (myMessages as any[]).filter((m: any) => m.targetType === "circle");
@@ -401,13 +403,13 @@ export default function MyProgressPage() {
           )}
 
           {/* Shortcomings (التقصير) */}
-          {archivedRecords.length > 0 && (
+          {user?.role === "student" && (
             <Card className="border-0 shadow-sm">
               <button className="w-full p-4 flex items-center justify-between text-right" onClick={() => setArchiveOpen(v => !v)}>
-                <span className="font-bold">الفصل الأول</span>
+                <span className="font-bold">السجلات التسميع السابقة</span>
                 <span className="text-xs text-muted-foreground">{archiveOpen ? "إخفاء السجلات المؤرشفة" : "السجلات مؤرشفة"}</span>
               </button>
-              {archiveOpen && <CardContent className="pt-0 text-xs text-muted-foreground">تمت أرشفة جلسات الفصل الأول، ولا تظهر تفاصيل الغياب أو التقصير أو سجل المحفوظ في الحساب العام.</CardContent>}
+              {archiveOpen && <CardContent className="pt-0 text-xs text-muted-foreground">تمت أرشفة سجلات التسميع السابقة. تبقى محفوظة لدى الإدارة، ولا تظهر تفاصيل الغياب أو التقصير أو سجل المحفوظ في حساب الطالبة.</CardContent>}
             </Card>
           )}
 
