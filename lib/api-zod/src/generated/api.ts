@@ -1159,7 +1159,10 @@ export const ArchiveStudentParams = zod.object({
 })
 
 export const ArchiveStudentBody = zod.object({
-  "circleId": zod.number().optional().describe('If provided, archives only this enrollment. If omitted, archives globally (leader only).')
+  "circleId": zod.number().optional().describe('If provided, archives only this enrollment. If omitted, archives globally (leader only).'),
+  "withdrawalPeriod": zod.string().optional().describe('Withdrawal period or deletion status shown on the withdrawal card.'),
+  "withdrawalReason": zod.string().optional().describe('Reason for withdrawal or deletion.'),
+  "withdrawalNotes": zod.string().nullish().describe('Optional notes on the withdrawal card.')
 })
 
 export const ArchiveStudentResponse = zod.object({
@@ -2093,5 +2096,281 @@ export const GetMyMessagesResponse = zod.array(GetMyMessagesResponseItem)
 export const DeleteMessageParams = zod.object({
   "id": zod.coerce.number()
 })
+
+
+/**
+ * @summary List certificate terms visible to the current user
+ */
+export const ListCertificateTermsResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "academicYear": zod.string().nullish(),
+  "startDate": zod.string(),
+  "endDate": zod.string(),
+  "reviewCycleOneStart": zod.string().nullish(),
+  "reviewCycleTwoStart": zod.string().nullish(),
+  "status": zod.enum(['draft', 'published']),
+  "publishedAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const ListCertificateTermsResponse = zod.array(ListCertificateTermsResponseItem)
+
+
+/**
+ * @summary Create a certificate term (leader or deputy)
+ */
+export const CreateCertificateTermBody = zod.object({
+  "name": zod.string(),
+  "academicYear": zod.string().nullish(),
+  "startDate": zod.string(),
+  "endDate": zod.string(),
+  "reviewCycleOneStart": zod.string().nullish(),
+  "reviewCycleTwoStart": zod.string().nullish()
+})
+
+
+/**
+ * @summary Update a draft certificate term
+ */
+export const UpdateCertificateTermParams = zod.object({
+  "termId": zod.coerce.number()
+})
+
+export const UpdateCertificateTermBody = zod.object({
+  "name": zod.string().optional(),
+  "academicYear": zod.string().nullish(),
+  "startDate": zod.string().optional(),
+  "endDate": zod.string().optional(),
+  "reviewCycleOneStart": zod.string().nullish(),
+  "reviewCycleTwoStart": zod.string().nullish()
+})
+
+export const UpdateCertificateTermResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "academicYear": zod.string().nullish(),
+  "startDate": zod.string(),
+  "endDate": zod.string(),
+  "reviewCycleOneStart": zod.string().nullish(),
+  "reviewCycleTwoStart": zod.string().nullish(),
+  "status": zod.enum(['draft', 'published']),
+  "publishedAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary List calculated student results for a term
+ */
+export const ListCertificateStudentResultsParams = zod.object({
+  "termId": zod.coerce.number()
+})
+
+export const ListCertificateStudentResultsQueryParams = zod.object({
+  "trackId": zod.coerce.number().optional(),
+  "status": zod.enum(['all', 'ready', 'missing_exam', 'ambiguous_import']).optional()
+})
+
+export const ListCertificateStudentResultsResponseItem = zod.object({
+  "studentId": zod.number(),
+  "studentName": zod.string(),
+  "circleId": zod.number().nullish(),
+  "circleName": zod.string().nullish(),
+  "trackId": zod.number().nullish(),
+  "trackName": zod.string().nullish(),
+  "trackType": zod.string(),
+  "testScore": zod.number().nullish(),
+  "testMax": zod.number(),
+  "priorNisab": zod.number().nullish(),
+  "currentNisab": zod.number().nullish(),
+  "cumulativeNisab": zod.number().nullish(),
+  "attendanceDays": zod.number(),
+  "eligibleAttendanceDays": zod.number(),
+  "shortcomingDays": zod.number(),
+  "eligibleShortcomingDays": zod.number(),
+  "reviewUnitsCompleted": zod.number(),
+  "reviewUnitsPlanned": zod.number(),
+  "totalScore": zod.number(),
+  "breakdown": zod.object({
+  "test": zod.number(),
+  "testMax": zod.number(),
+  "attendance": zod.number(),
+  "attendanceMax": zod.number(),
+  "shortcomings": zod.number(),
+  "shortcomingsMax": zod.number(),
+  "reviewPlan": zod.number(),
+  "reviewPlanMax": zod.number()
+}),
+  "status": zod.enum(['ready', 'missing_exam', 'ambiguous_import'])
+})
+export const ListCertificateStudentResultsResponse = zod.array(ListCertificateStudentResultsResponseItem)
+
+
+/**
+ * @summary Save term test grades for students in an authorized track
+ */
+export const SaveCertificateGradesParams = zod.object({
+  "termId": zod.coerce.number()
+})
+
+
+
+
+export const SaveCertificateGradesBody = zod.object({
+  "grades": zod.array(zod.object({
+  "studentId": zod.number(),
+  "score": zod.number(),
+  "notes": zod.string().nullish()
+})).min(1)
+})
+
+export const SaveCertificateGradesResponseItem = zod.object({
+  "studentId": zod.number(),
+  "studentName": zod.string(),
+  "circleId": zod.number().nullish(),
+  "circleName": zod.string().nullish(),
+  "trackId": zod.number().nullish(),
+  "trackName": zod.string().nullish(),
+  "trackType": zod.string(),
+  "testScore": zod.number().nullish(),
+  "testMax": zod.number(),
+  "priorNisab": zod.number().nullish(),
+  "currentNisab": zod.number().nullish(),
+  "cumulativeNisab": zod.number().nullish(),
+  "attendanceDays": zod.number(),
+  "eligibleAttendanceDays": zod.number(),
+  "shortcomingDays": zod.number(),
+  "eligibleShortcomingDays": zod.number(),
+  "reviewUnitsCompleted": zod.number(),
+  "reviewUnitsPlanned": zod.number(),
+  "totalScore": zod.number(),
+  "breakdown": zod.object({
+  "test": zod.number(),
+  "testMax": zod.number(),
+  "attendance": zod.number(),
+  "attendanceMax": zod.number(),
+  "shortcomings": zod.number(),
+  "shortcomingsMax": zod.number(),
+  "reviewPlan": zod.number(),
+  "reviewPlanMax": zod.number()
+}),
+  "status": zod.enum(['ready', 'missing_exam', 'ambiguous_import'])
+})
+export const SaveCertificateGradesResponse = zod.array(SaveCertificateGradesResponseItem)
+
+
+/**
+ * @summary Publish the final results for a term
+ */
+export const PublishCertificateTermParams = zod.object({
+  "termId": zod.coerce.number()
+})
+
+export const PublishCertificateTermResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "academicYear": zod.string().nullish(),
+  "startDate": zod.string(),
+  "endDate": zod.string(),
+  "reviewCycleOneStart": zod.string().nullish(),
+  "reviewCycleTwoStart": zod.string().nullish(),
+  "status": zod.enum(['draft', 'published']),
+  "publishedAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Get the authenticated student's published result
+ */
+export const GetMyCertificateResultParams = zod.object({
+  "termId": zod.coerce.number()
+})
+
+export const GetMyCertificateResultResponse = zod.object({
+  "studentId": zod.number(),
+  "studentName": zod.string(),
+  "circleId": zod.number().nullish(),
+  "circleName": zod.string().nullish(),
+  "trackId": zod.number().nullish(),
+  "trackName": zod.string().nullish(),
+  "trackType": zod.string(),
+  "testScore": zod.number().nullish(),
+  "testMax": zod.number(),
+  "priorNisab": zod.number().nullish(),
+  "currentNisab": zod.number().nullish(),
+  "cumulativeNisab": zod.number().nullish(),
+  "attendanceDays": zod.number(),
+  "eligibleAttendanceDays": zod.number(),
+  "shortcomingDays": zod.number(),
+  "eligibleShortcomingDays": zod.number(),
+  "reviewUnitsCompleted": zod.number(),
+  "reviewUnitsPlanned": zod.number(),
+  "totalScore": zod.number(),
+  "breakdown": zod.object({
+  "test": zod.number(),
+  "testMax": zod.number(),
+  "attendance": zod.number(),
+  "attendanceMax": zod.number(),
+  "shortcomings": zod.number(),
+  "shortcomingsMax": zod.number(),
+  "reviewPlan": zod.number(),
+  "reviewPlanMax": zod.number()
+}),
+  "status": zod.enum(['ready', 'missing_exam', 'ambiguous_import'])
+})
+
+
+/**
+ * @summary List imported historical-score matches needing review
+ */
+export const ListCertificateImportCandidatesParams = zod.object({
+  "termId": zod.coerce.number()
+})
+
+export const ListCertificateImportCandidatesResponseItem = zod.object({
+  "id": zod.number(),
+  "sourceName": zod.string(),
+  "sourceTrack": zod.string().nullish(),
+  "sourcePhone": zod.string().nullish(),
+  "importedScore": zod.number().nullish(),
+  "matchedStudentId": zod.number().nullish(),
+  "matchedStudentName": zod.string().nullish(),
+  "confidence": zod.enum(['exact', 'likely', 'ambiguous', 'unmatched']),
+  "resolved": zod.boolean()
+})
+export const ListCertificateImportCandidatesResponse = zod.array(ListCertificateImportCandidatesResponseItem)
+
+
+/**
+ * @summary Confirm or dismiss historical-score matches
+ */
+export const ResolveCertificateImportCandidatesParams = zod.object({
+  "termId": zod.coerce.number()
+})
+
+
+
+
+export const ResolveCertificateImportCandidatesBody = zod.object({
+  "candidates": zod.array(zod.object({
+  "id": zod.number(),
+  "studentId": zod.number().nullish(),
+  "accept": zod.boolean()
+})).min(1)
+})
+
+export const ResolveCertificateImportCandidatesResponseItem = zod.object({
+  "id": zod.number(),
+  "sourceName": zod.string(),
+  "sourceTrack": zod.string().nullish(),
+  "sourcePhone": zod.string().nullish(),
+  "importedScore": zod.number().nullish(),
+  "matchedStudentId": zod.number().nullish(),
+  "matchedStudentName": zod.string().nullish(),
+  "confidence": zod.enum(['exact', 'likely', 'ambiguous', 'unmatched']),
+  "resolved": zod.boolean()
+})
+export const ResolveCertificateImportCandidatesResponse = zod.array(ResolveCertificateImportCandidatesResponseItem)
 
 
