@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, recordsTable, studentsTable, circlesTable, usersTable, teacherAbsencesTable, tracksTable, dailyCircleTasksTable, examRecordsTable } from "@workspace/db";
+import { db, recordsTable, studentsTable, studentEnrollmentsTable, circlesTable, usersTable, teacherAbsencesTable, tracksTable, dailyCircleTasksTable, examRecordsTable } from "@workspace/db";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { getMakkahDay, getMakkahDaysAgo, getMakkahWeekStart, getMakkahLastWeekStart, getMakkahLastWeekEnd } from "../lib/date";
@@ -51,9 +51,25 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
   const circles = await db.select().from(circlesTable);
   const allTracks = await db.select().from(tracksTable);
   const registrationCircleIds = new Set(circles.filter(c => c.trackType === "registration").map(c => c.id));
+  const activeEnrollments = await db.select({
+    studentId: studentEnrollmentsTable.studentId,
+    circleId: studentEnrollmentsTable.circleId,
+  }).from(studentEnrollmentsTable)
+    .where(eq(studentEnrollmentsTable.isArchived, false));
+  const activeCircleIdsByStudent = new Map<number, Set<number>>();
+  for (const enrollment of activeEnrollments) {
+    if (!activeCircleIdsByStudent.has(enrollment.studentId)) {
+      activeCircleIdsByStudent.set(enrollment.studentId, new Set());
+    }
+    activeCircleIdsByStudent.get(enrollment.studentId)!.add(enrollment.circleId);
+  }
   const allStudents = (await loadStatsStudents())
     .filter(s => s.isArchived !== true)
-    .filter(s => !s.circleId || !registrationCircleIds.has(s.circleId));
+    .filter(s => {
+      const circleIds = activeCircleIdsByStudent.get(s.id);
+      return (!s.circleId || !registrationCircleIds.has(s.circleId)) ||
+        [...(circleIds ?? [])].some(circleId => !registrationCircleIds.has(circleId));
+    });
   const allUsers = (await db.select().from(usersTable)).filter(u => u.isArchived !== true);
 
   let records = allRecords;
@@ -63,13 +79,18 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
     const userRecord = allUsers.find(u => u.id === userId);
     const trackCircles = circles.filter(c => c.track === userRecord?.track).map(c => c.id);
     records = allRecords.filter(r => trackCircles.includes(r.circleId));
-    students = allStudents.filter(s => s.circleId && trackCircles.includes(s.circleId));
+    students = allStudents.filter(s =>
+      (s.circleId != null && trackCircles.includes(s.circleId)) ||
+      [...(activeCircleIdsByStudent.get(s.id) ?? [])].some(cid => trackCircles.includes(cid)),
+    );
   } else if (userRole === "teacher" || userRole === "supervisor") {
     const userRecord = allUsers.find(u => u.id === userId);
     const circleId = userRecord?.circleId;
     if (circleId) {
       records = allRecords.filter(r => r.circleId === circleId);
-      students = allStudents.filter(s => s.circleId === circleId);
+      students = allStudents.filter(s =>
+        s.circleId === circleId || activeCircleIdsByStudent.get(s.id)?.has(circleId),
+      );
     }
   } else if (userRole === "student") {
     const studentId = req.userStudentId;
@@ -82,7 +103,7 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
   if (circleIdParam) {
     const cid = parseInt(circleIdParam, 10);
     records = records.filter(r => r.circleId === cid);
-    students = students.filter(s => s.circleId === cid);
+    students = students.filter(s => s.circleId === cid || activeCircleIdsByStudent.get(s.id)?.has(cid));
   }
 
   const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
@@ -97,14 +118,37 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
         : (c.trackType ?? "girls"),
     ]),
   );
-  const girlsTypes = new Set(["girls", "girls_near", "girls_far", "girls_no_review", "simple_review", "fixation"]);
-  const totalGirls = students.filter(s => s.circleId && girlsTypes.has(trackTypeByCircleId.get(s.circleId) ?? "girls")).length;
-  const totalChildren = students.filter(s => s.circleId && trackTypeByCircleId.get(s.circleId) === "children").length;
-  const totalMothers = students.filter(s => s.circleId && trackTypeByCircleId.get(s.circleId) === "mothers").length;
+  const trackNameByCircleId = new Map(
+    circles.map(c => [
+      c.id,
+      c.trackId
+        ? (allTracks.find(t => t.id === c.trackId)?.name ?? c.track)
+        : c.track,
+    ]),
+  );
+  // بعض المسارات القديمة محفوظة بنوع simple_review، لذلك نستخدم اسمها
+  // الموحّد لتمييز الأطفال والأمهات بدل الاعتماد على نوع غير موجود في البيانات.
+  const childrenTrackNames = new Set(["سراج", "ألق"]);
+  const mothersTrackNames = new Set(["مهج"]);
+  const isChild = (student: typeof students[number]) =>
+    [...(activeCircleIdsByStudent.get(student.id) ?? (student.circleId ? new Set([student.circleId]) : new Set()))]
+      .some(circleId =>
+        trackTypeByCircleId.get(circleId) === "children" ||
+        childrenTrackNames.has(trackNameByCircleId.get(circleId) ?? ""),
+      );
+  const isMother = (student: typeof students[number]) =>
+    [...(activeCircleIdsByStudent.get(student.id) ?? (student.circleId ? new Set([student.circleId]) : new Set()))]
+      .some(circleId =>
+        trackTypeByCircleId.get(circleId) === "mothers" ||
+        mothersTrackNames.has(trackNameByCircleId.get(circleId) ?? ""),
+      );
+  const totalChildren = students.filter(isChild).length;
+  const totalMothers = students.filter(isMother).length;
+  const totalGirls = students.filter(s => !isChild(s) && !isMother(s)).length;
 
   const totalMemorizePages = Math.round(sum(records.map(r => r.memorizePages ?? 0)) * 2) / 2;
   const totalReviewNearPages = Math.round(sum(records.map(r => r.reviewNearPages ?? 0)) * 2) / 2;
-  const totalReviewFarPages = Math.round(sum(records.map(r => r.reviewFarPages ?? 0)) * 2) / 2;
+  const totalReviewFarPages = Math.round(sum(records.map(r => (r.reviewFarPages ?? 0) + (r.reviewFar2Pages ?? 0))) * 2) / 2;
   const totalReviewPages = Math.round(sum(records.map(r => r.reviewPages ?? 0)) * 2) / 2;
   const totalRecitationPages = Math.round(sum(records.map(r => r.recitationPages ?? 0)) * 2) / 2;
   const circleTrackTypeMap: Record<number, string> = {};
@@ -139,11 +183,11 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
     circleAbsenceMap[r.circleId] = (circleAbsenceMap[r.circleId] ?? 0) + (r.isAbsent ? 1 : 0);
     if (!r.isAbsent) {
       circlePageMap[r.circleId] = (circlePageMap[r.circleId] ?? 0) +
-        (r.memorizePages ?? 0) + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) +
+      (r.memorizePages ?? 0) + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewFar2Pages ?? 0) +
         (r.reviewPages ?? 0) + (r.recitationPages ?? 0);
       circleMemorizeMap[r.circleId] = (circleMemorizeMap[r.circleId] ?? 0) + (r.memorizePages ?? 0);
       circleReviewMap[r.circleId] = (circleReviewMap[r.circleId] ?? 0) +
-        (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewPages ?? 0);
+        (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewFar2Pages ?? 0) + (r.reviewPages ?? 0);
       circleRecitationMap[r.circleId] = (circleRecitationMap[r.circleId] ?? 0) + (r.recitationPages ?? 0);
     }
   }
@@ -160,7 +204,9 @@ router.get("/stats/summary", authenticate, async (req, res): Promise<void> => {
   }
 
   // Least absent circle (among circles that have students)
-  const circlesWithStudents = circles.filter(c => allStudents.some(s => s.circleId === c.id));
+  const circlesWithStudents = circles.filter(c => allStudents.some(s =>
+    s.circleId === c.id || activeCircleIdsByStudent.get(s.id)?.has(c.id),
+  ));
   let leastAbsentCircle: string | null = null;
   let leastAbsentCircleAbsences: number | null = null;
   const sortedByAbsence = circlesWithStudents
@@ -283,8 +329,8 @@ router.get("/stats/circles", authenticate, async (req, res): Promise<void> => {
       trackType: circleTrackType,
       totalMemorizePages: Math.round(cRecords.reduce((a, r) => a + (r.memorizePages ?? 0), 0) * 2) / 2,
       totalReviewNearPages: Math.round(cRecords.reduce((a, r) => a + (r.reviewNearPages ?? 0), 0) * 2) / 2,
-      totalReviewFarPages: Math.round(cRecords.reduce((a, r) => a + (r.reviewFarPages ?? 0), 0) * 2) / 2,
-      totalReviewPages: Math.round(cRecords.reduce((a, r) => a + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewPages ?? 0), 0) * 2) / 2,
+      totalReviewFarPages: Math.round(cRecords.reduce((a, r) => a + (r.reviewFarPages ?? 0) + (r.reviewFar2Pages ?? 0), 0) * 2) / 2,
+      totalReviewPages: Math.round(cRecords.reduce((a, r) => a + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewFar2Pages ?? 0) + (r.reviewPages ?? 0), 0) * 2) / 2,
       totalRecitationPages: Math.round(cRecords.reduce((a, r) => a + (r.recitationPages ?? 0), 0) * 2) / 2,
       totalAbsences: cRecords.filter(r => r.isAbsent).length,
       teacherAbsences: cTeacherAbsences,
@@ -294,7 +340,8 @@ router.get("/stats/circles", authenticate, async (req, res): Promise<void> => {
         if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) return r.shortcomingOverride;
         if (circleTrackType === "children" || circleTrackType === "mothers" || circleTrackType === "recitation") return false;
         const noReview =
-          (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
+          (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 &&
+          (r.reviewFar2Pages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
         const noListened = r.listenedToReciter === false;
         return noReview || noListened;
       }).length,
@@ -321,7 +368,7 @@ router.get("/stats/my-progress", authenticate, async (req, res): Promise<void> =
   const latestRecord = sortedRecords.find(r => !r.isAbsent);
 
   const totalMemorize = Math.round(records.reduce((s, r) => s + (r.memorizePages ?? 0), 0) * 2) / 2;
-  const totalReview = Math.round(records.reduce((s, r) => s + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewPages ?? 0), 0) * 2) / 2;
+  const totalReview = Math.round(records.reduce((s, r) => s + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewFar2Pages ?? 0) + (r.reviewPages ?? 0), 0) * 2) / 2;
   const totalRecitation = Math.round(records.reduce((s, r) => s + (r.recitationPages ?? 0), 0) * 2) / 2;
   const totalAbsences = records.filter(r => r.isAbsent).length;
   const totalSessions = records.filter(r => !r.isAbsent).length;
@@ -380,7 +427,7 @@ router.get("/stats/monthly-comparison", authenticate, async (req, res): Promise<
     const total = records.length;
     const present = total - absences;
     const pages = records.reduce((s, r) =>
-      s + (r.memorizePages ?? 0) + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) +
+      s + (r.memorizePages ?? 0) + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewFar2Pages ?? 0) +
       (r.reviewPages ?? 0) + (r.recitationPages ?? 0), 0);
     const attendanceRate = total > 0 ? Math.round((present / total) * 100) : null;
     return { total, absences, present, pages: Math.round(pages * 2) / 2, attendanceRate };
@@ -420,7 +467,7 @@ router.get("/stats/today-banner", async (_req, res): Promise<void> => {
       circleMap[r.circleId].absences++;
     } else {
       circleMap[r.circleId].total += (r.memorizePages ?? 0) + (r.reviewNearPages ?? 0) +
-        (r.reviewFarPages ?? 0) + (r.reviewPages ?? 0) + (r.recitationPages ?? 0);
+        (r.reviewFarPages ?? 0) + (r.reviewFar2Pages ?? 0) + (r.reviewPages ?? 0) + (r.recitationPages ?? 0);
       circleMap[r.circleId].present++;
     }
   }
@@ -973,7 +1020,8 @@ router.get("/stats/teacher-performance", authenticate, async (req, res): Promise
     const trackType = circleTrackTypeMap[r.circleId];
     if (trackType === "children" || trackType === "mothers" || trackType === "recitation") return false;
     const noReview =
-      (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
+      (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 &&
+      (r.reviewFar2Pages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
     const notListened = r.listenedToReciter === false;
     return noReview || notListened;
   };
@@ -999,7 +1047,7 @@ router.get("/stats/teacher-performance", authenticate, async (req, res): Promise
     const deficiencyCount = circleRecords.filter(isShortcoming).length;
     const memorizePages   = Math.round(presentRecords.reduce((s, r) => s + (r.memorizePages ?? 0), 0) * 2) / 2;
     const reviewPages     = Math.round(presentRecords.reduce((s, r) =>
-      s + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewPages ?? 0), 0) * 2) / 2;
+      s + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewFar2Pages ?? 0) + (r.reviewPages ?? 0), 0) * 2) / 2;
 
     const teacherAbsCount = teacherAbsences.filter(ta => ta.circleId === teacher.circleId).length;
     const studentCount    = studentIds.length;
@@ -1094,7 +1142,8 @@ router.get("/stats/monthly-honor", authenticate, async (req, res): Promise<void>
     const trackType = circleTrackTypeMap[r.circleId];
     if (trackType === "children" || trackType === "mothers" || trackType === "recitation") return false;
     const noReview =
-      (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
+      (r.reviewNearPages ?? 0) === 0 && (r.reviewFarPages ?? 0) === 0 &&
+      (r.reviewFar2Pages ?? 0) === 0 && (r.reviewPages ?? 0) === 0;
     const notListened = r.listenedToReciter === false;
     return noReview || notListened;
   };

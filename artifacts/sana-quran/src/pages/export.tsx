@@ -11,7 +11,7 @@ import { useGetCurrentUser } from "@workspace/api-client-react";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
 
-type ExportType = "students" | "staff" | "records" | "registrations" | "track-report";
+type ExportType = "students" | "staff" | "records" | "registrations" | "track-report" | "withdrawal-cards";
 
 export default function ExportPage() {
   const { toast } = useToast();
@@ -167,6 +167,23 @@ export default function ExportPage() {
               ? <><Loader2 className="w-4 h-4 animate-spin" /> جاري التصدير...</>
               : <><FileDown className="w-4 h-4" /> تحميل سجل الطالبات (.xlsx)</>
             }
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border border-amber-200 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-bold flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+              <ClipboardCheck className="w-4 h-4 text-amber-600" />
+            </div>
+            بطاقات انسحاب الطالبات
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">تصدير بطاقات الانسحاب مع الاسم والرقم والحلقة والفترة والسبب والملاحظات.</p>
+          <Button onClick={() => download("withdrawal-cards")} disabled={loading["withdrawal-cards"]} className="w-full gap-2" variant="outline">
+            {loading["withdrawal-cards"] ? <><Loader2 className="w-4 h-4 animate-spin" /> جاري التصدير...</> : <><FileDown className="w-4 h-4" /> تحميل بطاقات الانسحاب (.xlsx)</>}
           </Button>
         </CardContent>
       </Card>

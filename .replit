@@ -40,15 +40,5 @@ expertMode = true
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
 
-[userenv]
-
-[userenv.shared]
-RENDER_GITHUB_REPO_URL = "https://github.com/Rehab1Sama/Quran-Center-Management"
-EMAIL_USER = "sana.qur3n@gmail.com"
-EMAIL_PASS = "mkrstiewylmppfwu"
-RENDER_API_KEY = "rnd_GVBOUh6Hg2UIjUslXUd0rgcKOmig"
-NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbHNoamxkZW13eXlncnBsb3dpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzOTkyMDMsImV4cCI6MjA5NDk3NTIwM30.TU4gmL_8f-KBY_E8OnCzLX5mc1NEpXrqj_4-B0o6wAY"
-NEXT_PUBLIC_SUPABASE_URL = "https://uqlshjldemwyygrplowi.supabase.co"
-
 [nix]
 channel = "stable-25_05"

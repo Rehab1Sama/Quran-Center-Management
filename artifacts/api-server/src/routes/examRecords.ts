@@ -56,7 +56,7 @@ router.get("/exam-records", authenticate, async (req, res): Promise<void> => {
 });
 
 router.post("/exam-records", authenticate, async (req, res): Promise<void> => {
-  if (!["volunteer", "exam_supervisor", "leader"].includes(req.userRole!)) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!["volunteer", "exam_supervisor", "leader", "track_supervisor"].includes(req.userRole!)) { res.status(403).json({ error: "Forbidden" }); return; }
   const { studentId, date, juzNumber, responded, grade, notes } = req.body;
   if (!studentId || !date) { res.status(400).json({ error: "studentId, date required" }); return; }
   const [row] = await db.insert(examRecordsTable).values({
@@ -73,7 +73,7 @@ router.post("/exam-records", authenticate, async (req, res): Promise<void> => {
 });
 
 router.patch("/exam-records/:id", authenticate, async (req, res): Promise<void> => {
-  if (!["volunteer", "exam_supervisor", "leader"].includes(req.userRole!)) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!["volunteer", "exam_supervisor", "leader", "track_supervisor"].includes(req.userRole!)) { res.status(403).json({ error: "Forbidden" }); return; }
   const id = parseInt(req.params.id as string);
   const { juzNumber, responded, grade, notes } = req.body;
   const [row] = await db.update(examRecordsTable).set({ juzNumber, responded, grade, notes }).where(eq(examRecordsTable.id, id)).returning();

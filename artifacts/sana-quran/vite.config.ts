@@ -40,6 +40,9 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    sourcemap: false,
+    // ExcelJS is intentionally loaded only by the import screen.
+    chunkSizeWarningLimit: 2500,
   },
   server: {
     port,

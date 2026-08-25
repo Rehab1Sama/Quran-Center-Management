@@ -165,7 +165,9 @@ export default function TrackPage() {
   );
 
   const getCircleStudents = (circleId: number): Student[] =>
-    (allStudents ?? []).filter(s => s.circleId === circleId);
+    (allStudents ?? [])
+      .filter(s => s.circleId === circleId)
+      .sort((a, b) => a.fullName.localeCompare(b.fullName, "ar", { sensitivity: "base" }));
 
   const handleArchive = (student: Student, circleId: number) => {
     setArchiveRequest({ student, circleId });
@@ -199,7 +201,7 @@ export default function TrackPage() {
   const handleTransfer = (circleId: number) => {
     if (!transferStudent) return;
     updateStudent.mutate(
-      { id: transferStudent.student.id, data: { circleId } },
+        { id: transferStudent.student.id, data: { circleId, fromCircleId: transferStudent.circleId } as any },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["allStudents"] });
@@ -221,7 +223,10 @@ export default function TrackPage() {
       const res = await fetch(`/api/students/${transferStudentId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ circleId: parseInt(transferTargetCircleId) }),
+        body: JSON.stringify({
+          circleId: parseInt(transferTargetCircleId),
+          fromCircleId: roleForm.circleId ? parseInt(roleForm.circleId) : undefined,
+        }),
       });
       if (!res.ok) throw new Error();
       toast({ title: "تم النقل بنجاح" });

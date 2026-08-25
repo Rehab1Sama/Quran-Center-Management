@@ -278,7 +278,7 @@ router.post("/records/student-self-entry-disabled", authenticate, async (_req, r
 
 
 router.post("/records", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "data_entry"].includes(req.userRole!)) {
+  if (!["leader", "deputy", "data_entry", "teacher", "supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -312,7 +312,7 @@ router.post("/records", authenticate, async (req, res): Promise<void> => {
 });
 
 router.patch("/records/:id", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "data_entry"].includes(req.userRole!)) {
+  if (!["leader", "deputy", "data_entry", "teacher", "supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -322,6 +322,10 @@ router.patch("/records/:id", authenticate, async (req, res): Promise<void> => {
   if (!existingRecord) { res.status(404).json({ error: "Record not found" }); return; }
   if (!await allowedCircle(req, existingRecord.circleId)) {
     res.status(403).json({ error: "لا يمكنك تعديل سجل هذه الحلقة" }); return;
+  }
+  if (["teacher", "supervisor"].includes(req.userRole!) &&
+      !await allowedDataEntryRole(req, existingRecord.circleId)) {
+    res.status(403).json({ error: "دورك لا يسمح بتعديل بيانات هذه الحلقة" }); return;
   }
 
   // For data_entry: enforce 2-hour edit window
@@ -355,7 +359,7 @@ router.patch("/records/:id", authenticate, async (req, res): Promise<void> => {
 });
 
 router.delete("/records/:id", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "data_entry"].includes(req.userRole!)) {
+  if (!["leader", "deputy", "data_entry", "teacher", "supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -365,6 +369,10 @@ router.delete("/records/:id", authenticate, async (req, res): Promise<void> => {
   if (!existing) { res.status(404).json({ error: "Record not found" }); return; }
   if (!await allowedCircle(req, existing.circleId)) {
     res.status(403).json({ error: "لا يمكنك حذف سجل هذه الحلقة" }); return;
+  }
+  if (["teacher", "supervisor"].includes(req.userRole!) &&
+      !await allowedDataEntryRole(req, existing.circleId)) {
+    res.status(403).json({ error: "دورك لا يسمح بحذف بيانات هذه الحلقة" }); return;
   }
   await db.delete(recordsTable).where(eq(recordsTable.id, id));
   res.sendStatus(204);

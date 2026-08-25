@@ -58,20 +58,12 @@ export default function UnlinkedStudentsPage() {
     if (!circleId) { toast({ title: "اختاري الحلقة أولاً", variant: "destructive" }); return; }
     setSaving(s => ({ ...s, [student.id]: true }));
     try {
-      const res = await fetch(`/api/students/${student.id}/enroll`, {
-        method: "POST",
+      const res = await fetch(`/api/students/${student.id}`, {
+        method: "PATCH",
         headers: H(),
         body: JSON.stringify({ circleId: parseInt(circleId) }),
       });
       if (!res.ok) throw new Error();
-      // If student was in registration circle, archive that enrollment
-      if (regCircleId) {
-        await fetch(`/api/students/${student.id}/archive`, {
-          method: "PATCH",
-          headers: H(),
-          body: JSON.stringify({ circleId: regCircleId }),
-        });
-      }
       toast({ title: `تم نقل ${student.fullName} إلى الحلقة المختارة ✓` });
       setDone(d => new Set([...d, student.id]));
       queryClient.invalidateQueries({ queryKey: ["circles"] });

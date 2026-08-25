@@ -101,7 +101,9 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
     ],
-    sourcemap: "linked",
+    // Linked maps point at generated dependency sources that do not ship with
+    // the production bundle and produce misleading source-map warnings.
+    sourcemap: false,
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] })

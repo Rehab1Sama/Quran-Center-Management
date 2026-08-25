@@ -74,11 +74,36 @@ router.get("/users", authenticate, async (req, res): Promise<void> => {
   // مسؤولة المسار ترى الطالبات والمعلمات والمشرفات في مسارها فقط
   if (req.userRole === "track_supervisor") {
     const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-    const myTrack = me?.track ?? null;
-    const all = await db.select().from(usersTable);
-    const filtered = all.filter(u =>
-      u.track === myTrack && ["student", "teacher", "supervisor"].includes(u.role)
+    const myTrack = req.userTrack ?? me?.track ?? null;
+    if (!myTrack) {
+      res.json([]);
+      return;
+    }
+    const trackCircles = await db
+      .select({ id: circlesTable.id })
+      .from(circlesTable)
+      .where(eq(circlesTable.track, myTrack));
+    const trackCircleIds = new Set(trackCircles.map(circle => circle.id));
+    const activeEnrollments = await db
+      .select({ studentId: studentEnrollmentsTable.studentId, circleId: studentEnrollmentsTable.circleId })
+      .from(studentEnrollmentsTable)
+      .where(eq(studentEnrollmentsTable.isArchived, false));
+    const trackStudentIds = new Set(
+      activeEnrollments
+        .filter(enrollment => trackCircleIds.has(enrollment.circleId))
+        .map(enrollment => enrollment.studentId),
     );
+    const all = await db.select().from(usersTable);
+    const filtered = all.filter(u => {
+      if (!["student", "teacher", "supervisor"].includes(u.role)) return false;
+      if (u.role === "student") {
+        return (
+          (u.circleId != null && trackCircleIds.has(u.circleId)) ||
+          (u.studentId != null && trackStudentIds.has(u.studentId))
+        );
+      }
+      return u.track === myTrack || (u.circleId != null && trackCircleIds.has(u.circleId));
+    });
     res.json(withMeta(filtered));
     return;
   }
@@ -102,12 +127,12 @@ router.get("/users/by-email", authenticate, async (req, res): Promise<void> => {
 });
 
 router.post("/users", authenticate, async (req, res): Promise<void> => {
-  // مسؤولة المسار يمكنها إضافة طالبات ومعلمات ومشرفات فقط
+  // مسؤولة المسار يمكنها إضافة طالبات ومعلمات ومشرفات ومتطوعات فقط
   if (req.userRole === "track_supervisor") {
     const body = req.body as { role?: string };
-    const allowed = ["student", "teacher", "supervisor"];
+    const allowed = ["student", "teacher", "supervisor", "volunteer"];
     if (!body.role || !allowed.includes(body.role)) {
-      res.status(403).json({ error: "مسؤولة المسار يمكنها إضافة طالبات ومعلمات ومشرفات فقط" });
+      res.status(403).json({ error: "مسؤولة المسار يمكنها إدارة الطالبات والكادر والمتطوعات في مسارها فقط" });
       return;
     }
   } else if (req.userRole !== "leader") {
@@ -227,7 +252,23 @@ router.patch("/users/:id", authenticate, async (req, res): Promise<void> => {
   const [existingUser] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!existingUser) { res.status(404).json({ error: "User not found" }); return; }
   if (req.userRole !== "leader") {
-    if (req.userRole !== "track_supervisor" || !["teacher", "supervisor"].includes(existingUser.role) || existingUser.track !== req.userTrack) {
+    let belongsToSupervisorTrack = existingUser.track === req.userTrack;
+    if (
+      !belongsToSupervisorTrack &&
+      req.userRole === "track_supervisor" &&
+      existingUser.circleId != null
+    ) {
+      const [assignedCircle] = await db
+        .select({ track: circlesTable.track })
+        .from(circlesTable)
+        .where(eq(circlesTable.id, existingUser.circleId));
+      belongsToSupervisorTrack = assignedCircle?.track === req.userTrack;
+    }
+    if (
+      req.userRole !== "track_supervisor" ||
+      !["student", "teacher", "supervisor", "volunteer"].includes(existingUser.role) ||
+      !belongsToSupervisorTrack
+    ) {
       res.status(403).json({ error: "Forbidden" }); return;
     }
   }
@@ -236,6 +277,15 @@ router.patch("/users/:id", authenticate, async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  if (req.userRole === "track_supervisor" && parsed.data.circleId !== undefined && parsed.data.circleId !== null) {
+    const [targetCircle] = await db.select({ track: circlesTable.track })
+      .from(circlesTable)
+      .where(eq(circlesTable.id, parsed.data.circleId));
+    if (!targetCircle || targetCircle.track !== req.userTrack) {
+      res.status(403).json({ error: "الحلقة خارج نطاق المسار" });
+      return;
+    }
+  }
   const [user] = await db.update(usersTable).set(parsed.data).where(eq(usersTable.id, id)).returning();
   if (!user) {
     res.status(404).json({ error: "User not found" });
@@ -243,6 +293,15 @@ router.patch("/users/:id", authenticate, async (req, res): Promise<void> => {
   }
 
   if (user.role === "student" && user.name) {
+    if (user.studentId && parsed.data.name && parsed.data.name !== existingUser.name) {
+      await db.update(studentsTable)
+        .set({ fullName: parsed.data.name })
+        .where(eq(studentsTable.id, user.studentId));
+      // الحسابات المتعددة للطالبة نفسها يجب أن تعرض الاسم نفسه.
+      await db.update(usersTable)
+        .set({ name: parsed.data.name })
+        .where(eq(usersTable.studentId, user.studentId));
+    }
     const circleId = user.circleId ?? null;
     // استخدام studentId المرتبط إن وُجد، وإلا البحث بالاسم
     const studentRef = user.studentId
@@ -302,11 +361,34 @@ router.delete("/users/:id", authenticate, async (req, res): Promise<void> => {
   const id = parseInt(raw, 10);
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
-  if (req.userRole !== "leader" &&
-      (req.userRole !== "track_supervisor" || !["teacher", "supervisor"].includes(target.role) || target.track !== req.userTrack)) {
+  let belongsToSupervisorTrack = target.track === req.userTrack;
+  if (
+    !belongsToSupervisorTrack &&
+    req.userRole === "track_supervisor" &&
+    target.circleId != null
+  ) {
+    const [assignedCircle] = await db
+      .select({ track: circlesTable.track })
+      .from(circlesTable)
+      .where(eq(circlesTable.id, target.circleId));
+    belongsToSupervisorTrack = assignedCircle?.track === req.userTrack;
+  }
+  if (
+    req.userRole !== "leader" &&
+    (
+      req.userRole !== "track_supervisor" ||
+      !["teacher", "supervisor", "volunteer"].includes(target.role) ||
+      !belongsToSupervisorTrack
+    )
+  ) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
-  await db.update(usersTable).set({ isArchived: true }).where(eq(usersTable.id, id));
+  if (target.circleId && target.role === "teacher") {
+    await db.update(circlesTable).set({ teacherId: null }).where(eq(circlesTable.id, target.circleId));
+  } else if (target.circleId && target.role === "supervisor") {
+    await db.update(circlesTable).set({ supervisorId: null }).where(eq(circlesTable.id, target.circleId));
+  }
+  await db.update(usersTable).set({ isArchived: true, circleId: null }).where(eq(usersTable.id, id));
   res.sendStatus(204);
 });
 
@@ -493,18 +575,32 @@ router.patch("/users/:id/disable", authenticate, async (req, res): Promise<void>
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
   if (req.userRole !== "leader" &&
-      (req.userRole !== "track_supervisor" || !["teacher", "supervisor"].includes(target.role) || target.track !== req.userTrack)) {
+      (req.userRole !== "track_supervisor" || !["student", "teacher", "supervisor", "volunteer"].includes(target.role) || target.track !== req.userTrack)) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
-  const [user] = await db.update(usersTable).set({ isArchived: true }).where(eq(usersTable.id, id)).returning();
+  if (target.circleId && target.role === "teacher") {
+    await db.update(circlesTable).set({ teacherId: null }).where(eq(circlesTable.id, target.circleId));
+  } else if (target.circleId && target.role === "supervisor") {
+    await db.update(circlesTable).set({ supervisorId: null }).where(eq(circlesTable.id, target.circleId));
+  }
+  const disableData = ["teacher", "supervisor"].includes(target.role)
+    ? { isArchived: true, circleId: null }
+    : { isArchived: true };
+  const [user] = await db.update(usersTable).set(disableData).where(eq(usersTable.id, id)).returning();
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   const { passwordHash: _ph, ...safeUser } = user;
   res.json(safeUser);
 });
 
-router.patch("/users/:id/enable", authenticate, requireRole("leader"), async (req, res): Promise<void> => {
+router.patch("/users/:id/enable", authenticate, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
+  const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  if (!target) { res.status(404).json({ error: "User not found" }); return; }
+  if (req.userRole !== "leader" &&
+      (req.userRole !== "track_supervisor" || !["student", "volunteer"].includes(target.role) || target.track !== req.userTrack)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
   const [user] = await db.update(usersTable).set({ isArchived: false }).where(eq(usersTable.id, id)).returning();
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   const { passwordHash: _ph, ...safeUser } = user;

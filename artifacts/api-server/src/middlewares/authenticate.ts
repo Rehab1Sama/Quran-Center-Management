@@ -30,8 +30,13 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId));
-  if (!user || user.isArchived) {
+  if (!user) {
     res.status(401).json({ error: "User not found" });
+    return;
+  }
+  // الحساب المؤرشف يسمح له فقط بتحميل بياناته لعرض شاشة التعطيل.
+  if (user.isArchived && !req.path.endsWith("/auth/me")) {
+    res.status(403).json({ error: "ACCOUNT_DISABLED", message: "تم تعطيل حسابك" });
     return;
   }
 

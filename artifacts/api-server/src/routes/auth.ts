@@ -31,6 +31,10 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   if (verified.length === 1) {
     const user = verified[0];
+    if (user.isArchived) {
+      res.status(403).json({ error: "تم تعطيل حسابك، تواصلي مع الإدارة لإعادة التفعيل" });
+      return;
+    }
     if (user.registrationStatus === "pending") {
       res.status(403).json({ error: "طلبك قيد المراجعة، سيتم إشعارك عند القبول" });
       return;
@@ -47,9 +51,13 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   }
 
   const approvedVerified = verified.filter(
-    u => u.registrationStatus !== "pending" && u.registrationStatus !== "rejected",
+    u => !u.isArchived && u.registrationStatus !== "pending" && u.registrationStatus !== "rejected",
   );
   if (approvedVerified.length === 0) {
+    if (verified.some(u => u.isArchived)) {
+      res.status(403).json({ error: "تم تعطيل حسابك، تواصلي مع الإدارة لإعادة التفعيل" });
+      return;
+    }
     res.status(403).json({ error: "طلبك قيد المراجعة، سيتم إشعارك عند القبول" });
     return;
   }
@@ -100,6 +108,10 @@ router.post("/auth/login/select", async (req, res): Promise<void> => {
   }
   if (!verifyPassword(password, user.passwordHash)) {
     res.status(401).json({ error: "بيانات الدخول غير صحيحة" });
+    return;
+  }
+  if (user.isArchived) {
+    res.status(403).json({ error: "تم تعطيل حسابك، تواصلي مع الإدارة لإعادة التفعيل" });
     return;
   }
   const token = generateToken(user.id, user.role);

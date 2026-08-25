@@ -139,7 +139,7 @@ function isOnLeave(leaveStart?: string | null, leaveEnd?: string | null): boolea
 export default function StudentProfilePage({ id }: { id: number }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
 
   const { data: profile, isLoading } = useGetStudentProfile(id, { query: { queryKey: ["studentProfile", id] } });
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
@@ -175,10 +175,28 @@ export default function StudentProfilePage({ id }: { id: number }) {
   const [perCircleLeaveOpen, setPerCircleLeaveOpen] = useState<number | null>(null);
   const [perCircleLeaveStart, setPerCircleLeaveStart] = useState("");
   const [perCircleLeaveEnd, setPerCircleLeaveEnd] = useState("");
-  const [archiveRequest, setArchiveRequest] = useState<{ circleId: number; circleName: string } | null>(null);
+  const [archiveRequest, setArchiveRequest] = useState<{ circleId?: number; circleName?: string } | null>(null);
   const [withdrawalPeriod, setWithdrawalPeriod] = useState("");
   const [withdrawalReason, setWithdrawalReason] = useState("");
   const [withdrawalNotes, setWithdrawalNotes] = useState("");
+
+  useEffect(() => {
+    if (!profile || archiveRequest) return;
+    const query = new URLSearchParams(location.split("?")[1] ?? "");
+    if (query.get("archive") !== "1") return;
+    const circleId = Number(query.get("circleId"));
+    const enrollment = Number.isFinite(circleId)
+      ? ((profile as any).enrollments ?? []).find((item: any) => item.circleId === circleId && !item.isArchived)
+      : null;
+    if (enrollment) {
+      setArchiveRequest({ circleId: enrollment.circleId, circleName: enrollment.circleName });
+    } else {
+      setArchiveRequest({});
+    }
+    setWithdrawalPeriod("");
+    setWithdrawalReason("");
+    setWithdrawalNotes("");
+  }, [location, profile, archiveRequest]);
 
   const canEdit = ["leader", "deputy", "track_supervisor"].includes(user?.role ?? "");
   const canNote = ["leader", "deputy", "track_supervisor", "teacher", "supervisor"].includes(user?.role ?? "");
@@ -251,8 +269,10 @@ export default function StudentProfilePage({ id }: { id: number }) {
   };
 
   const handleArchive = () => {
-    if (!confirm(`هل تريدين أرشفة "${profile?.fullName}" بشكل كامل؟ ستختفي من جميع الحلقات مع الحفاظ على بياناتها.`)) return;
-    archiveStudent.mutate({ id }, { onSuccess: () => { toast({ title: "تم أرشفة الطالبة" }); invalidate(); } });
+    setWithdrawalPeriod("");
+    setWithdrawalReason("");
+    setWithdrawalNotes("");
+    setArchiveRequest({});
   };
 
   const enrollStudentMutation = useEnrollStudent();
@@ -273,7 +293,7 @@ export default function StudentProfilePage({ id }: { id: number }) {
       {
         id,
         data: {
-          circleId: archiveRequest.circleId,
+          ...(archiveRequest.circleId ? { circleId: archiveRequest.circleId } : {}),
           withdrawalPeriod,
           withdrawalReason: withdrawalReason.trim(),
           withdrawalNotes: withdrawalNotes.trim() || null,
@@ -281,9 +301,30 @@ export default function StudentProfilePage({ id }: { id: number }) {
       },
       {
         onSuccess: () => {
-          toast({ title: "تم الإخراج من الحلقة", description: `تم حفظ بطاقة انسحاب ${profile?.fullName}` });
-          setArchiveRequest(null);
-          invalidate();
+          const targetCircleId = Number(new URLSearchParams(location.split("?")[1] ?? "").get("targetCircleId"));
+          if (Number.isFinite(targetCircleId) && targetCircleId > 0 && archiveRequest.circleId) {
+            enrollStudentMutation.mutate(
+              { id, data: { circleId: targetCircleId } },
+              {
+                onSuccess: () => {
+                  toast({ title: "تم حفظ البطاقة وإتمام النقل", description: `تم نقل ${profile?.fullName} للحلقة الجديدة` });
+                  setArchiveRequest(null);
+                  invalidate();
+                  navigate("/unlinked-students");
+                },
+                onError: () => toast({ title: "تمت الأرشفة لكن تعذر إتمام النقل", variant: "destructive" }),
+              },
+            );
+          } else {
+            toast({ title: "تم الإخراج من الحلقة", description: `تم حفظ بطاقة انسحاب ${profile?.fullName}` });
+            if (archiveRequest.circleId) {
+              queryClient.invalidateQueries({ queryKey: ["circle-students", archiveRequest.circleId] });
+              queryClient.invalidateQueries({ queryKey: ["circle-students-archived", archiveRequest.circleId] });
+            }
+            queryClient.invalidateQueries({ queryKey: ["circles"] });
+            setArchiveRequest(null);
+            invalidate();
+          }
         },
         onError: (error: any) => toast({
           title: "فشلت عملية الإخراج",
@@ -1119,7 +1160,11 @@ export default function StudentProfilePage({ id }: { id: number }) {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              الحلقة: <strong>{archiveRequest.circleName}</strong>
+              {archiveRequest.circleId && archiveRequest.circleName ? (
+                <>الحلقة: <strong>{archiveRequest.circleName}</strong></>
+              ) : (
+                <>أرشفة الطالبة من جميع الحلقات</>
+              )}
             </p>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold">

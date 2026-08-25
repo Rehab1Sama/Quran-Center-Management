@@ -11,7 +11,7 @@ import {
   BarChart2, MessageSquare, Search, Clock, Archive, Layers,
   Calendar, ShoppingBag, Award, Shuffle, GraduationCap, AlertTriangle,
   ArrowLeftRight, Loader2, BookOpen, PlaneTakeoff, Bell, CheckCheck,
-  TrendingUp, Globe, Moon, Sun, Database,
+  TrendingUp, Globe, Moon, Sun, Database, Award as CertificateIcon,
 } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 import logoUrl from "@/assets/logo.jpg";
@@ -719,6 +719,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
     return filterNav([
       { href: "/", label: "الرئيسية", icon: Home },
       { href: "/review-plans-overview", label: "خطط المراجعة", icon: BookOpen },
+      { href: "/certificates", label: "الشهادات الفصلية", icon: CertificateIcon },
       { href: "/data-entry-status", label: "المدخلات", icon: ClipboardList },
       { href: "/accounts", label: "الحسابات", icon: UserCheck },
       { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
@@ -756,6 +757,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
     return filterNav([
       { href: "/", label: "الرئيسية", icon: Home },
       { href: "/review-plans-overview", label: "خطط المراجعة", icon: BookOpen },
+      { href: "/certificates", label: "الشهادات الفصلية", icon: CertificateIcon },
       { href: "/data-entry-status", label: "المدخلات", icon: ClipboardList },
       { href: "/accounts", label: "الحسابات", icon: UserCheck },
       { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },
@@ -808,6 +810,7 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
       { href: "/attendance", label: "غياباتي", icon: CalendarCheck },
       { href: "/shortcomings", label: "تقصيري", icon: AlertTriangle, feature: "shortcomings" },
       { href: "/review-plans-overview", label: "الخطط", icon: BookOpen },
+      { href: "/my-certificate", label: "شهادتي الفصلية", icon: CertificateIcon },
       { href: "/statistics", label: "إحصائياتي", icon: BarChart3, feature: "stats_general" },
       { href: "/badges", label: "أوسمتي", icon: Award, feature: "badges" },
       { href: "/calendar", label: "التقويم", icon: Calendar, feature: "calendar" },
@@ -819,8 +822,10 @@ function getNavItems(role: string, unreadCount = 0, track?: string | null, circl
     return filterNav([
       { href: "/", label: "مساري", icon: Users },
       { href: "/review-plans-overview", label: "خطط المراجعة", icon: BookOpen },
+      { href: "/certificates", label: "الشهادات الفصلية", icon: CertificateIcon },
       { href: "/circles", label: "الحلقات", icon: BookOpen },
       { href: "/accounts", label: "حسابات الطالبات", icon: UserCheck },
+      { href: "/circles-staffing", label: "توزيع المعلمات والمشرفات", icon: UserX },
       { href: "/track-report", label: "ملخص المسار", icon: BarChart2 },
       { href: "/daily-tasks", label: "المهام اليومية", icon: ClipboardList },
       { href: "/statistics", label: "الإحصائيات", icon: BarChart3, feature: "stats_general" },

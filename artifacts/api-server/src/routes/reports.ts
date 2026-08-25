@@ -74,11 +74,11 @@ router.get("/reports/weekly", authenticate, async (req, res): Promise<void> => {
 
     const avgMemorizePages = avg(present.map(r => r.memorizePages));
     const avgReviewNearPages = avg(present.map(r => r.reviewNearPages));
-    const avgReviewFarPages = avg(present.map(r => r.reviewFarPages));
+    const avgReviewFarPages = avg(present.map(r => (r.reviewFarPages ?? 0) + (r.reviewFar2Pages ?? 0)));
     const avgReviewPages = avg(present.map(r => r.reviewPages));
     const avgTotalReviewPages = Math.round(
       ((present.reduce((s, r) =>
-        s + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewPages ?? 0), 0)
+        s + (r.reviewNearPages ?? 0) + (r.reviewFarPages ?? 0) + (r.reviewFar2Pages ?? 0) + (r.reviewPages ?? 0), 0)
         / (presentCount || 1)) * 10) / 10
     );
 

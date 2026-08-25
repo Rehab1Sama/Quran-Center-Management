@@ -196,19 +196,7 @@ export default function LeaderCirclesPage() {
   const headers = useCallback(() => ({ "Content-Type": "application/json", Authorization: `Bearer ${token}` }), [token]);
 
   const handleArchiveStudent = async (studentId: number, studentName: string, circleId: number) => {
-    if (!confirm(`هل تريدين إخراج "${studentName}" من الحلقة؟`)) return;
-    try {
-      const res = await fetch(`${BASE}/api/students/${studentId}/archive`, {
-        method: "PATCH",
-        headers: headers(),
-        body: JSON.stringify({ circleId }),
-      });
-      if (!res.ok) throw new Error();
-      toast({ title: `تم إخراج ${studentName} من الحلقة` });
-      await load();
-    } catch {
-      toast({ title: "فشل الإخراج", variant: "destructive" });
-    }
+    navigate(`/students/${studentId}?archive=1&circleId=${circleId}`);
   };
 
   const handleSetLeave = async () => {
@@ -308,7 +296,7 @@ export default function LeaderCirclesPage() {
         const res = await fetch(`${BASE}/api/students/${transferModal.studentId}`, {
           method: "PATCH",
           headers: headers(),
-          body: JSON.stringify({ circleId: targetCircleId }),
+          body: JSON.stringify({ circleId: targetCircleId, fromCircleId: transferModal.circleId }),
         });
         if (!res.ok) throw new Error();
         toast({ title: "تم نقل الطالبة بنجاح" });

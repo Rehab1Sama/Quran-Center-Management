@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useLocation } from "wouter";
 import { schoolConfig } from "@/lib/schoolConfig";
 import {
   useGetMissingDataEntry,
@@ -684,6 +685,7 @@ function useHeartbeat(isDataEntry: boolean) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function DataEntryPage() {
+  const [, navigate] = useLocation();
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const isDataEntry = (user as any)?.role === "data_entry";
 
@@ -944,9 +946,11 @@ export default function DataEntryPage() {
   // All students in selected circle (including those with records)
   const studentsInCircle = useMemo(() => {
     if (!selectedCircleId || !missingData) return [];
-    return ((missingData as unknown) as any[]).filter(
-      (s: any) => Number(s.circleId) === Number(selectedCircleId),
-    );
+    return ((missingData as unknown) as any[])
+      .filter((s: any) => Number(s.circleId) === Number(selectedCircleId))
+      .sort((a: any, b: any) =>
+        String(a.studentName ?? "").localeCompare(String(b.studentName ?? ""), "ar", { sensitivity: "base" }),
+      );
   }, [missingData, selectedCircleId]);
 
   const pendingStudents = useMemo(() => studentsInCircle.filter((s: any) => !s.hasRecord && !s.onLeave), [studentsInCircle]);
@@ -1410,25 +1414,7 @@ export default function DataEntryPage() {
   // ── Archive handlers ─────────────────────────────────────────────────────────
 
   const handleArchiveStudent = useCallback(async (studentId: number, circleId: number) => {
-    const token = getToken();
-    if (!token) return;
-    setArchiveActionLoading(studentId);
-    try {
-      const res = await fetch(`${BASE}/api/students/${studentId}/archive`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ circleId }),
-      });
-      if (!res.ok) throw new Error("فشل الأرشفة");
-      toast({ title: "تم أرشفة الطالبة", description: "تم نقل الطالبة إلى الأرشيف" });
-      setArchiveVersion(v => v + 1);
-      // Refresh missing data
-      queryClient.invalidateQueries({ queryKey: ["missingData"] });
-    } catch {
-      toast({ title: "خطأ", description: "فشل أرشفة الطالبة", variant: "destructive" });
-    } finally {
-      setArchiveActionLoading(null);
-    }
+    navigate(`/students/${studentId}?archive=1&circleId=${circleId}`);
   }, [toast, queryClient]);
 
   // enrollMode: "restore" for archived students, "enroll" for unassigned/registration students

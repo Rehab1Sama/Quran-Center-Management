@@ -73,15 +73,18 @@ router.post("/registration-students/bulk-transfer", authenticate, async (req, re
 
 // GET /api/circles/staffing — حلقات بدون معلمة أو مشرفة + المتطوعات المتاحات
 router.get("/circles/staffing", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "deputy"].includes(req.userRole!)) {
+  if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
 
-  const allCircles = await db.select().from(circlesTable).where(eq(circlesTable.isArchived, false));
+  let allCircles = await db.select().from(circlesTable).where(eq(circlesTable.isArchived, false));
+  if (req.userRole === "track_supervisor") {
+    allCircles = allCircles.filter(c => c.track === req.userTrack);
+  }
   const allUsers = await db.select().from(usersTable).where(eq(usersTable.isArchived, false));
 
-  const teachers = allUsers.filter(u => u.role === "teacher");
-  const supervisors = allUsers.filter(u => u.role === "supervisor");
+  const teachers = allUsers.filter(u => u.role === "teacher" && (req.userRole !== "track_supervisor" || u.track === req.userTrack));
+  const supervisors = allUsers.filter(u => u.role === "supervisor" && (req.userRole !== "track_supervisor" || u.track === req.userTrack));
 
   const assignedTeacherIds = new Set(allCircles.filter(c => c.teacherId).map(c => c.teacherId!));
   const assignedSupervisorIds = new Set(allCircles.filter(c => c.supervisorId).map(c => c.supervisorId!));
@@ -114,7 +117,7 @@ router.get("/circles/staffing", authenticate, async (req, res): Promise<void> =>
 
 // POST /api/circles/assign-staff — تعيين معلمة أو مشرفة لحلقة
 router.post("/circles/assign-staff", authenticate, async (req, res): Promise<void> => {
-  if (!["leader", "deputy"].includes(req.userRole!)) {
+  if (!["leader", "deputy", "track_supervisor"].includes(req.userRole!)) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
 
@@ -124,6 +127,11 @@ router.post("/circles/assign-staff", authenticate, async (req, res): Promise<voi
     supervisorId?: number | null;
   };
   if (!circleId) { res.status(400).json({ error: "circleId is required" }); return; }
+  const [circle] = await db.select().from(circlesTable).where(eq(circlesTable.id, circleId));
+  if (!circle) { res.status(404).json({ error: "الحلقة غير موجودة" }); return; }
+  if (req.userRole === "track_supervisor" && circle.track !== req.userTrack) {
+    res.status(403).json({ error: "الحلقة خارج نطاق مسارك" }); return;
+  }
 
   const update: Record<string, unknown> = {};
   if (teacherId !== undefined) update.teacherId = teacherId;
@@ -131,6 +139,17 @@ router.post("/circles/assign-staff", authenticate, async (req, res): Promise<voi
 
   if (Object.keys(update).length === 0) {
     res.status(400).json({ error: "No fields to update" }); return;
+  }
+  const staffIds = [teacherId, supervisorId].filter((id): id is number => typeof id === "number");
+  if (staffIds.length) {
+    const staff = await db.select({ id: usersTable.id, role: usersTable.role, track: usersTable.track })
+      .from(usersTable).where(inArray(usersTable.id, staffIds));
+    if (staff.length !== staffIds.length || staff.some(s => s.role !== (teacherId ? "teacher" : "supervisor"))) {
+      res.status(400).json({ error: "الموظفة المحددة غير صالحة لهذا الدور" }); return;
+    }
+    if (req.userRole === "track_supervisor" && staff.some(s => s.track !== req.userTrack)) {
+      res.status(403).json({ error: "الموظفة خارج نطاق مسارك" }); return;
+    }
   }
 
   await db.update(circlesTable).set(update).where(eq(circlesTable.id, circleId));

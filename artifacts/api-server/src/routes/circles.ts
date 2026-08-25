@@ -110,6 +110,11 @@ router.get("/circles/enriched", authenticate, async (req, res): Promise<void> =>
     const email = studentEmailMap[key] ?? null;
     studentsByCircle[e.circleId].push({ id: e.studentId, fullName: e.fullName, email });
   }
+  Object.keys(studentsByCircle).forEach(circleId => {
+    studentsByCircle[Number(circleId)].sort((a, b) =>
+      a.fullName.localeCompare(b.fullName, "ar", { sensitivity: "base" }),
+    );
+  });
 
   const enriched = circles.map(c => ({
     ...c,
@@ -234,6 +239,9 @@ router.get("/circles/:id", authenticate, async (req, res): Promise<void> => {
     }
   }
 
+  studentsRaw.sort((a, b) =>
+    String(a.fullName).localeCompare(String(b.fullName), "ar", { sensitivity: "base" }),
+  );
   res.json({ ...circle, teacher, supervisor, students: studentsRaw });
 });
 

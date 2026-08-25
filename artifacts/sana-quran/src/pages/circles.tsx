@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListCircles, useUpdateCircle, useListStudents, useArchiveStudent, useRestoreStudent, useGetCurrentUser, useUpdateStudent } from "@workspace/api-client-react";
+import { useListCircles, useUpdateCircle, useListStudents, useArchiveStudent, useRestoreStudent, useGetCurrentUser, useUpdateStudent, useUpdateUser } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +52,9 @@ function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRol
   const [ilEnd, setIlEnd] = useState("");
   const [ilReason, setIlReason] = useState("");
   const [ilSaving, setIlSaving] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<{ id: number; kind: "student" | "staff" } | null>(null);
+  const [personName, setPersonName] = useState("");
+  const [personSaving, setPersonSaving] = useState(false);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -63,22 +66,55 @@ function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRol
   const { data: students, isLoading } = useListStudents({ circleId }, { query: { queryKey: ["circle-students", circleId] } });
   const { data: archivedStudents } = useListStudents({ circleId, isArchived: true }, { query: { queryKey: ["circle-students-archived", circleId] } });
   const { data: allCircles } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
+  const sortedStudents = [...(students ?? [])].sort((a, b) =>
+    a.fullName.localeCompare(b.fullName, "ar", { sensitivity: "base" }),
+  );
 
   const archiveStudent = useArchiveStudent();
   const restoreStudent = useRestoreStudent();
   const updateStudent = useUpdateStudent();
+  const updateUser = useUpdateUser();
+
+  const startPersonEdit = (id: number, name: string, kind: "student" | "staff") => {
+    setEditingPerson({ id, kind });
+    setPersonName(name.trim());
+  };
+
+  const cancelPersonEdit = () => {
+    setEditingPerson(null);
+    setPersonName("");
+  };
+
+  const savePersonName = async () => {
+    if (!editingPerson) return;
+    const trimmedName = personName.trim();
+    if (trimmedName.length < 2) {
+      toast({ title: "اكتبي الاسم كاملًا", variant: "destructive" });
+      return;
+    }
+    setPersonSaving(true);
+    try {
+      if (editingPerson.kind === "student") {
+        await updateStudent.mutateAsync({ id: editingPerson.id, data: { fullName: trimmedName } });
+      } else {
+        await updateUser.mutateAsync({ id: editingPerson.id, data: { name: trimmedName } });
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] }),
+        queryClient.invalidateQueries({ queryKey: ["circles"] }),
+        queryClient.invalidateQueries({ queryKey: ["users"] }),
+      ]);
+      toast({ title: "تم حفظ الاسم بنجاح" });
+      cancelPersonEdit();
+    } catch (error: any) {
+      toast({ title: error?.message ?? "حدث خطأ أثناء حفظ الاسم", variant: "destructive" });
+    } finally {
+      setPersonSaving(false);
+    }
+  };
 
   const handleArchive = (s: any) => {
-    if (!confirm(`هل تريدين إخراج "${s.fullName}" من هذه الحلقة؟`)) return;
-    archiveStudent.mutate({ id: s.id, data: { circleId } }, {
-      onSuccess: () => {
-        toast({ title: `تم إخراج ${s.fullName} من الحلقة` });
-        queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
-        queryClient.invalidateQueries({ queryKey: ["circle-students-archived", circleId] });
-        queryClient.invalidateQueries({ queryKey: ["circles"] });
-      },
-      onError: () => toast({ title: "خطأ في الإخراج", variant: "destructive" }),
-    });
+    navigate(`/students/${s.id}?archive=1&circleId=${circleId}`);
   };
 
   const handleRestore = (s: any) => {
@@ -139,7 +175,7 @@ function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRol
   const handleTransfer = () => {
     if (!transferModal || !transferTargetId) return;
     setTransferring(true);
-    updateStudent.mutate({ id: transferModal.studentId, data: { circleId: transferTargetId } }, {
+    updateStudent.mutate({ id: transferModal.studentId, data: { circleId: transferTargetId, fromCircleId: circleId } as any }, {
       onSuccess: () => {
         toast({ title: `تم نقل ${transferModal.studentName} بنجاح` });
         queryClient.invalidateQueries({ queryKey: ["circle-students", circleId] });
@@ -226,7 +262,7 @@ function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRol
 
       {(!students || students.length === 0) && <p className="text-xs text-muted-foreground text-center py-2">لا توجد طالبات</p>}
 
-      {students?.map(s => {
+      {sortedStudents.map(s => {
         const sAny = s as any;
         const onLeave = !!(sAny.leaveStart && sAny.leaveEnd && sAny.leaveStart <= today && today <= sAny.leaveEnd);
         const isInlineOpen = inlineLeaveId === s.id;
@@ -234,7 +270,39 @@ function CircleStudentsPanel({ circleId, userRole }: { circleId: number; userRol
           <div key={s.id}>
             <div className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 ${onLeave ? "bg-blue-50 border border-blue-200" : "bg-muted/30"}`}>
               <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                <span className="text-xs font-medium truncate">{s.fullName}</span>
+                {isTrackSupervisor && editingPerson?.kind === "student" && editingPerson.id === s.id ? (
+                  <div className="flex items-center gap-1 flex-1 min-w-0">
+                    <Input
+                      value={personName}
+                      onChange={e => setPersonName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") void savePersonName();
+                        if (e.key === "Escape") cancelPersonEdit();
+                      }}
+                      className="h-7 text-xs text-right"
+                      autoFocus
+                    />
+                    <button onClick={() => void savePersonName()} disabled={personSaving} className="p-1 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:opacity-50" title="حفظ الاسم">
+                      <Check className="w-3 h-3" />
+                    </button>
+                    <button onClick={cancelPersonEdit} disabled={personSaving} className="p-1 rounded bg-muted text-muted-foreground hover:bg-muted/80 disabled:opacity-50" title="إلغاء">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-xs font-medium truncate">{s.fullName}</span>
+                    {isTrackSupervisor && (
+                      <button
+                        onClick={() => startPersonEdit(s.id, s.fullName, "student")}
+                        className="p-1 rounded text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
+                        title="تعديل اسم الطالبة"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
+                  </>
+                )}
                 {onLeave && <span className="text-[10px] bg-blue-100 text-blue-700 border border-blue-200 rounded-full px-1.5 py-0.5 shrink-0">إجازة</span>}
               </div>
               <div className="flex gap-1 flex-shrink-0">
@@ -420,13 +488,21 @@ export default function CirclesPage() {
   const { data: circles, isLoading, refetch } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
   const { data: currentUser } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const updateCircle = useUpdateCircle();
+  const updateUser = useUpdateUser();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [search, setSearch] = useState("");
   const [selectedTrack, setSelectedTrack] = useState<string>("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editData, setEditData] = useState({ name: "", track: "", meetingTime: "", period: "am" as "am" | "pm", newStudentCapacity: "", whatsappLink: "" });
   const [saving, setSaving] = useState(false);
+  const [editingCircleNameId, setEditingCircleNameId] = useState<number | null>(null);
+  const [circleNameDraft, setCircleNameDraft] = useState("");
+  const [circleNameSaving, setCircleNameSaving] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<number | null>(null);
+  const [staffName, setStaffName] = useState("");
+  const [staffSaving, setStaffSaving] = useState(false);
   const [expandedCircle, setExpandedCircle] = useState<number | null>(null);
   const [seeding, setSeeding] = useState(false);
 
@@ -440,6 +516,69 @@ export default function CirclesPage() {
   const canEdit = currentUser?.role === "leader" || currentUser?.role === "track_supervisor";
   const canGrantLeave = ["leader", "deputy", "track_supervisor"].includes(currentUser?.role ?? "");
   const canManageStaff = ["leader", "deputy", "track_supervisor"].includes(currentUser?.role ?? "");
+
+  const startStaffEdit = (userId: number, name: string) => {
+    setEditingStaff(userId);
+    setStaffName(name.trim());
+  };
+
+  const startCircleNameEdit = (circleId: number, name: string) => {
+    setEditingCircleNameId(circleId);
+    setCircleNameDraft(name.trim());
+  };
+
+  const cancelCircleNameEdit = () => {
+    setEditingCircleNameId(null);
+    setCircleNameDraft("");
+  };
+
+  const saveCircleName = async () => {
+    if (!editingCircleNameId) return;
+    const trimmedName = circleNameDraft.trim();
+    if (trimmedName.length < 2) {
+      toast({ title: "اكتبي اسم الحلقة", variant: "destructive" });
+      return;
+    }
+    setCircleNameSaving(true);
+    try {
+      await updateCircle.mutateAsync({ id: editingCircleNameId, data: { name: trimmedName } });
+      await refetch();
+      toast({ title: "تم حفظ اسم الحلقة" });
+      cancelCircleNameEdit();
+    } catch (error: any) {
+      toast({ title: error?.message ?? "تعذر حفظ اسم الحلقة", variant: "destructive" });
+    } finally {
+      setCircleNameSaving(false);
+    }
+  };
+
+  const cancelStaffEdit = () => {
+    setEditingStaff(null);
+    setStaffName("");
+  };
+
+  const saveStaffName = async () => {
+    if (!editingStaff) return;
+    const trimmedName = staffName.trim();
+    if (trimmedName.length < 2) {
+      toast({ title: "اكتبي الاسم كاملًا", variant: "destructive" });
+      return;
+    }
+    setStaffSaving(true);
+    try {
+      await updateUser.mutateAsync({ id: editingStaff, data: { name: trimmedName } });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["circles"] }),
+        queryClient.invalidateQueries({ queryKey: ["users"] }),
+      ]);
+      toast({ title: "تم حفظ الاسم بنجاح" });
+      cancelStaffEdit();
+    } catch (error: any) {
+      toast({ title: error?.message ?? "حدث خطأ أثناء حفظ الاسم", variant: "destructive" });
+    } finally {
+      setStaffSaving(false);
+    }
+  };
 
   const openRemoveStaffModal = (circle: (typeof filtered)[0], staffRole: "teacher" | "supervisor", staffName: string) => {
     setRemoveStaffModal({ circleId: circle.id, circleName: circle.name, staffRole, staffName });
@@ -633,40 +772,77 @@ export default function CirclesPage() {
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {trackCircles.map(circle => {
-                  const c = circle as typeof circle & { meetingTime?: string | null; newStudentCapacity?: number | null; teacherName?: string; studentCount?: number; location?: string; description?: string };
+                  const c = circle as typeof circle & { meetingTime?: string | null; newStudentCapacity?: number | null; teacherName?: string; teacherId?: number | null; supervisorId?: number | null; studentCount?: number; location?: string; description?: string };
                   const isEditing = editingId === circle.id;
+                  const isEditingCircleName = editingCircleNameId === circle.id;
+                  const editingTeacher = editingStaff === c.teacherId;
+                  const editingSupervisor = editingStaff === c.supervisorId;
 
                   return (
                     <Card key={circle.id} className="border border-border/50 shadow-sm hover:shadow-md transition-all" data-testid={`card-circle-${circle.id}`}>
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-bold text-base text-foreground">{circle.name}</h3>
+                            {isEditingCircleName ? (
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  value={circleNameDraft}
+                                  onChange={e => setCircleNameDraft(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") void saveCircleName();
+                                    if (e.key === "Escape") cancelCircleNameEdit();
+                                  }}
+                                  className="h-8 text-sm font-bold text-right"
+                                  autoFocus
+                                />
+                                <button onClick={() => void saveCircleName()} disabled={circleNameSaving} className="p-1 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:opacity-50" title="حفظ اسم الحلقة"><Check className="w-3.5 h-3.5" /></button>
+                                <button onClick={cancelCircleNameEdit} disabled={circleNameSaving} className="p-1 rounded bg-muted text-muted-foreground hover:bg-muted/80 disabled:opacity-50" title="إلغاء"><X className="w-3.5 h-3.5" /></button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <h3 className="font-bold text-base text-foreground">{circle.name}</h3>
+                                {canEdit && (
+                                  <button onClick={() => startCircleNameEdit(circle.id, circle.name)} className="p-1 rounded text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors" title="تعديل اسم الحلقة">
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            )}
                             {c.teacherName && (
                               <div className="flex items-center gap-1 mt-0.5">
-                                <p className="text-xs text-muted-foreground flex-1">معلمة: {c.teacherName}</p>
-                                {canManageStaff && (
-                                  <button
-                                    onClick={() => openRemoveStaffModal(circle, "teacher", c.teacherName!)}
-                                    className="p-0.5 rounded text-muted-foreground/40 hover:text-rose-500 hover:bg-rose-50 transition-colors"
-                                    title="إزالة المعلمة من الحلقة"
-                                  >
-                                    <UserX className="w-3 h-3" />
-                                  </button>
+                                {editingTeacher ? (
+                                  <div className="flex items-center gap-1 flex-1">
+                                    <Input value={staffName} onChange={e => setStaffName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void saveStaffName(); if (e.key === "Escape") cancelStaffEdit(); }} className="h-7 text-xs text-right" autoFocus />
+                                    <button onClick={() => void saveStaffName()} disabled={staffSaving} className="p-1 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:opacity-50" title="حفظ الاسم"><Check className="w-3 h-3" /></button>
+                                    <button onClick={cancelStaffEdit} disabled={staffSaving} className="p-1 rounded bg-muted text-muted-foreground hover:bg-muted/80 disabled:opacity-50" title="إلغاء"><X className="w-3 h-3" /></button>
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground flex-1">معلمة: {c.teacherName}</p>
+                                )}
+                                {canEdit && c.teacherId && !editingTeacher && (
+                                  <button onClick={() => startStaffEdit(c.teacherId!, c.teacherName!)} className="p-0.5 rounded text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors" title="تعديل اسم المعلمة"><Pencil className="w-3 h-3" /></button>
+                                )}
+                                {canManageStaff && !editingTeacher && (
+                                  <button onClick={() => openRemoveStaffModal(circle, "teacher", c.teacherName!)} className="p-0.5 rounded text-muted-foreground/40 hover:text-rose-500 hover:bg-rose-50 transition-colors" title="إزالة المعلمة من الحلقة"><UserX className="w-3 h-3" /></button>
                                 )}
                               </div>
                             )}
                             {(c as any).supervisorName && (
                               <div className="flex items-center gap-1">
-                                <p className="text-xs text-muted-foreground flex-1">مشرفة: {(c as any).supervisorName}</p>
-                                {canManageStaff && (
-                                  <button
-                                    onClick={() => openRemoveStaffModal(circle, "supervisor", (c as any).supervisorName)}
-                                    className="p-0.5 rounded text-muted-foreground/40 hover:text-rose-500 hover:bg-rose-50 transition-colors"
-                                    title="إزالة المشرفة من الحلقة"
-                                  >
-                                    <UserX className="w-3 h-3" />
-                                  </button>
+                                {editingSupervisor ? (
+                                  <div className="flex items-center gap-1 flex-1">
+                                    <Input value={staffName} onChange={e => setStaffName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void saveStaffName(); if (e.key === "Escape") cancelStaffEdit(); }} className="h-7 text-xs text-right" autoFocus />
+                                    <button onClick={() => void saveStaffName()} disabled={staffSaving} className="p-1 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:opacity-50" title="حفظ الاسم"><Check className="w-3 h-3" /></button>
+                                    <button onClick={cancelStaffEdit} disabled={staffSaving} className="p-1 rounded bg-muted text-muted-foreground hover:bg-muted/80 disabled:opacity-50" title="إلغاء"><X className="w-3 h-3" /></button>
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground flex-1">مشرفة: {(c as any).supervisorName}</p>
+                                )}
+                                {canEdit && c.supervisorId && !editingSupervisor && (
+                                  <button onClick={() => startStaffEdit(c.supervisorId!, (c as any).supervisorName)} className="p-0.5 rounded text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors" title="تعديل اسم المشرفة"><Pencil className="w-3 h-3" /></button>
+                                )}
+                                {canManageStaff && !editingSupervisor && (
+                                  <button onClick={() => openRemoveStaffModal(circle, "supervisor", (c as any).supervisorName)} className="p-0.5 rounded text-muted-foreground/40 hover:text-rose-500 hover:bg-rose-50 transition-colors" title="إزالة المشرفة من الحلقة"><UserX className="w-3 h-3" /></button>
                                 )}
                               </div>
                             )}
@@ -724,7 +900,7 @@ export default function CirclesPage() {
                         {isEditing && (
                           <div className="mt-3 pt-3 border-t border-border/50 space-y-3">
                             {/* Name + track — leader only */}
-                            {isLeader && (
+                            {canEdit && (
                               <>
                                 <div className="space-y-1">
                                   <Label className="text-xs font-semibold text-muted-foreground flex items-center gap-1">

@@ -135,7 +135,7 @@ export default function CirclesStaffingPage() {
     }
   };
 
-  if (!["leader", "deputy"].includes(user?.role ?? "")) return null;
+  if (!["leader", "deputy", "track_supervisor"].includes(user?.role ?? "")) return null;
 
   const missingTeacher = data?.circles.filter(c => c.missingTeacher) ?? [];
   const missingSupervisor = data?.circles.filter(c => c.missingSupervisor) ?? [];

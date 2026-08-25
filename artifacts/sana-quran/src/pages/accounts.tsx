@@ -59,6 +59,7 @@ const ROLES = [
   { value: "track_supervisor", label: "مسؤولة مسار" },
   { value: "exam_supervisor", label: "مسؤولة الاختبارات" },
   { value: "student", label: "طالبة" },
+  { value: "volunteer", label: "متطوعة" },
 ];
 
 function getRoleBadgeClass(role: string) {
@@ -71,6 +72,7 @@ function getRoleBadgeClass(role: string) {
     track_supervisor: "bg-pink-100 text-pink-700",
     exam_supervisor: "bg-teal-100 text-teal-700",
     student: "bg-gray-100 text-gray-700",
+    volunteer: "bg-violet-100 text-violet-700",
   };
   return map[role] ?? "bg-gray-100 text-gray-700";
 }
@@ -100,7 +102,9 @@ function groupByEmail(users: UserRow[]): PersonGroup[] {
     }
     map.get(u.email)!.accounts.push(u);
   }
-  return [...map.values()];
+  return [...map.values()].sort((a, b) =>
+    a.name.localeCompare(b.name, "ar", { sensitivity: "base" }),
+  );
 }
 
 function useDataEntryAssignments(canManage: boolean) {
@@ -146,7 +150,9 @@ export default function AccountsPage() {
   const isLeader = currentUser?.role === "leader";
   const isTrackSupervisor = currentUser?.role === "track_supervisor";
   const canManageAssignments = currentUser?.role === "leader" || (currentUser?.role as string) === "deputy";
-  const { data: users, isLoading } = useListUsers(undefined, { query: { queryKey: ["users"] } });
+  const { data: users, isLoading } = useListUsers(undefined, {
+    query: { queryKey: ["users", currentUser?.id, currentUser?.role, currentUser?.track] },
+  });
   const { data: circles } = useListCircles(undefined, { query: { queryKey: ["circles"] } });
   const allCirclesForForm = useAllCirclesForForm();
   const { data: tracks, isLoading: tracksLoading } = useListTracks({ query: { queryKey: ["tracks"] } });
@@ -385,8 +391,8 @@ export default function AccountsPage() {
   // Group duplicates by name to avoid repeating the same name multiple times
   const duplicateNames = [...new Set((emailDuplicates as UserRow[]).map(u => u.name))];
   const showEmailDuplicateWarning = emailDuplicates.length > 0 && !emailConfirmedDuplicate;
-  const needsTrack = ["track_supervisor", "teacher", "supervisor", "student"].includes(form.role);
-  const needsCircle = ["teacher", "supervisor", "student"].includes(form.role);
+  const needsTrack = ["track_supervisor", "teacher", "supervisor", "student", "volunteer"].includes(form.role);
+  const needsCircle = ["teacher", "supervisor", "student", "volunteer"].includes(form.role);
   // Use allCirclesForForm (fetched from /api/circles/names — all circles, all tracks)
   // so track_supervisors can assign roles in any track, not just their own.
   const filteredCircles = form.track
@@ -473,7 +479,7 @@ export default function AccountsPage() {
                             {acc.track && (
                               <span className="text-xs text-muted-foreground">{acc.track}</span>
                             )}
-                            {acc.role === "student" && (
+                            {["student", "volunteer"].includes(acc.role) && (
                               acc.circleName
                                 ? <span className="text-xs font-medium text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5">{acc.circleName}</span>
                                 : <span className="text-xs text-amber-600 bg-amber-50 rounded px-1.5 py-0.5">بدون حلقة ⚠</span>
@@ -489,7 +495,7 @@ export default function AccountsPage() {
                               >
                                 <Pencil className="w-3 h-3" />
                               </button>
-                              {isLeader && <button
+                              {(isLeader || (isTrackSupervisor && ["student", "volunteer"].includes(acc.role))) && <button
                                 onClick={() => { setResetPwdUserId(acc.id); setNewPassword(""); setResetPwdOpen(true); }}
                                 className="text-muted-foreground hover:text-blue-600 transition-colors"
                                 title="إعادة تعيين كلمة المرور"
@@ -499,7 +505,8 @@ export default function AccountsPage() {
                                 className={`transition-colors ${acc.isArchived ? "text-muted-foreground hover:text-emerald-600" : "text-muted-foreground hover:text-destructive"}`}
                                 title={acc.isArchived ? "تفعيل الحساب" : "تعطيل الحساب"}
                               >{acc.isArchived ? <CheckCircle2 className="w-3 h-3" /> : <Ban className="w-3 h-3" />}</button>}
-                              {acc.role !== "leader" && acc.role !== "deputy" && (
+                              {acc.role !== "leader" && acc.role !== "deputy" &&
+                                (isLeader || ["teacher", "supervisor", "volunteer"].includes(acc.role)) && (
                                 <button
                                   onClick={() => handleArchiveAccount(acc.id, `${acc.role} — ${person.name}`)}
                                   className="text-muted-foreground hover:text-amber-600 transition-colors"
@@ -678,7 +685,7 @@ export default function AccountsPage() {
                   <SelectValue placeholder="اختيار الدور" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(isTrackSupervisor ? ROLES.filter(r => ["student", "teacher", "supervisor"].includes(r.value)) : ROLES).map(r => (
+                  {(isTrackSupervisor ? ROLES.filter(r => ["student", "teacher", "supervisor", "volunteer"].includes(r.value)) : ROLES).map(r => (
                     <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
                   ))}
                 </SelectContent>

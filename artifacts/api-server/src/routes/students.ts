@@ -12,6 +12,8 @@ function parseId(raw: string | string[]): number {
 }
 
 const STAFF_ROLES = ["leader", "deputy", "track_supervisor", "teacher", "supervisor"];
+const sortArabicNames = <T extends { fullName: string }>(rows: T[]): T[] =>
+  [...rows].sort((a, b) => a.fullName.localeCompare(b.fullName, "ar", { sensitivity: "base" }));
 
 // ── List students ──────────────────────────────────────────────────────────────
 router.get("/students", authenticate, async (req, res): Promise<void> => {
@@ -60,7 +62,7 @@ router.get("/students", authenticate, async (req, res): Promise<void> => {
       )
       .where(eq(studentEnrollmentsTable.isArchived, wantEnrollmentArchived));
 
-    let result = enrollments;
+    let result = sortArabicNames(enrollments);
     if (q) result = result.filter(s => s.fullName.toLowerCase().includes(q));
     res.json(result);
     return;
@@ -83,7 +85,7 @@ router.get("/students", authenticate, async (req, res): Promise<void> => {
     students = students.filter(s => s.fullName.toLowerCase().includes(q));
   }
 
-  res.json(students);
+  res.json(sortArabicNames(students));
 });
 
 // ── Search unassigned students (registration circle or no circle) ─────────────
@@ -307,6 +309,9 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   const parsed = UpdateStudentBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const requestedFromCircleId = typeof req.body?.fromCircleId === "number"
+    ? req.body.fromCircleId
+    : undefined;
 
   const [before] = await db.select().from(studentsTable).where(eq(studentsTable.id, id));
   if (!before) { res.status(404).json({ error: "Student not found" }); return; }
@@ -323,30 +328,62 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
     if (allowed.length === 0) { res.status(403).json({ error: "الطالبة خارج نطاق المسار" }); return; }
   }
 
-  const [student] = await db.update(studentsTable).set(parsed.data).where(eq(studentsTable.id, id)).returning();
+  const studentUpdate = { ...parsed.data };
+  // A transfer from a non-primary membership must not overwrite the legacy
+  // primary circle pointer used by the other account/enrollment.
+  if (
+    requestedFromCircleId !== undefined &&
+    requestedFromCircleId !== before.circleId
+  ) {
+    delete (studentUpdate as Partial<typeof parsed.data>).circleId;
+  }
+  const [student] = await db.update(studentsTable).set(studentUpdate).where(eq(studentsTable.id, id)).returning();
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
 
-  // If circleId changed, log transfer + archive old enrollment + create/update new enrollment
-  if (parsed.data.circleId !== undefined && parsed.data.circleId !== before.circleId) {
+  // Explicit transfer moves only the selected membership. Other active
+  // memberships (and their accounts/records) must remain untouched.
+  if (
+    parsed.data.circleId !== undefined &&
+    parsed.data.circleId !== (requestedFromCircleId ?? before.circleId)
+  ) {
+    const activeEnrollments = await db.select({ circleId: studentEnrollmentsTable.circleId })
+      .from(studentEnrollmentsTable)
+      .where(and(
+        eq(studentEnrollmentsTable.studentId, id),
+        eq(studentEnrollmentsTable.isArchived, false),
+      ));
+    const sourceCircleId = requestedFromCircleId ?? before.circleId ?? activeEnrollments[0]?.circleId;
+    const sourceIsActive = sourceCircleId != null &&
+      activeEnrollments.some(enrollment => enrollment.circleId === sourceCircleId);
+    const affectedCircleIds = sourceIsActive ? [sourceCircleId!] : [];
     await db.insert(studentTransfersTable).values({
       studentId: id,
-      fromCircleId: before.circleId ?? undefined,
+      fromCircleId: sourceCircleId ?? undefined,
       toCircleId: parsed.data.circleId!,
       transferredById: req.userId!,
     });
-    // Archive old enrollment so student disappears from old circle immediately
-    if (before.circleId) {
+    // Keep history, but close only the selected source membership.
+    if (affectedCircleIds.length > 0) {
       await db.update(studentEnrollmentsTable)
         .set({ isArchived: true, archivedAt: new Date() })
         .where(
           and(
             eq(studentEnrollmentsTable.studentId, id),
-            eq(studentEnrollmentsTable.circleId, before.circleId),
+            eq(studentEnrollmentsTable.circleId, affectedCircleIds[0]),
+            eq(studentEnrollmentsTable.isArchived, false),
           )
         );
     }
-    // Ensure enrollment exists in new circle
+    // Move only records belonging to the selected source circle.
     if (parsed.data.circleId) {
+      if (affectedCircleIds.length > 0) {
+        await db.update(recordsTable)
+          .set({ circleId: parsed.data.circleId })
+          .where(and(
+            eq(recordsTable.studentId, id),
+            eq(recordsTable.circleId, affectedCircleIds[0]),
+          ));
+      }
       await db.insert(studentEnrollmentsTable)
         .values({ studentId: id, circleId: parsed.data.circleId, isArchived: false })
         .onConflictDoUpdate({
@@ -356,18 +393,28 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
     }
     // Sync the student's user account circleId to match the new circle
     // أولاً: بالرابط المباشر student_id (أدق وأأمن)
-    await db.update(usersTable)
-      .set({ circleId: parsed.data.circleId ?? null })
-      .where(and(eq(usersTable.studentId, id), eq(usersTable.role, "student")));
+    if (sourceCircleId != null) {
+      await db.update(usersTable)
+        .set({ circleId: parsed.data.circleId ?? null })
+        .where(and(
+          eq(usersTable.studentId, id),
+          eq(usersTable.role, "student"),
+          eq(usersTable.circleId, sourceCircleId),
+        ));
+    } else {
+      await db.update(usersTable)
+        .set({ circleId: parsed.data.circleId ?? null })
+        .where(and(eq(usersTable.studentId, id), eq(usersTable.role, "student")));
+    }
     // ثانياً: بالاسم + الحلقة القديمة فقط للحسابات غير المربوطة (لتجنب تحديث طالبات بنفس الاسم في حلقات أخرى)
-    if (before.circleId) {
+    if (sourceCircleId != null) {
       await db.update(usersTable)
         .set({ circleId: parsed.data.circleId ?? null })
         .where(and(
           eq(usersTable.role, "student"),
           isNull(usersTable.studentId),
           eq(usersTable.name, before.fullName),
-          eq(usersTable.circleId, before.circleId),
+          eq(usersTable.circleId, sourceCircleId),
         ));
     }
   }
@@ -478,7 +525,7 @@ router.patch("/students/:id/archive", authenticate, async (req, res): Promise<vo
       // Sync user account circleId
       await db.update(usersTable)
         .set({ circleId: newCircleId })
-        .where(and(eq(usersTable.name, before.fullName), eq(usersTable.role, "student")));
+        .where(and(eq(usersTable.studentId, id), eq(usersTable.role, "student")));
     }
 
     await db.insert(studentArchiveEventsTable).values({
@@ -489,20 +536,37 @@ router.patch("/students/:id/archive", authenticate, async (req, res): Promise<vo
     res.json(updated);
   } else {
     // Global archive (leader-only)
+    if (!withdrawalPeriod || !withdrawalReason?.trim()) {
+      res.status(400).json({ error: "يجب اختيار فترة الانسحاب وكتابة السبب" });
+      return;
+    }
     const [student] = await db.update(studentsTable)
-      .set({ isArchived: true, circleId: null, archivedAt: new Date() })
+      .set({
+        isArchived: true,
+        circleId: null,
+        archivedAt: new Date(),
+        withdrawalPeriod: withdrawalPeriod.trim(),
+        withdrawalReason: withdrawalReason.trim(),
+        withdrawalNotes: withdrawalNotes?.trim() || null,
+      })
       .where(eq(studentsTable.id, id)).returning();
     if (!student) { res.status(404).json({ error: "Student not found" }); return; }
 
     // Archive all enrollments
     await db.update(studentEnrollmentsTable)
-      .set({ isArchived: true, archivedAt: new Date() })
+      .set({
+        isArchived: true,
+        archivedAt: new Date(),
+        withdrawalPeriod: withdrawalPeriod.trim(),
+        withdrawalReason: withdrawalReason.trim(),
+        withdrawalNotes: withdrawalNotes?.trim() || null,
+      })
       .where(eq(studentEnrollmentsTable.studentId, id));
 
     // Sync user account: archive and clear circleId
     await db.update(usersTable)
       .set({ isArchived: true, circleId: null })
-      .where(and(eq(usersTable.name, before.fullName), eq(usersTable.role, "student")));
+      .where(and(eq(usersTable.studentId, id), eq(usersTable.role, "student")));
 
     await db.insert(studentArchiveEventsTable).values({
       studentId: id, eventType: "archived", circleIdAtTime: before?.circleId ?? null, performedById: req.userId ?? null,
