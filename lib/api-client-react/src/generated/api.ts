@@ -30,6 +30,9 @@ import type {
   BatchSendMessageBody,
   BatchSendMessages201,
   CalendarEvent,
+  CertificateImportCandidate,
+  CertificateStudentResult,
+  CertificateTerm,
   CheckTeacherAbsenceParams,
   Circle,
   CircleName,
@@ -38,6 +41,7 @@ import type {
   CreateBadgeAssignmentBody,
   CreateBadgeEventBody,
   CreateCalendarEventBody,
+  CreateCertificateTermBody,
   CreateCircleBody,
   CreateCircleInTrackBody,
   CreateCustomQuestionBody,
@@ -71,6 +75,7 @@ import type {
   HealthStatus,
   ListBadgeAssignmentsParams,
   ListCalendarEventsParams,
+  ListCertificateStudentResultsParams,
   ListCirclesParams,
   ListCustomQuestionsParams,
   ListDailyCircleTasksParams,
@@ -94,7 +99,9 @@ import type {
   RegistrationStatus,
   RepeatedAbsenceStudent,
   ResetPasswordBody,
+  ResolveCertificateImportCandidatesBody,
   RestoreStudentBody,
+  SaveCertificateGradesBody,
   SaveCustomQuestionAnswerBody,
   SaveDailyCircleTaskBody,
   SaveExamAssignmentsBody,
@@ -114,6 +121,7 @@ import type {
   TeacherAbsenceStatus,
   TodayBanner,
   Track,
+  UpdateCertificateTermBody,
   UpdateCircleBody,
   UpdateRecordBody,
   UpdateShortcomingOverrideBody,
@@ -7952,5 +7960,678 @@ export const useDeleteMessage = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteMessageMutationOptions(options));
+    }
+
+export const getListCertificateTermsUrl = () => {
+
+
+
+
+  return `/api/certificate-terms`
+}
+
+/**
+ * @summary List certificate terms visible to the current user
+ */
+export const listCertificateTerms = async ( options?: RequestInit): Promise<CertificateTerm[]> => {
+
+  return customFetch<CertificateTerm[]>(getListCertificateTermsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCertificateTermsQueryKey = () => {
+    return [
+    `/api/certificate-terms`
+    ] as const;
+    }
+
+
+export const getListCertificateTermsQueryOptions = <TData = Awaited<ReturnType<typeof listCertificateTerms>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCertificateTerms>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCertificateTermsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCertificateTerms>>> = ({ signal }) => listCertificateTerms({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCertificateTerms>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCertificateTermsQueryResult = NonNullable<Awaited<ReturnType<typeof listCertificateTerms>>>
+export type ListCertificateTermsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List certificate terms visible to the current user
+ */
+
+export function useListCertificateTerms<TData = Awaited<ReturnType<typeof listCertificateTerms>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCertificateTerms>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCertificateTermsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateCertificateTermUrl = () => {
+
+
+
+
+  return `/api/certificate-terms`
+}
+
+/**
+ * @summary Create a certificate term (leader or deputy)
+ */
+export const createCertificateTerm = async (createCertificateTermBody: CreateCertificateTermBody, options?: RequestInit): Promise<CertificateTerm> => {
+
+  return customFetch<CertificateTerm>(getCreateCertificateTermUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createCertificateTermBody)
+  }
+);}
+
+
+
+
+export const getCreateCertificateTermMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCertificateTerm>>, TError,{data: BodyType<CreateCertificateTermBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCertificateTerm>>, TError,{data: BodyType<CreateCertificateTermBody>}, TContext> => {
+
+const mutationKey = ['createCertificateTerm'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCertificateTerm>>, {data: BodyType<CreateCertificateTermBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createCertificateTerm(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCertificateTermMutationResult = NonNullable<Awaited<ReturnType<typeof createCertificateTerm>>>
+    export type CreateCertificateTermMutationBody = BodyType<CreateCertificateTermBody>
+    export type CreateCertificateTermMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a certificate term (leader or deputy)
+ */
+export const useCreateCertificateTerm = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCertificateTerm>>, TError,{data: BodyType<CreateCertificateTermBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCertificateTerm>>,
+        TError,
+        {data: BodyType<CreateCertificateTermBody>},
+        TContext
+      > => {
+      return useMutation(getCreateCertificateTermMutationOptions(options));
+    }
+
+export const getUpdateCertificateTermUrl = (termId: number,) => {
+
+
+
+
+  return `/api/certificate-terms/${termId}`
+}
+
+/**
+ * @summary Update a draft certificate term
+ */
+export const updateCertificateTerm = async (termId: number,
+    updateCertificateTermBody: UpdateCertificateTermBody, options?: RequestInit): Promise<CertificateTerm> => {
+
+  return customFetch<CertificateTerm>(getUpdateCertificateTermUrl(termId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateCertificateTermBody)
+  }
+);}
+
+
+
+
+export const getUpdateCertificateTermMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCertificateTerm>>, TError,{termId: number;data: BodyType<UpdateCertificateTermBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCertificateTerm>>, TError,{termId: number;data: BodyType<UpdateCertificateTermBody>}, TContext> => {
+
+const mutationKey = ['updateCertificateTerm'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCertificateTerm>>, {termId: number;data: BodyType<UpdateCertificateTermBody>}> = (props) => {
+          const {termId,data} = props ?? {};
+
+          return  updateCertificateTerm(termId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCertificateTermMutationResult = NonNullable<Awaited<ReturnType<typeof updateCertificateTerm>>>
+    export type UpdateCertificateTermMutationBody = BodyType<UpdateCertificateTermBody>
+    export type UpdateCertificateTermMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a draft certificate term
+ */
+export const useUpdateCertificateTerm = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCertificateTerm>>, TError,{termId: number;data: BodyType<UpdateCertificateTermBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCertificateTerm>>,
+        TError,
+        {termId: number;data: BodyType<UpdateCertificateTermBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateCertificateTermMutationOptions(options));
+    }
+
+export const getListCertificateStudentResultsUrl = (termId: number,
+    params?: ListCertificateStudentResultsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/certificate-terms/${termId}/students?${stringifiedParams}` : `/api/certificate-terms/${termId}/students`
+}
+
+/**
+ * @summary List calculated student results for a term
+ */
+export const listCertificateStudentResults = async (termId: number,
+    params?: ListCertificateStudentResultsParams, options?: RequestInit): Promise<CertificateStudentResult[]> => {
+
+  return customFetch<CertificateStudentResult[]>(getListCertificateStudentResultsUrl(termId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCertificateStudentResultsQueryKey = (termId: number,
+    params?: ListCertificateStudentResultsParams,) => {
+    return [
+    `/api/certificate-terms/${termId}/students`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListCertificateStudentResultsQueryOptions = <TData = Awaited<ReturnType<typeof listCertificateStudentResults>>, TError = ErrorType<unknown>>(termId: number,
+    params?: ListCertificateStudentResultsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCertificateStudentResults>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCertificateStudentResultsQueryKey(termId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCertificateStudentResults>>> = ({ signal }) => listCertificateStudentResults(termId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: termId !== null && termId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCertificateStudentResults>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCertificateStudentResultsQueryResult = NonNullable<Awaited<ReturnType<typeof listCertificateStudentResults>>>
+export type ListCertificateStudentResultsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List calculated student results for a term
+ */
+
+export function useListCertificateStudentResults<TData = Awaited<ReturnType<typeof listCertificateStudentResults>>, TError = ErrorType<unknown>>(
+ termId: number,
+    params?: ListCertificateStudentResultsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCertificateStudentResults>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCertificateStudentResultsQueryOptions(termId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSaveCertificateGradesUrl = (termId: number,) => {
+
+
+
+
+  return `/api/certificate-terms/${termId}/grades`
+}
+
+/**
+ * @summary Save term test grades for students in an authorized track
+ */
+export const saveCertificateGrades = async (termId: number,
+    saveCertificateGradesBody: SaveCertificateGradesBody, options?: RequestInit): Promise<CertificateStudentResult[]> => {
+
+  return customFetch<CertificateStudentResult[]>(getSaveCertificateGradesUrl(termId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(saveCertificateGradesBody)
+  }
+);}
+
+
+
+
+export const getSaveCertificateGradesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveCertificateGrades>>, TError,{termId: number;data: BodyType<SaveCertificateGradesBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveCertificateGrades>>, TError,{termId: number;data: BodyType<SaveCertificateGradesBody>}, TContext> => {
+
+const mutationKey = ['saveCertificateGrades'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveCertificateGrades>>, {termId: number;data: BodyType<SaveCertificateGradesBody>}> = (props) => {
+          const {termId,data} = props ?? {};
+
+          return  saveCertificateGrades(termId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveCertificateGradesMutationResult = NonNullable<Awaited<ReturnType<typeof saveCertificateGrades>>>
+    export type SaveCertificateGradesMutationBody = BodyType<SaveCertificateGradesBody>
+    export type SaveCertificateGradesMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Save term test grades for students in an authorized track
+ */
+export const useSaveCertificateGrades = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveCertificateGrades>>, TError,{termId: number;data: BodyType<SaveCertificateGradesBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveCertificateGrades>>,
+        TError,
+        {termId: number;data: BodyType<SaveCertificateGradesBody>},
+        TContext
+      > => {
+      return useMutation(getSaveCertificateGradesMutationOptions(options));
+    }
+
+export const getPublishCertificateTermUrl = (termId: number,) => {
+
+
+
+
+  return `/api/certificate-terms/${termId}/publish`
+}
+
+/**
+ * @summary Publish the final results for a term
+ */
+export const publishCertificateTerm = async (termId: number, options?: RequestInit): Promise<CertificateTerm> => {
+
+  return customFetch<CertificateTerm>(getPublishCertificateTermUrl(termId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getPublishCertificateTermMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishCertificateTerm>>, TError,{termId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishCertificateTerm>>, TError,{termId: number}, TContext> => {
+
+const mutationKey = ['publishCertificateTerm'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishCertificateTerm>>, {termId: number}> = (props) => {
+          const {termId} = props ?? {};
+
+          return  publishCertificateTerm(termId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PublishCertificateTermMutationResult = NonNullable<Awaited<ReturnType<typeof publishCertificateTerm>>>
+
+    export type PublishCertificateTermMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Publish the final results for a term
+ */
+export const usePublishCertificateTerm = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishCertificateTerm>>, TError,{termId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof publishCertificateTerm>>,
+        TError,
+        {termId: number},
+        TContext
+      > => {
+      return useMutation(getPublishCertificateTermMutationOptions(options));
+    }
+
+export const getGetMyCertificateResultUrl = (termId: number,) => {
+
+
+
+
+  return `/api/certificate-terms/${termId}/my-result`
+}
+
+/**
+ * @summary Get the authenticated student's published result
+ */
+export const getMyCertificateResult = async (termId: number, options?: RequestInit): Promise<CertificateStudentResult> => {
+
+  return customFetch<CertificateStudentResult>(getGetMyCertificateResultUrl(termId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyCertificateResultQueryKey = (termId: number,) => {
+    return [
+    `/api/certificate-terms/${termId}/my-result`
+    ] as const;
+    }
+
+
+export const getGetMyCertificateResultQueryOptions = <TData = Awaited<ReturnType<typeof getMyCertificateResult>>, TError = ErrorType<void>>(termId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyCertificateResult>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyCertificateResultQueryKey(termId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyCertificateResult>>> = ({ signal }) => getMyCertificateResult(termId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: termId !== null && termId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyCertificateResult>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyCertificateResultQueryResult = NonNullable<Awaited<ReturnType<typeof getMyCertificateResult>>>
+export type GetMyCertificateResultQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the authenticated student's published result
+ */
+
+export function useGetMyCertificateResult<TData = Awaited<ReturnType<typeof getMyCertificateResult>>, TError = ErrorType<void>>(
+ termId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyCertificateResult>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyCertificateResultQueryOptions(termId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListCertificateImportCandidatesUrl = (termId: number,) => {
+
+
+
+
+  return `/api/certificate-terms/${termId}/import-candidates`
+}
+
+/**
+ * @summary List imported historical-score matches needing review
+ */
+export const listCertificateImportCandidates = async (termId: number, options?: RequestInit): Promise<CertificateImportCandidate[]> => {
+
+  return customFetch<CertificateImportCandidate[]>(getListCertificateImportCandidatesUrl(termId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCertificateImportCandidatesQueryKey = (termId: number,) => {
+    return [
+    `/api/certificate-terms/${termId}/import-candidates`
+    ] as const;
+    }
+
+
+export const getListCertificateImportCandidatesQueryOptions = <TData = Awaited<ReturnType<typeof listCertificateImportCandidates>>, TError = ErrorType<unknown>>(termId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCertificateImportCandidates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCertificateImportCandidatesQueryKey(termId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCertificateImportCandidates>>> = ({ signal }) => listCertificateImportCandidates(termId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: termId !== null && termId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCertificateImportCandidates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCertificateImportCandidatesQueryResult = NonNullable<Awaited<ReturnType<typeof listCertificateImportCandidates>>>
+export type ListCertificateImportCandidatesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List imported historical-score matches needing review
+ */
+
+export function useListCertificateImportCandidates<TData = Awaited<ReturnType<typeof listCertificateImportCandidates>>, TError = ErrorType<unknown>>(
+ termId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCertificateImportCandidates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCertificateImportCandidatesQueryOptions(termId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getResolveCertificateImportCandidatesUrl = (termId: number,) => {
+
+
+
+
+  return `/api/certificate-terms/${termId}/import-candidates`
+}
+
+/**
+ * @summary Confirm or dismiss historical-score matches
+ */
+export const resolveCertificateImportCandidates = async (termId: number,
+    resolveCertificateImportCandidatesBody: ResolveCertificateImportCandidatesBody, options?: RequestInit): Promise<CertificateImportCandidate[]> => {
+
+  return customFetch<CertificateImportCandidate[]>(getResolveCertificateImportCandidatesUrl(termId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(resolveCertificateImportCandidatesBody)
+  }
+);}
+
+
+
+
+export const getResolveCertificateImportCandidatesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveCertificateImportCandidates>>, TError,{termId: number;data: BodyType<ResolveCertificateImportCandidatesBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolveCertificateImportCandidates>>, TError,{termId: number;data: BodyType<ResolveCertificateImportCandidatesBody>}, TContext> => {
+
+const mutationKey = ['resolveCertificateImportCandidates'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolveCertificateImportCandidates>>, {termId: number;data: BodyType<ResolveCertificateImportCandidatesBody>}> = (props) => {
+          const {termId,data} = props ?? {};
+
+          return  resolveCertificateImportCandidates(termId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolveCertificateImportCandidatesMutationResult = NonNullable<Awaited<ReturnType<typeof resolveCertificateImportCandidates>>>
+    export type ResolveCertificateImportCandidatesMutationBody = BodyType<ResolveCertificateImportCandidatesBody>
+    export type ResolveCertificateImportCandidatesMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Confirm or dismiss historical-score matches
+ */
+export const useResolveCertificateImportCandidates = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveCertificateImportCandidates>>, TError,{termId: number;data: BodyType<ResolveCertificateImportCandidatesBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resolveCertificateImportCandidates>>,
+        TError,
+        {termId: number;data: BodyType<ResolveCertificateImportCandidatesBody>},
+        TContext
+      > => {
+      return useMutation(getResolveCertificateImportCandidatesMutationOptions(options));
     }
 
