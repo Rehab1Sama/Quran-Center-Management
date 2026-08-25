@@ -1318,6 +1318,16 @@ paths:
                 circleId:
                   type: integer
                   description: If provided, archives only this enrollment. If omitted, archives globally (leader only).
+                withdrawalPeriod:
+                  type: string
+                  description: Withdrawal period or deletion status shown on the withdrawal card.
+                withdrawalReason:
+                  type: string
+                  description: Reason for withdrawal or deletion.
+                withdrawalNotes:
+                  type: string
+                  nullable: true
+                  description: Optional notes on the withdrawal card.
       responses:
         "200":
           description: Student archived
@@ -2147,7 +2157,186 @@ paths:
         "204":
           description: Message deleted
 
+  /certificate-terms:
+    get:
+      operationId: listCertificateTerms
+      tags: [certificates]
+      summary: List certificate terms visible to the current user
+      responses:
+        "200":
+          description: Certificate terms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CertificateTerm"
+    post:
+      operationId: createCertificateTerm
+      tags: [certificates]
+      summary: Create a certificate term (leader or deputy)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCertificateTermBody"
+      responses:
+        "201":
+          description: Certificate term created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateTerm"
+
+  /certificate-terms/{termId}:
+    patch:
+      operationId: updateCertificateTerm
+      tags: [certificates]
+      summary: Update a draft certificate term
+      parameters:
+        - $ref: "#/components/parameters/CertificateTermId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCertificateTermBody"
+      responses:
+        "200":
+          description: Certificate term updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateTerm"
+
+  /certificate-terms/{termId}/students:
+    get:
+      operationId: listCertificateStudentResults
+      tags: [certificates]
+      summary: List calculated student results for a term
+      parameters:
+        - $ref: "#/components/parameters/CertificateTermId"
+        - name: trackId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [all, ready, missing_exam, ambiguous_import]
+      responses:
+        "200":
+          description: Student certificate rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CertificateStudentResult"
+
+  /certificate-terms/{termId}/grades:
+    put:
+      operationId: saveCertificateGrades
+      tags: [certificates]
+      summary: Save term test grades for students in an authorized track
+      parameters:
+        - $ref: "#/components/parameters/CertificateTermId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveCertificateGradesBody"
+      responses:
+        "200":
+          description: Updated certificate results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CertificateStudentResult"
+
+  /certificate-terms/{termId}/publish:
+    post:
+      operationId: publishCertificateTerm
+      tags: [certificates]
+      summary: Publish the final results for a term
+      parameters:
+        - $ref: "#/components/parameters/CertificateTermId"
+      responses:
+        "200":
+          description: Published certificate term
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateTerm"
+
+  /certificate-terms/{termId}/my-result:
+    get:
+      operationId: getMyCertificateResult
+      tags: [certificates]
+      summary: Get the authenticated student's published result
+      parameters:
+        - $ref: "#/components/parameters/CertificateTermId"
+      responses:
+        "200":
+          description: Published student result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateStudentResult"
+        "404":
+          description: Result is not published or no linked student exists
+
+  /certificate-terms/{termId}/import-candidates:
+    get:
+      operationId: listCertificateImportCandidates
+      tags: [certificates]
+      summary: List imported historical-score matches needing review
+      parameters:
+        - $ref: "#/components/parameters/CertificateTermId"
+      responses:
+        "200":
+          description: Historical import candidates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CertificateImportCandidate"
+    put:
+      operationId: resolveCertificateImportCandidates
+      tags: [certificates]
+      summary: Confirm or dismiss historical-score matches
+      parameters:
+        - $ref: "#/components/parameters/CertificateTermId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveCertificateImportCandidatesBody"
+      responses:
+        "200":
+          description: Import candidates updated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CertificateImportCandidate"
+
 components:
+  parameters:
+    CertificateTermId:
+      name: termId
+      in: path
+      required: true
+      schema:
+        type: integer
   schemas:
     HealthStatus:
       type: object
@@ -2532,6 +2721,213 @@ components:
           type: ["string", "null"]
         isArchived:
           type: boolean
+
+    CertificateTerm:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        academicYear:
+          type: ["string", "null"]
+        startDate:
+          type: string
+        endDate:
+          type: string
+        reviewCycleOneStart:
+          type: ["string", "null"]
+        reviewCycleTwoStart:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [draft, published]
+        publishedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required: [id, name, startDate, endDate, status, createdAt]
+
+    CreateCertificateTermBody:
+      type: object
+      properties:
+        name:
+          type: string
+        academicYear:
+          type: ["string", "null"]
+        startDate:
+          type: string
+        endDate:
+          type: string
+        reviewCycleOneStart:
+          type: ["string", "null"]
+        reviewCycleTwoStart:
+          type: ["string", "null"]
+      required: [name, startDate, endDate]
+
+    UpdateCertificateTermBody:
+      type: object
+      properties:
+        name:
+          type: string
+        academicYear:
+          type: ["string", "null"]
+        startDate:
+          type: string
+        endDate:
+          type: string
+        reviewCycleOneStart:
+          type: ["string", "null"]
+        reviewCycleTwoStart:
+          type: ["string", "null"]
+
+    CertificateScoreBreakdown:
+      type: object
+      properties:
+        test:
+          type: number
+        testMax:
+          type: number
+        attendance:
+          type: number
+        attendanceMax:
+          type: number
+        shortcomings:
+          type: number
+        shortcomingsMax:
+          type: number
+        reviewPlan:
+          type: number
+        reviewPlanMax:
+          type: number
+      required: [test, testMax, attendance, attendanceMax, shortcomings, shortcomingsMax, reviewPlan, reviewPlanMax]
+
+    CertificateStudentResult:
+      type: object
+      properties:
+        studentId:
+          type: integer
+        studentName:
+          type: string
+        circleId:
+          type: ["integer", "null"]
+        circleName:
+          type: ["string", "null"]
+        trackId:
+          type: ["integer", "null"]
+        trackName:
+          type: ["string", "null"]
+        trackType:
+          type: string
+        testScore:
+          type: ["number", "null"]
+        testMax:
+          type: number
+        priorNisab:
+          type: ["number", "null"]
+        currentNisab:
+          type: ["number", "null"]
+        cumulativeNisab:
+          type: ["number", "null"]
+        attendanceDays:
+          type: integer
+        eligibleAttendanceDays:
+          type: integer
+        shortcomingDays:
+          type: integer
+        eligibleShortcomingDays:
+          type: integer
+        reviewUnitsCompleted:
+          type: number
+        reviewUnitsPlanned:
+          type: number
+        totalScore:
+          type: number
+        breakdown:
+          $ref: "#/components/schemas/CertificateScoreBreakdown"
+        status:
+          type: string
+          enum: [ready, missing_exam, ambiguous_import]
+      required:
+        - studentId
+        - studentName
+        - trackType
+        - testMax
+        - attendanceDays
+        - eligibleAttendanceDays
+        - shortcomingDays
+        - eligibleShortcomingDays
+        - reviewUnitsCompleted
+        - reviewUnitsPlanned
+        - totalScore
+        - breakdown
+        - status
+
+    CertificateGradeInput:
+      type: object
+      properties:
+        studentId:
+          type: integer
+        score:
+          type: number
+        notes:
+          type: ["string", "null"]
+      required: [studentId, score]
+
+    SaveCertificateGradesBody:
+      type: object
+      properties:
+        grades:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CertificateGradeInput"
+      required: [grades]
+
+    CertificateImportCandidate:
+      type: object
+      properties:
+        id:
+          type: integer
+        sourceName:
+          type: string
+        sourceTrack:
+          type: ["string", "null"]
+        sourcePhone:
+          type: ["string", "null"]
+        importedScore:
+          type: ["number", "null"]
+        matchedStudentId:
+          type: ["integer", "null"]
+        matchedStudentName:
+          type: ["string", "null"]
+        confidence:
+          type: string
+          enum: [exact, likely, ambiguous, unmatched]
+        resolved:
+          type: boolean
+      required: [id, sourceName, confidence, resolved]
+
+    ResolveCertificateImportCandidateInput:
+      type: object
+      properties:
+        id:
+          type: integer
+        studentId:
+          type: ["integer", "null"]
+        accept:
+          type: boolean
+      required: [id, accept]
+
+    ResolveCertificateImportCandidatesBody:
+      type: object
+      properties:
+        candidates:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ResolveCertificateImportCandidateInput"
+      required: [candidates]
 
     ShortcomingItem:
       type: object
