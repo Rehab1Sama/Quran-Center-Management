@@ -1,10 +1,10 @@
 ---
 name: Managed workflow port conflict
-description: Artifact-managed API workflow can conflict with the combined Start application workflow on port 8080.
+description: Keep the combined web workflow and artifact-managed API workflow on separate ports.
 ---
 
-The combined `Start application` workflow owns the API port when it launches the frontend and API together. The artifact-managed API workflow must remain stopped in that setup, or it will fail with `EADDRINUSE` even while the main application is healthy.
+The combined `Start application` workflow runs its API on port 3001 and its Vite frontend on port 5000. The artifact-managed API workflow retains its managed port 8080. Vite receives `API_PORT=3001` so its `/api` proxy reaches the combined workflow's API.
 
-**Why:** Replit can add artifact-specific workflows after artifact metadata changes, while the project already has a combined workflow.
+**Why:** Artifact-managed workflows cannot be overridden or removed through the normal workflow controls, and they inject port 8080. Running the combined workflow on the same port causes `EADDRINUSE`.
 
-**How to apply:** Keep one workflow responsible for port 8080; do not restart the managed API workflow alongside `Start application`.
+**How to apply:** Keep `Start application` explicitly on API port 3001 and pass `API_PORT=3001` to its frontend. Leave the artifact-managed API service on 8080; both workflows may run together without conflict.

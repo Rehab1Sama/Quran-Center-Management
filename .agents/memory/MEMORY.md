@@ -10,7 +10,7 @@
 - [Review plan day ranges](review-plan-ranges.md) — computeDayRanges() in quran.ts maps quota start (surahName+ayah) + per-day page counts → surah/ayah ranges using MUSHAF_PAGES index; backend DELETE skips 21-day lock for leader/deputy/track_supervisor; canForceDelete prop on ReviewPlanSection controls locked-plan delete button.
 - [Student records access](student-records-access.md) — students were 403-blocked from GET /api/records; fixed to allow own records via name+circleId lookup; deputy added to STAFF_ROLES for student profile/notes/enrollments.
 - [Multi-circle student linking](multi-circle-student-linking.md) — users.student_id is 1-to-1; never mutate students.circleId when enrollment count > 1; POST /users must search before insert; migration steps 6&7 need COUNT<=1 guard.
-- [Workflow port conflict](workflow-port-conflict.md) — keep the managed API workflow stopped when the combined Start application workflow owns port 8080.
+- [Workflow port conflict](workflow-port-conflict.md) — combined Start application API uses 3001 while the managed API workflow keeps 8080; Vite proxy uses API_PORT.
 - [Orval and Zod compatibility](orval-zod-compatibility.md) — current OpenAPI code generation emits Zod v4 APIs, so the workspace catalog must stay on v4.
 - [Archived student records](archived-student-records.md) — archive periods hide absence and shortcomings only from student-facing endpoints; admin data remains complete.
 - [Enrollment archive restoration](enrollment-archive-restoration.md) — restoring a per-circle archive always reactivates that same enrollment; moving to another circle is a separate authorized flow.
