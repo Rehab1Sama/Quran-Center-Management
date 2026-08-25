@@ -142,7 +142,7 @@ export default function MyCirclePage() {
   }>(null);
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const circleId = user?.circleId ?? undefined;
-  const trackType: string = (user as any)?.trackType ?? "";
+  const trackType: string = (user as any)?.circleDataEntryType ?? (user as any)?.trackType ?? "";
 
   const { data: students } = useListStudents(
     circleId ? { circleId } : undefined,
@@ -194,6 +194,19 @@ export default function MyCirclePage() {
           {user?.name} · {(user as any)?.track ?? ""}
         </p>
       </div>
+      {((user?.role === "teacher" && (user as any)?.circleSupervisorName) ||
+        (user?.role === "supervisor" && (user as any)?.circleTeacherName)) && (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground mb-1">
+              {user?.role === "teacher" ? "المشرفة الخاصة بالحلقة" : "المعلمة الخاصة بالحلقة"}
+            </p>
+            <p className="font-bold text-primary">
+              {user?.role === "teacher" ? (user as any).circleSupervisorName : (user as any).circleTeacherName}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Messages from leader */}
       <MessagesSection />
