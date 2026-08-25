@@ -82,6 +82,7 @@ type UserRow = {
   name: string;
   email: string;
   role: string;
+  studentId?: number | null;
   track?: string | null;
   circleId?: number | null;
   circleName?: string | null;
@@ -97,14 +98,26 @@ type PersonGroup = {
 function groupByEmail(users: UserRow[]): PersonGroup[] {
   const map = new Map<string, PersonGroup>();
   for (const u of users) {
-    if (!map.has(u.email)) {
-      map.set(u.email, { email: u.email, name: u.name, accounts: [] });
+    const email = u.email.toLowerCase();
+    if (!map.has(email)) {
+      map.set(email, { email: u.email, name: u.name, accounts: [] });
     }
-    map.get(u.email)!.accounts.push(u);
+    map.get(email)!.accounts.push(u);
   }
-  return [...map.values()].sort((a, b) =>
-    a.name.localeCompare(b.name, "ar", { sensitivity: "base" }),
-  );
+  return [...map.values()]
+    .map(person => {
+      // الحساب النشط هو المرجع عند وجود حسابات مؤرشفة لنفس البريد.
+      // يمنع ذلك فتح بطاقة حساب مؤرشف بالخطأ عند تعديل بيانات الطالبة.
+      const accounts = [...person.accounts].sort((a, b) =>
+        Number(Boolean(a.isArchived)) - Number(Boolean(b.isArchived)) || a.id - b.id,
+      );
+      return {
+        ...person,
+        accounts,
+        name: accounts.find(account => !account.isArchived)?.name ?? accounts[0]?.name ?? person.name,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "ar", { sensitivity: "base" }));
 }
 
 function useDataEntryAssignments(canManage: boolean) {
@@ -475,7 +488,15 @@ export default function AccountsPage() {
                       <div className="font-semibold text-foreground">{person.name}</div>
                       <div className="text-xs text-muted-foreground mb-2">{person.email}</div>
                       <div className="flex flex-wrap gap-2">
-                        {person.accounts.map(acc => (
+                        {person.accounts.map(acc => {
+                          const hasActiveVersion = acc.role === "student" && acc.isArchived && acc.studentId != null &&
+                            person.accounts.some(other =>
+                              other.id !== acc.id &&
+                              other.role === "student" &&
+                              other.studentId === acc.studentId &&
+                              !other.isArchived,
+                            );
+                          return (
                           <div
                             key={acc.id}
                             className={`flex items-center gap-1.5 rounded-lg px-2 py-1 ${acc.isArchived ? "bg-gray-100 opacity-60" : "bg-muted/50"}`}
@@ -495,14 +516,16 @@ export default function AccountsPage() {
                             {acc.isArchived && <span className="text-xs text-gray-500">معطّل</span>}
                             {/* مسؤولة المسار ترى حسابات مسارها فقط وتدير أسماء الموظفات وأرشفتهم */}
                             {(isLeader || isTrackSupervisor) && (<>
-                              <button
-                                onClick={() => openEdit(acc)}
-                                className="text-muted-foreground hover:text-foreground transition-colors ml-1"
-                                data-testid={`button-edit-user-${acc.id}`}
-                                title="تعديل"
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </button>
+                              {!hasActiveVersion && (
+                                <button
+                                  onClick={() => openEdit(acc)}
+                                  className="text-muted-foreground hover:text-foreground transition-colors ml-1"
+                                  data-testid={`button-edit-user-${acc.id}`}
+                                  title="تعديل"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                              )}
                               {(isLeader || (isTrackSupervisor && ["student", "volunteer"].includes(acc.role))) && <button
                                 onClick={() => { setResetPwdUserId(acc.id); setNewPassword(""); setResetPwdOpen(true); }}
                                 className="text-muted-foreground hover:text-blue-600 transition-colors"
@@ -535,7 +558,7 @@ export default function AccountsPage() {
                               )}
                             </>)}
                           </div>
-                        ))}
+                        )})}
                       </div>
                     </div>
                     <div className="flex flex-col gap-1.5 shrink-0">

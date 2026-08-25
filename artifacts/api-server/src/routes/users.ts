@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, studentsTable, circlesTable, recordsTable, studentGoalsTable, studentNotesTable, studentTransfersTable, examRecordsTable, studentEnrollmentsTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, isNotNull } from "drizzle-orm";
 import { hashPassword } from "../lib/auth";
 import { authenticate, requireRole } from "../middlewares/authenticate";
 import { CreateUserBody, UpdateUserBody, ResetUserPasswordBody } from "@workspace/api-zod";
@@ -108,6 +108,7 @@ router.get("/users", authenticate, async (req, res): Promise<void> => {
     );
     const all = await db.select().from(usersTable);
     const filtered = all.filter(u => {
+      if (u.isArchived) return false;
       if (!["student", "teacher", "supervisor"].includes(u.role)) return false;
       if (u.role === "student") {
         return (
@@ -317,20 +318,51 @@ router.patch("/users/:id", authenticate, async (req, res): Promise<void> => {
   }
 
   if (user.role === "student" && user.name) {
-    if (user.studentId && parsed.data.name && parsed.data.name !== existingUser.name) {
-      await db.update(studentsTable)
-        .set({ fullName: parsed.data.name })
-        .where(eq(studentsTable.id, user.studentId));
-      // الحسابات المتعددة للطالبة نفسها يجب أن تعرض الاسم نفسه.
-      await db.update(usersTable)
-        .set({ name: parsed.data.name })
-        .where(eq(usersTable.studentId, user.studentId));
+    const nameChanged = Boolean(parsed.data.name && parsed.data.name !== existingUser.name);
+    let linkedStudentId = user.studentId;
+
+    // الحسابات القديمة قد تكون بلا student_id رغم وجود حسابات أخرى لنفس
+    // الطالبة. اربطيه قبل مزامنة الاسم حتى لا يتغير الحساب المؤرشف وحده.
+    if (!linkedStudentId && nameChanged) {
+      const linkedSiblings = await db
+        .select({ studentId: usersTable.studentId })
+        .from(usersTable)
+        .where(and(
+          eq(usersTable.email, existingUser.email),
+          eq(usersTable.role, "student"),
+          eq(usersTable.name, existingUser.name),
+          isNotNull(usersTable.studentId),
+        ));
+      const siblingStudentIds = [...new Set(linkedSiblings
+        .map(sibling => sibling.studentId)
+        .filter((studentId): studentId is number => studentId !== null))];
+      if (siblingStudentIds.length === 1) {
+        linkedStudentId = siblingStudentIds[0];
+        await db.update(usersTable)
+          .set({ studentId: linkedStudentId })
+          .where(eq(usersTable.id, user.id));
+      }
     }
+
+    const studentRef = linkedStudentId
+      ? await db.select().from(studentsTable).where(eq(studentsTable.id, linkedStudentId))
+      : await db.select().from(studentsTable).where(eq(
+        studentsTable.fullName,
+        nameChanged ? existingUser.name : user.name,
+      ));
+
+    if (studentRef.length > 0 && nameChanged) {
+      await db.update(studentsTable)
+        .set({ fullName: parsed.data.name! })
+        .where(eq(studentsTable.id, studentRef[0].id));
+      // الحسابات المتعددة للطالبة نفسها يجب أن تعرض الاسم نفسه، سواء
+      // كانت نشطة أو مؤرشفة؛ الحساب النشط لا يُترك بالاسم القديم.
+      await db.update(usersTable)
+        .set({ name: parsed.data.name! })
+        .where(eq(usersTable.studentId, studentRef[0].id));
+    }
+
     const circleId = user.circleId ?? null;
-    // استخدام studentId المرتبط إن وُجد، وإلا البحث بالاسم
-    const studentRef = user.studentId
-      ? (await db.select().from(studentsTable).where(eq(studentsTable.id, user.studentId)))
-      : (await db.select().from(studentsTable).where(eq(studentsTable.fullName, user.name)));
     if (studentRef.length === 0) {
       const [newStudent] = await db.insert(studentsTable).values({
         fullName: user.name,
@@ -343,6 +375,9 @@ router.patch("/users/:id", authenticate, async (req, res): Promise<void> => {
         await db.update(usersTable).set({ studentId: newStudent.id }).where(eq(usersTable.id, user.id));
       }
     } else {
+      if (!linkedStudentId) {
+        linkedStudentId = studentRef[0].id;
+      }
       if (circleId !== null) {
         // لا تكتب فوق circleId إذا كانت الطالبة مسجّلة في أكثر من حلقة
         // (تعديل circleId يُدار عبر نظام التسجيلات student_enrollments)
@@ -361,7 +396,7 @@ router.patch("/users/:id", authenticate, async (req, res): Promise<void> => {
         }
       }
       // ضمان الرابط المباشر
-      if (!user.studentId) {
+      if (user.studentId !== studentRef[0].id) {
         await db.update(usersTable).set({ studentId: studentRef[0].id }).where(eq(usersTable.id, user.id));
       }
     }
