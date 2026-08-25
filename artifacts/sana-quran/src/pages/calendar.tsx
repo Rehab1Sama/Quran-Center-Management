@@ -413,9 +413,9 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
               {(openSemesters[index] ?? index !== 0) && (
                 <CardContent className="p-0 text-xs">
                   <div className="grid grid-cols-[1.35fr_1fr_1fr] bg-[#FAFAFD] border-b border-[#C8CDE8]/60 px-3 py-2 text-[11px] font-bold text-[#4A5590]">
-                    <span>المناسبة</span>
-                    <span className="text-center">التاريخ الهجري</span>
-                    <span className="text-center">التاريخ الميلادي</span>
+                    <span className="text-[#59658F]">المناسبة</span>
+                    <span className="text-center text-[#59658F]">التاريخ الهجري</span>
+                    <span className="text-center text-[#59658F]">التاريخ الميلادي</span>
                   </div>
                   {[
                     ["تاريخ البدء", semester.start],
@@ -425,10 +425,10 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
                   ].map(([label, event]: any, eventIndex) => {
                     const title = event?.title?.replace(/^بداية\s*/, "").trim() || label;
                     return (
-                      <div key={label} className="grid grid-cols-[1.35fr_1fr_1fr] items-center gap-2 px-3 py-2.5 border-b border-[#C8CDE8]/40 last:border-0 border-r-4 border-r-[#2B3784]">
-                        <span className="text-right font-bold leading-5 text-[#2B3784]">{title}</span>
-                        <span className="text-center leading-5 text-[#66708F]">{formatHijriDate(event?.date)}</span>
-                        <span className="text-center leading-5 text-[#66708F]">{formatGregorianDate(event?.date)}</span>
+                      <div key={label} className="grid grid-cols-[1.35fr_1fr_1fr] items-center gap-2 px-3 py-2.5 border-b border-[#D9DCEC]/55 last:border-0 border-r-4 border-r-[#2B3784]">
+                        <span className="text-right font-semibold leading-5 text-[#66708F]">{title}</span>
+                        <span className="text-center leading-5 text-[#8A92AD]">{formatHijriDate(event?.date)}</span>
+                        <span className="text-center leading-5 text-[#8A92AD]">{formatGregorianDate(event?.date)}</span>
                       </div>
                     );
                   })}
