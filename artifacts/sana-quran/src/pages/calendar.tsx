@@ -196,10 +196,10 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
   const qc = useQueryClient();
 
   const { data: events = [] } = useListCalendarEvents({ year: currentYear }, {
-    query: { enabled: !publicView },
+    query: { enabled: !publicView, queryKey: ["calendarEvents", currentYear] },
   });
   const { data: nextYearEvents = [] } = useListCalendarEvents({ year: currentYear + 1 }, {
-    query: { enabled: !publicView },
+    query: { enabled: !publicView, queryKey: ["calendarEvents", currentYear + 1] },
   });
   useEffect(() => {
     if (!publicView) return;
