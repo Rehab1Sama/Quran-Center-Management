@@ -6,7 +6,7 @@ import { CheckCircle, AlertCircle, Clock, Timer, Sun, Moon, Activity, CheckSquar
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const getToken = () => localStorage.getItem("sana_auth_token");
-const authHeader = () => { const t = getToken(); return t ? { Authorization: `Bearer ${t}` } : {}; };
+const authHeader = (): Record<string, string> => { const t = getToken(); return t ? { Authorization: `Bearer ${t}` } : {}; };
 
 function getMeccaToday(): string {
   const d = new Date(Date.now() + 3 * 60 * 60 * 1000);
