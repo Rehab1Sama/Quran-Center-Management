@@ -111,7 +111,7 @@ export default function MyProgressPage() {
 
   // السجلات مفلترة بـ (studentId + circleId) — يعرض فقط سجلات الحلقة النشطة حالياً
   const { data: records } = useListRecords(
-    studentId ? { studentId, circleId: effectiveCircleId } : undefined,
+    studentId ? (effectiveCircleId ? { circleId: effectiveCircleId } : undefined) : undefined,
     { query: { queryKey: ["myRecords", studentId, effectiveCircleId], enabled: !!studentId } }
   );
 
@@ -135,7 +135,10 @@ export default function MyProgressPage() {
   const circleMessages = (myMessages as any[]).filter((m: any) => m.targetType === "circle");
 
   // Progress data
-  const sortedRecords = (records ?? []).filter(r => (r as any).circleId === effectiveCircleId).slice().sort((a: any, b: any) => b.date.localeCompare(a.date));
+  const sortedRecords = (records ?? [])
+    .filter(r => !effectiveCircleId || (r as any).circleId === effectiveCircleId)
+    .slice()
+    .sort((a: any, b: any) => b.date.localeCompare(a.date));
   const visibleRecords = sortedRecords.filter((r: any) => (!dateFrom || r.date >= dateFrom) && (!dateTo || r.date <= dateTo));
   const allCalendarEvents = [...(calendarEvents as any[]), ...(nextCalendarEvents as any[])];
   const semesterStarts = allCalendarEvents
