@@ -435,7 +435,7 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
         </div>
       )}
 
-      <div className="flex justify-center pt-2">
+      <div id="homepage-return" className="flex justify-center pt-2">
         <a
           href="/"
           className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#2B3784] px-7 py-3 text-sm font-bold text-white shadow-md shadow-[#2B3784]/20 transition-all hover:bg-[#1A2260] hover:-translate-y-0.5"
