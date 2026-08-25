@@ -51,6 +51,12 @@ export default function ShortcomingsPage() {
     Object.keys(params).length > 0 ? params : {},
     { query: { queryKey: ["listShortcomings", params] } }
   );
+  const studentVisibleItems = isStudent ? (items as any[]).filter(item => {
+    // Defense in depth: the API also applies this filter for student accounts.
+    const archiveFrom = "2026-06-28";
+    const archiveTo = "2026-08-22";
+    return !(item.date >= archiveFrom && item.date <= archiveTo);
+  }) : items;
 
   const { data: circles = [] } = useListCircles(undefined, {
     query: { queryKey: ["listCircles"] },
@@ -145,11 +151,11 @@ export default function ShortcomingsPage() {
       {/* Summary */}
       {!isLoading && (
         <div className="flex items-center gap-2 px-1">
-          <span className="text-sm font-semibold text-foreground">{items.length}</span>
+          <span className="text-sm font-semibold text-foreground">{studentVisibleItems.length}</span>
           <span className="text-sm text-muted-foreground">حالة تقصير</span>
-          {items.filter((i: any) => i.shortcomingOverride === false).length > 0 && (
+          {studentVisibleItems.filter((i: any) => i.shortcomingOverride === false).length > 0 && (
             <Badge variant="outline" className="text-green-700 border-green-200 bg-green-50 text-xs mr-auto">
-              {items.filter((i: any) => i.shortcomingOverride === false).length} معذورة
+              {studentVisibleItems.filter((i: any) => i.shortcomingOverride === false).length} معذورة
             </Badge>
           )}
         </div>
@@ -158,7 +164,7 @@ export default function ShortcomingsPage() {
       {/* List */}
       {isLoading ? (
         <div className="text-center text-muted-foreground py-10 text-sm">جاري التحميل...</div>
-      ) : items.length === 0 ? (
+      ) : studentVisibleItems.length === 0 ? (
         <Card className="border-0 shadow-sm">
           <CardContent className="py-12 text-center">
             <CheckCircle className="w-10 h-10 text-green-400 mx-auto mb-3" />
@@ -167,7 +173,7 @@ export default function ShortcomingsPage() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {items.map((item: any) => (
+          {studentVisibleItems.map((item: any) => (
             <Card key={item.recordId} className={`border-0 shadow-sm ${item.shortcomingOverride === false ? "opacity-60" : ""}`}>
               <CardContent className="py-3 px-4">
                 <div className="flex items-start justify-between gap-3">
