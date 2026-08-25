@@ -59,6 +59,9 @@ import DbSettingsPage from "@/pages/db-settings";
 import RegistrationStudentsPage from "@/pages/registration-students";
 import CirclesStaffingPage from "@/pages/circles-staffing";
 import ReviewPlansOverviewPage from "@/pages/review-plans-overview";
+import CertificatesPage from "@/pages/certificates";
+import MyCertificatePage from "@/pages/my-certificate";
+import DisabledAccountPage from "@/pages/disabled-account";
 import Layout from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 import { canEnterData, isFeatureEnabled } from "@/lib/schoolConfig";
@@ -109,6 +112,9 @@ function AppRoutes() {
         <Route path="/forgot-password" component={ForgotPasswordPage} />
         <Route path="/reset-password" component={ResetPasswordPage} />
         <Route path="/store" component={StorePage} />
+        <Route path="/calendar-public">
+          <CalendarPage publicView />
+        </Route>
         <Route path="/login" component={LoginPage} />
         <Route path="/" component={LandingPage} />
         <Route>
@@ -116,6 +122,10 @@ function AppRoutes() {
         </Route>
       </Switch>
     );
+  }
+
+  if ((user as any).isArchived) {
+    return <DisabledAccountPage />;
   }
 
   const HomePage = getHomePageForRole(user.role);
@@ -219,6 +229,9 @@ function AppRoutes() {
         <Route path="/calendar">
           {isFeatureEnabled("calendar") ? <CalendarPage userRole={user.role} userId={user.id} /> : <Redirect to="/" />}
         </Route>
+        <Route path="/calendar-public">
+          <CalendarPage publicView />
+        </Route>
         <Route path="/shortcomings">
           {(isLeaderOrDeputy || isTrackSupervisor || isStudent) && isFeatureEnabled("shortcomings") ? <ShortcomingsPage /> : <Redirect to="/" />}
         </Route>
@@ -276,6 +289,12 @@ function AppRoutes() {
           {(isLeaderOrDeputy || isTrackSupervisor || isTeacher || isSupervisor || isStudent)
             ? <ReviewPlansOverviewPage userRole={user.role} />
             : <Redirect to="/" />}
+        </Route>
+        <Route path="/certificates">
+          {(isLeaderOrDeputy || isTrackSupervisor) ? <CertificatesPage /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/my-certificate">
+          {isStudent ? <MyCertificatePage /> : <Redirect to="/" />}
         </Route>
 
         <Route path="/students/:id">
