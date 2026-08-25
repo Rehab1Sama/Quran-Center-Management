@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useListCalendarEvents,
   useCreateCalendarEvent,
@@ -63,7 +63,9 @@ function semesterCards(events: any[]) {
   const starts = events.filter(e => /بداية الفصل/.test(e.title)).sort((a, b) => a.date.localeCompare(b.date));
   return starts.map((start, index) => {
     const nextStart = starts[index + 1]?.date;
-    const inTerm = events.filter(e => e.date >= start.date && (!nextStart || e.date < nextStart));
+    const inTerm = events
+      .filter(e => e.date >= start.date && (!nextStart || e.date < nextStart))
+      .sort((a, b) => a.date.localeCompare(b.date));
     const pick = (pattern: RegExp) => inTerm.find(e => pattern.test(e.title));
     return {
       title: start.title.replace(/^بداية\s*/, "").trim(),
@@ -175,15 +177,17 @@ function EventItem({ event, isLeader, onEdit, onDelete }: EventItemProps) {
   );
 }
 
-interface CalendarPageProps { userRole?: string; userId?: number; }
+interface CalendarPageProps { userRole?: string; userId?: number; publicView?: boolean; }
 
-export default function CalendarPage({ userRole }: CalendarPageProps) {
+export default function CalendarPage({ userRole, publicView = false }: CalendarPageProps) {
   const today = (() => { const d = new Date(Date.now() + 3*60*60*1000); if(d.getUTCHours()<5) d.setUTCDate(d.getUTCDate()-1); return d.toISOString().slice(0,10); })();
   const currentYear = new Date().getFullYear();
 
   const [showDialog, setShowDialog] = useState(false);
   const [editingEvent, setEditingEvent] = useState<any>(null);
   const [showPast, setShowPast] = useState(false);
+  const [openSemesters, setOpenSemesters] = useState<Record<number, boolean>>({});
+  const [publicEvents, setPublicEvents] = useState<any[]>([]);
   const [form, setForm] = useState({
     title: "", date: "", endDate: "", color: "#6366f1",
     eventType: "general", description: "",
@@ -193,8 +197,15 @@ export default function CalendarPage({ userRole }: CalendarPageProps) {
 
   const { data: events = [] } = useListCalendarEvents({ year: currentYear });
   const { data: nextYearEvents = [] } = useListCalendarEvents({ year: currentYear + 1 });
+  useEffect(() => {
+    if (!publicView) return;
+    fetch("/api/public/calendar-events")
+      .then(response => response.ok ? response.json() : [])
+      .then(setPublicEvents)
+      .catch(() => setPublicEvents([]));
+  }, [publicView]);
 
-  const allEvents = [...events, ...nextYearEvents];
+  const allEvents = publicView ? publicEvents : [...events, ...nextYearEvents];
 
   const createMutation = useCreateCalendarEvent();
   const updateMutation = useUpdateCalendarEvent();
@@ -354,26 +365,43 @@ export default function CalendarPage({ userRole }: CalendarPageProps) {
       {semesters.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2">
           {semesters.map((semester, index) => (
-            <Card key={`${semester.start.id}-${index}`} className="border-0 shadow-sm overflow-hidden">
-              <div className="bg-primary/5 border-b border-border/50 px-4 py-3">
-                <p className="font-bold text-base">{semester.title}</p>
-                <p className="text-[11px] text-muted-foreground mt-1">مواعيد الفصل الهجرية والميلادية</p>
-              </div>
-              <CardContent className="p-4 space-y-3 text-sm">
-                {[
-                  ["تاريخ البدء", semester.start],
-                  ["أسبوع المراجعة", semester.review],
-                  ["أسبوع الاختبار", semester.exam],
-                  ["الإجازة", semester.holiday],
-                ].map(([label, event]: any) => (
-                  <div key={label} className="flex items-start justify-between gap-3 border-b border-border/40 last:border-0 pb-2 last:pb-0">
-                    <span className="font-semibold text-muted-foreground">{label}</span>
-                    <span className="text-left text-xs leading-5">
-                      {event ? `${formatDualDate(event.date)}${event.endDate && event.endDate !== event.date ? ` — ${formatDualDate(event.endDate)}` : ""}` : "—"}
-                    </span>
-                  </div>
-                ))}
-              </CardContent>
+            <Card key={`${semester.start.id}-${index}`} className={`border-0 shadow-sm overflow-hidden ring-1 ${index === 0 ? "ring-slate-200" : "ring-teal-200/70"}`}>
+              <button
+                type="button"
+                className={`w-full text-right px-4 py-3 flex items-center justify-between transition-colors ${index === 0 ? "bg-[#F1F2F8] hover:bg-[#E8EAF4]" : "bg-gradient-to-l from-[#E8F8F6] to-[#EEF0FA] hover:from-[#DDF4F0] hover:to-[#E6E8F5]"}`}
+                onClick={() => setOpenSemesters(s => ({ ...s, [index]: !(s[index] ?? index !== 0) }))}
+                aria-expanded={openSemesters[index] ?? index !== 0}
+              >
+                <div>
+                  <p className="font-bold text-base text-[#1A2260]">{semester.title}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    {index === 0 ? "فصل منتهٍ — اضغطي لعرض التفاصيل" : "الفصل الحالي والمواعيد القادمة"}
+                  </p>
+                </div>
+                {openSemesters[index] ?? index !== 0
+                  ? <ChevronUp className="w-5 h-5 text-teal-600" />
+                  : <ChevronDown className="w-5 h-5 text-[#9EA8CC]" />}
+              </button>
+              {(openSemesters[index] ?? index !== 0) && (
+                <CardContent className="p-0 text-sm">
+                  {[
+                    ["تاريخ البدء", semester.start],
+                    ["أسبوع المراجعة", semester.review],
+                    ["أسبوع الاختبار", semester.exam],
+                    ["الإجازة", semester.holiday],
+                  ].map(([label, event]: any, eventIndex) => {
+                    const typeInfo = event ? getTypeInfo(event.eventType) : null;
+                    return (
+                      <div key={label} className="flex items-start justify-between gap-3 px-4 py-3 border-b border-[#C8CDE8]/40 last:border-0" style={{ borderRight: `4px solid ${typeInfo?.color ?? (eventIndex === 0 ? "#2B3784" : "#C4A76A")}` }}>
+                        <span className="font-semibold text-[#4A5590] shrink-0">{label}</span>
+                        <span className="text-left text-xs leading-5 text-[#3D4E9C]">
+                          {event ? `${formatDualDate(event.date)}${event.endDate && event.endDate !== event.date ? ` — ${formatDualDate(event.endDate)}` : ""}` : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              )}
             </Card>
           ))}
         </div>
