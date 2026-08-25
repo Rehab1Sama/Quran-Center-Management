@@ -172,7 +172,7 @@ router.get("/stats/stumbling", authenticate, async (req, res): Promise<void> => 
         dayNumber: reviewPlanDaysTable.dayNumber,
         pages: reviewPlanDaysTable.pages,
       }).from(reviewPlanDaysTable).where(inArray(reviewPlanDaysTable.planId, planIds));
-      allPlanDays = daysRaw;
+       allPlanDays = daysRaw.map(d => ({ ...d, pages: d.pages ?? 0 }));
     }
   }
 
