@@ -210,7 +210,7 @@ export default function TeacherRotationPage({ userRole, userId }: RotationPagePr
       i === index ? { ...a, examCircleId: circleId, examCircleName: circles.find(c => c.id === circleId)?.name ?? "" } : a
     ));
   }
-  function assignSoloTeacher(teacher: { id: number; name: string; circleId: number | null }, examCircleId: number) {
+  function assignSoloTeacher(teacher: { id: number; name: string; circleId?: number | null }, examCircleId: number) {
     const origCircle = scopedCircles.find(c => c.id === teacher.circleId);
     const examCircle = scopedCircles.find(c => c.id === examCircleId);
     setEditingAssignments(prev => {
