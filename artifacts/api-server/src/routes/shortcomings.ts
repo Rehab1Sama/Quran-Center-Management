@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, recordsTable, studentsTable, circlesTable, tracksTable } from "@workspace/db";
+import { db, recordsTable, studentsTable, circlesTable, tracksTable, globalSettingsTable } from "@workspace/db";
 import { eq, and, gte, lte, inArray } from "drizzle-orm";
 import { authenticate } from "../middlewares/authenticate";
 import { UpdateShortcomingOverrideBody } from "@workspace/api-zod";
@@ -28,37 +28,35 @@ function computeShortcoming(
   }
 
   const reasons: string[] = [];
+  const isGirls = trackType === "girls";
   const isRecitation = trackType === "recitation";
   const isChildren   = trackType === "children";
   const isMothers    = trackType === "mothers";
 
-  // مسارات لا تُحاسب على التقصير تلقائياً
-  if (isChildren || isMothers || isRecitation) {
+  // الأمهات والأطفال لا يدخلان في حسم التقصير. يبقى التجاوز اليدوي متاحاً
+  // لتسجيل حالة استثنائية فقط دون أي احتساب تلقائي.
+  if (isChildren || isMothers) {
     if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) {
       return { isShortcoming: r.shortcomingOverride, reasons };
     }
     return { isShortcoming: false, reasons: [] };
   }
 
-  if (!isRecitation) {
-    if (isFoundational) {
-      // المرحلة التأسيسية: تُحاسب على المراجعة القريبة فقط (لا مراجعة بعيدة)
-      if ((r.reviewNearPages ?? 0) === 0) reasons.push("review");
-    } else {
-      const noReview =
-        (r.reviewNearPages ?? 0) === 0 &&
-        (r.reviewFarPages ?? 0) === 0 &&
-        (r.reviewPages ?? 0) === 0;
-      if (noReview) reasons.push("review");
-    }
+  // خطط المراجعة والمراجعة القريبة/البعيدة خاصة بمسار الفتيات. غيابهما معاً
+  // في اليوم نفسه يسجل تقصيراً واحداً مهما تعددت الخانات الفارغة.
+  if (isGirls) {
+    const noReview =
+      (r.reviewNearPages ?? 0) === 0 &&
+      (r.reviewFarPages ?? 0) === 0 &&
+      (r.reviewPages ?? 0) === 0;
+    if (noReview) reasons.push("review");
+  } else if (r.listenedToReciter === false) {
+    // بقية المسارات التي تدخل في التقصير لا تتطلب خطة مراجعة؛ معيارها
+    // اليومي هو عدم التسميع المسجل.
+    reasons.push("listen");
   }
 
-  const notListened = r.listenedToReciter === false;
-  if (notListened) reasons.push("listen");
-
-  const autoShortcoming = !isRecitation
-    ? (reasons.includes("review") || reasons.includes("listen"))
-    : notListened;
+  const autoShortcoming = reasons.length > 0;
 
   if (r.shortcomingOverride !== null && r.shortcomingOverride !== undefined) {
     return { isShortcoming: r.shortcomingOverride, reasons };
@@ -139,6 +137,22 @@ router.get("/shortcomings", authenticate, async (req, res): Promise<void> => {
     const sId = req.userStudentId;
     if (!sId) { res.json([]); return; }
     records = records.filter(r => r.studentId === sId);
+
+    // الفترة المؤرشفة تخفي التقصير والغياب من حساب الطالبة فقط.
+    // لا نطبق هذه الفلترة قبل تحديد الدور حتى تبقى بيانات الإدارة والتقارير كاملة.
+    const [archiveSetting] = await db.select({ value: globalSettingsTable.value })
+      .from(globalSettingsTable)
+      .where(eq(globalSettingsTable.key, "student_record_archive_periods"));
+    let archivedPeriods: { from: string; to: string }[] = [];
+    try {
+      const parsed = archiveSetting ? JSON.parse(archiveSetting.value) : [];
+      archivedPeriods = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      archivedPeriods = [];
+    }
+    records = records.filter(r =>
+      !archivedPeriods.some(period => r.date >= period.from && r.date <= period.to)
+    );
   } else if (role === "track_supervisor") {
     const myTrack = req.userTrack ?? "";
     records = records.filter(r => getCircleTrackName(r.circleId) === myTrack);
@@ -148,6 +162,15 @@ router.get("/shortcomings", authenticate, async (req, res): Promise<void> => {
   } else if (role === "supervisor") {
     const myCircleId = req.userCircleId;
     if (myCircleId) records = records.filter(r => r.circleId === myCircleId);
+  }
+
+  if (role === "teacher" || role === "supervisor") {
+    const [archiveSetting] = await db.select({ value: globalSettingsTable.value })
+      .from(globalSettingsTable).where(eq(globalSettingsTable.key, "student_record_archive_periods"));
+    try {
+      const periods = JSON.parse(archiveSetting?.value ?? "[]") as { from: string; to: string }[];
+      records = records.filter(r => !periods.some(p => r.date >= p.from && r.date <= p.to));
+    } catch { /* invalid setting: keep current records */ }
   }
 
   if (circleId) records = records.filter(r => r.circleId === parseInt(circleId));
