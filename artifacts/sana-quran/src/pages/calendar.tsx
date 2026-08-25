@@ -290,7 +290,12 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
   const semesters = semesterCards(allEvents);
 
   return (
-    <div className="space-y-5 pb-10" dir="rtl">
+    <div className="sana-main-background relative isolate min-h-full overflow-hidden space-y-5 pb-10" dir="rtl">
+      <div aria-hidden="true" className="pointer-events-none absolute -top-20 -left-24 z-0 h-64 w-64 rounded-full bg-[#E4E7F4]/75" />
+      <div aria-hidden="true" className="pointer-events-none absolute top-[30%] -right-32 z-0 h-80 w-80 rounded-full bg-[#ECEEF7]/85" />
+      <div aria-hidden="true" className="pointer-events-none absolute top-[58%] left-[-7rem] z-0 h-56 w-56 rounded-full border border-[#C8CDE8]/65 bg-[#F1F2F8]/45" />
+      <div aria-hidden="true" className="pointer-events-none absolute bottom-[-7rem] right-[18%] z-0 h-72 w-72 rounded-full bg-[#EEF0FA]/80" />
+      <div className="relative z-10 space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -511,6 +516,7 @@ export default function CalendarPage({ userRole, publicView = false }: CalendarP
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }
