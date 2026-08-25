@@ -403,13 +403,36 @@ export default function MyProgressPage() {
           )}
 
           {/* Shortcomings (التقصير) */}
-          {user?.role === "student" && (
+          {user?.role === "student" && archivedRecords.length > 0 && (
             <Card className="border-0 shadow-sm">
               <button className="w-full p-4 flex items-center justify-between text-right" onClick={() => setArchiveOpen(v => !v)}>
-                <span className="font-bold">السجلات التسميع السابقة</span>
-                <span className="text-xs text-muted-foreground">{archiveOpen ? "إخفاء السجلات المؤرشفة" : "السجلات مؤرشفة"}</span>
+                <span className="font-bold">السجل الكامل — الفصل السابق</span>
+                <span className="text-xs text-muted-foreground">{archiveOpen ? "إخفاء السجل" : `${archivedRecords.length} سجل مؤرشف`}</span>
               </button>
-              {archiveOpen && <CardContent className="pt-0 text-xs text-muted-foreground">تمت أرشفة سجلات التسميع السابقة. تبقى محفوظة لدى الإدارة، ولا تظهر تفاصيل الغياب أو التقصير أو سجل المحفوظ في حساب الطالبة.</CardContent>}
+              {archiveOpen && <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 border-b border-border">
+                      <tr>
+                        <th className="text-right py-3 px-4 font-semibold text-muted-foreground">التاريخ</th>
+                        <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الحلقة</th>
+                        <th className="text-right py-3 px-4 font-semibold text-muted-foreground">الحفظ</th>
+                        <th className="text-right py-3 px-4 font-semibold text-muted-foreground">المراجعة</th>
+                      </tr>
+                    </thead>
+                    <tbody>{archivedRecords.map(record => {
+                      const recCircle = (allCircles as any[]).find((c: any) => c.id === (record as any).circleId);
+                      return <tr key={record.id} className="border-b border-border/50 opacity-70">
+                        <td className="py-2.5 px-4 text-xs">{record.date}</td>
+                        <td className="py-2.5 px-4 text-xs text-muted-foreground">{recCircle?.name ?? "—"}</td>
+                        <td className="py-2.5 px-4 text-teal-600 font-semibold">{formatPages(record.memorizePages)}</td>
+                        <td className="py-2.5 px-4 text-blue-600 font-medium">{formatPages((record.reviewNearPages ?? 0) + (record.reviewFarPages ?? 0) + ((record as any).reviewPages ?? 0))}</td>
+                      </tr>;
+                    })}</tbody>
+                  </table>
+                </div>
+                <p className="px-4 py-3 text-xs text-muted-foreground">فترة سابقة مؤرشفة؛ لا تُحتسب في تقدمك الحالي ولا تعرض الغياب أو التقصير.</p>
+              </CardContent>}
             </Card>
           )}
 
@@ -451,7 +474,7 @@ export default function MyProgressPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-bold flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-primary" />
-                السجل الكامل
+                سجل الفصل الحالي
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
