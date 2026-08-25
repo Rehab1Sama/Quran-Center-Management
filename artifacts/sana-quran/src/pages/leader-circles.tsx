@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ChevronDown, ChevronUp, Users, Clock, Link2, Settings2, X,
   Check, Phone, Search, ArrowLeftRight, UserX, BookOpen,
-  Archive, PlaneTakeoff, ExternalLink,
+  Archive, PlaneTakeoff, ExternalLink, Pencil,
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
 
@@ -33,6 +33,7 @@ type EnrichedCircle = {
   supervisorName: string | null;
   supervisorPhone: string | null;
   students: Student[];
+  volunteers: { id: number; name: string; phone: string | null }[];
 };
 
 type AllCircleOption = { id: number; name: string; track: string };
@@ -174,7 +175,7 @@ export default function LeaderCirclesPage() {
   const [expandedCircles, setExpandedCircles] = useState<Set<number>>(new Set());
 
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editData, setEditData] = useState({ meetingTime: "", whatsappLink: "", newStudentCapacity: "" });
+  const [editData, setEditData] = useState({ name: "", meetingTime: "", whatsappLink: "", newStudentCapacity: "" });
   const [saving, setSaving] = useState(false);
 
   const [leaveModal, setLeaveModal] = useState<{ studentId: number; studentName: string; circleId: number } | null>(null);
@@ -184,19 +185,20 @@ export default function LeaderCirclesPage() {
   const [leaveSaving, setLeaveSaving] = useState(false);
 
   const [transferModal, setTransferModal] = useState<{
-    type: "teacher" | "supervisor" | "student";
+    type: "teacher" | "supervisor" | "student" | "volunteer";
     circleId: number;
     label: string;
     studentId?: number;
     studentName?: string;
+    userId?: number;
   } | null>(null);
   const [transferLoading, setTransferLoading] = useState(false);
 
   const token = getToken();
   const headers = useCallback(() => ({ "Content-Type": "application/json", Authorization: `Bearer ${token}` }), [token]);
 
-  const handleArchiveStudent = async (studentId: number, studentName: string, circleId: number) => {
-    navigate(`/students/${studentId}?archive=1&circleId=${circleId}`);
+  const handleArchiveStudent = async (studentId: number, _studentName: string, circleId: number) => {
+    navigate(`/students/${studentId}?archive=1&circleId=${circleId}&returnTo=/leader-circles`);
   };
 
   const handleSetLeave = async () => {
@@ -258,6 +260,7 @@ export default function LeaderCirclesPage() {
   const startEdit = (c: EnrichedCircle) => {
     setEditingId(c.id);
     setEditData({
+      name: c.name,
       meetingTime: c.meetingTime ?? "",
       whatsappLink: c.whatsappLink ?? "",
       newStudentCapacity: c.newStudentCapacity?.toString() ?? "",
@@ -267,7 +270,12 @@ export default function LeaderCirclesPage() {
   const saveEdit = async (id: number) => {
     setSaving(true);
     try {
+      if (!editData.name.trim()) {
+        toast({ title: "اكتبي اسم الحلقة", variant: "destructive" });
+        return;
+      }
       const body: Record<string, unknown> = {
+        name: editData.name.trim(),
         meetingTime: editData.meetingTime || null,
         whatsappLink: editData.whatsappLink || null,
       };
@@ -300,23 +308,25 @@ export default function LeaderCirclesPage() {
         });
         if (!res.ok) throw new Error();
         toast({ title: "تم نقل الطالبة بنجاح" });
-      } else {
-        const field = transferModal.type === "teacher" ? "teacherId" : "supervisorId";
-        const res = await fetch(`${BASE}/api/circles/${transferModal.circleId}`, {
+      } else if (transferModal.type === "volunteer" && transferModal.userId != null) {
+        const res = await fetch(`${BASE}/api/users/${transferModal.userId}`, {
           method: "PATCH",
           headers: headers(),
-          body: JSON.stringify({ [field]: null }),
+          body: JSON.stringify({ circleId: targetCircleId }),
         });
         if (!res.ok) throw new Error();
-        const res2 = await fetch(`${BASE}/api/circles/${targetCircleId}`, {
-          method: "PATCH",
+        toast({ title: "تم نقل المتطوعة بنجاح" });
+      } else if (transferModal.type === "teacher" || transferModal.type === "supervisor") {
+        const res = await fetch(`${BASE}/api/circles/${transferModal.circleId}/remove-staff`, {
+          method: "POST",
           headers: headers(),
-          body: JSON.stringify({ [field]: transferModal.type === "teacher"
-            ? circles.find(c => c.id === transferModal.circleId)?.teacherId
-            : circles.find(c => c.id === transferModal.circleId)?.supervisorId
+          body: JSON.stringify({
+            staffRole: transferModal.type,
+            action: "transfer",
+            targetCircleId,
           }),
         });
-        if (!res2.ok) throw new Error();
+        if (!res.ok) throw new Error();
         toast({ title: `تم نقل ${transferModal.type === "teacher" ? "المعلمة" : "المشرفة"} بنجاح` });
       }
       setTransferModal(null);
@@ -328,19 +338,31 @@ export default function LeaderCirclesPage() {
     }
   };
 
-  const removeFromCircle = async (circleId: number, type: "teacher" | "supervisor") => {
+  const archiveStaffFromCircle = async (circleId: number, type: "teacher" | "supervisor") => {
     if (!confirm(`هل تريدين إزالة ${type === "teacher" ? "المعلمة" : "المشرفة"} من الحلقة؟`)) return;
     try {
-      const res = await fetch(`${BASE}/api/circles/${circleId}`, {
-        method: "PATCH",
+      const res = await fetch(`${BASE}/api/circles/${circleId}/remove-staff`, {
+        method: "POST",
         headers: headers(),
-        body: JSON.stringify({ [type === "teacher" ? "teacherId" : "supervisorId"]: null }),
+        body: JSON.stringify({ staffRole: type, action: "archive" }),
       });
       if (!res.ok) throw new Error();
       toast({ title: "تم الإزالة بنجاح" });
       await load();
     } catch {
       toast({ title: "فشلت الإزالة", variant: "destructive" });
+    }
+  };
+
+  const archiveVolunteer = async (userId: number, name: string) => {
+    if (!confirm(`هل تريدين أرشفة المتطوعة ${name}؟`)) return;
+    try {
+      const res = await fetch(`${BASE}/api/users/${userId}`, { method: "DELETE", headers: headers() });
+      if (!res.ok) throw new Error();
+      toast({ title: "تمت أرشفة المتطوعة" });
+      await load();
+    } catch {
+      toast({ title: "فشلت أرشفة المتطوعة", variant: "destructive" });
     }
   };
 
@@ -435,7 +457,10 @@ export default function LeaderCirclesPage() {
                           <div key={circle.id} className="p-4">
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1 min-w-0">
-                                <h3 className="font-bold text-base">{circle.name}</h3>
+                                <h3 className="font-bold text-base flex items-center gap-1">
+                                  {circle.name}
+                                  <Pencil className="w-3 h-3 text-muted-foreground/50" />
+                                </h3>
                                 <div className="flex flex-wrap gap-3 mt-1 text-xs text-muted-foreground">
                                   {circle.meetingTime && <span className="flex items-center gap-1 text-blue-700"><Clock className="w-3 h-3" />{circle.meetingTime}</span>}
                                   <span className="text-muted-foreground">{circle.track}</span>
@@ -569,6 +594,15 @@ export default function LeaderCirclesPage() {
                             {isEditing && (
                               <div className="mt-3 pt-3 border-t border-border/50 space-y-3">
                                 <div className="space-y-1">
+                                  <Label className="text-xs font-semibold text-muted-foreground">اسم الحلقة</Label>
+                                  <Input
+                                    value={editData.name}
+                                    onChange={e => setEditData(d => ({ ...d, name: e.target.value }))}
+                                    placeholder="اسم الحلقة"
+                                    className="h-8 text-xs text-right"
+                                  />
+                                </div>
+                                <div className="space-y-1">
                                   <Label className="text-xs font-semibold text-muted-foreground">وقت الاجتماع</Label>
                                   <input
                                     type="time"
@@ -620,7 +654,7 @@ export default function LeaderCirclesPage() {
                                       </a>
                                     )}
                                   </div>
-                                  {isLeader && (
+                                  {canManage && (
                                     <div className="flex items-center gap-1">
                                       <button
                                         onClick={() => setTransferModal({ type: "teacher", circleId: circle.id, label: `نقل المعلمة: ${circle.teacherName}` })}
@@ -629,7 +663,7 @@ export default function LeaderCirclesPage() {
                                         <ArrowLeftRight className="w-3 h-3" />
                                       </button>
                                       <button
-                                        onClick={() => removeFromCircle(circle.id, "teacher")}
+                                        onClick={() => archiveStaffFromCircle(circle.id, "teacher")}
                                         className="p-1 rounded bg-rose-50 text-rose-600 hover:bg-rose-100" title="إزالة من الحلقة"
                                       >
                                         <UserX className="w-3 h-3" />
@@ -657,7 +691,7 @@ export default function LeaderCirclesPage() {
                                       </a>
                                     )}
                                   </div>
-                                  {isLeader && (
+                                  {canManage && (
                                     <div className="flex items-center gap-1">
                                       <button
                                         onClick={() => setTransferModal({ type: "supervisor", circleId: circle.id, label: `نقل المشرفة: ${circle.supervisorName}` })}
@@ -666,7 +700,7 @@ export default function LeaderCirclesPage() {
                                         <ArrowLeftRight className="w-3 h-3" />
                                       </button>
                                       <button
-                                        onClick={() => removeFromCircle(circle.id, "supervisor")}
+                                        onClick={() => archiveStaffFromCircle(circle.id, "supervisor")}
                                         className="p-1 rounded bg-rose-50 text-rose-600 hover:bg-rose-100"
                                       >
                                         <UserX className="w-3 h-3" />
@@ -676,6 +710,47 @@ export default function LeaderCirclesPage() {
                                 </div>
                               ) : (
                                 <p className="text-xs text-muted-foreground">لا توجد مشرفة معيّنة</p>
+                              )}
+                            </div>
+
+                            {/* Volunteers */}
+                            <div className="mt-2 rounded-xl bg-violet-50/60 border border-violet-100 p-3">
+                              <p className="text-xs font-semibold text-violet-800 mb-1.5">المتطوعات ({circle.volunteers.length})</p>
+                              {circle.volunteers.length === 0 ? (
+                                <p className="text-xs text-muted-foreground">لا توجد متطوعات مسندات لهذه الحلقة</p>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {circle.volunteers.map(volunteer => (
+                                    <div key={volunteer.id} className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium">{volunteer.name}</span>
+                                        {volunteer.phone && (
+                                          <a href={whatsappHref(volunteer.phone) ?? `tel:${volunteer.phone}`} target="_blank" rel="noopener noreferrer" className="p-1 rounded bg-green-50 text-green-600 hover:bg-green-100">
+                                            <Phone className="w-3 h-3" />
+                                          </a>
+                                        )}
+                                      </div>
+                                      {canManage && (
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            onClick={() => setTransferModal({ type: "volunteer", circleId: circle.id, label: `نقل المتطوعة: ${volunteer.name}`, studentName: volunteer.name, userId: volunteer.id })}
+                                            className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
+                                            title="نقل لحلقة أخرى"
+                                          >
+                                            <ArrowLeftRight className="w-3 h-3" />
+                                          </button>
+                                          <button
+                                            onClick={() => archiveVolunteer(volunteer.id, volunteer.name)}
+                                            className="p-1 rounded bg-rose-50 text-rose-600 hover:bg-rose-100"
+                                            title="أرشفة المتطوعة"
+                                          >
+                                            <Archive className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
                               )}
                             </div>
 

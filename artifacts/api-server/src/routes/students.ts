@@ -328,6 +328,21 @@ router.patch("/students/:id", authenticate, async (req, res): Promise<void> => {
     if (allowed.length === 0) { res.status(403).json({ error: "الطالبة خارج نطاق المسار" }); return; }
   }
 
+  if (parsed.data.circleId !== undefined) {
+    const [targetCircle] = await db
+      .select({ id: circlesTable.id, track: circlesTable.track, isArchived: circlesTable.isArchived })
+      .from(circlesTable)
+      .where(eq(circlesTable.id, parsed.data.circleId));
+    if (!targetCircle || targetCircle.isArchived) {
+      res.status(400).json({ error: "الحلقة الهدف غير متاحة" });
+      return;
+    }
+    if (req.userRole === "track_supervisor" && targetCircle.track !== req.userTrack) {
+      res.status(403).json({ error: "لا يمكن النقل إلى حلقة خارج المسار" });
+      return;
+    }
+  }
+
   const studentUpdate = { ...parsed.data };
   // A transfer from a non-primary membership must not overwrite the legacy
   // primary circle pointer used by the other account/enrollment.

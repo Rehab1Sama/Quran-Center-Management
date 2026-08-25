@@ -277,16 +277,27 @@ router.patch("/users/:id", authenticate, async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  if (req.userRole === "track_supervisor" && parsed.data.circleId !== undefined && parsed.data.circleId !== null) {
-    const [targetCircle] = await db.select({ track: circlesTable.track })
+  let targetCircleTrack: string | null = null;
+  if (parsed.data.circleId !== undefined && parsed.data.circleId !== null) {
+    const [targetCircle] = await db.select({ track: circlesTable.track, isArchived: circlesTable.isArchived })
       .from(circlesTable)
       .where(eq(circlesTable.id, parsed.data.circleId));
-    if (!targetCircle || targetCircle.track !== req.userTrack) {
+    if (!targetCircle || targetCircle.isArchived) {
+      res.status(400).json({ error: "الحلقة الهدف غير متاحة" });
+      return;
+    }
+    targetCircleTrack = targetCircle.track;
+    if (req.userRole === "track_supervisor" && targetCircle.track !== req.userTrack) {
       res.status(403).json({ error: "الحلقة خارج نطاق المسار" });
       return;
     }
   }
-  const [user] = await db.update(usersTable).set(parsed.data).where(eq(usersTable.id, id)).returning();
+  const updateData = { ...parsed.data };
+  // نقل المتطوعة بين الحلقات يجعل مسار حسابها تابعًا للحلقة الهدف تلقائيًا.
+  if (existingUser.role === "volunteer" && targetCircleTrack) {
+    updateData.track = targetCircleTrack;
+  }
+  const [user] = await db.update(usersTable).set(updateData).where(eq(usersTable.id, id)).returning();
   if (!user) {
     res.status(404).json({ error: "User not found" });
     return;

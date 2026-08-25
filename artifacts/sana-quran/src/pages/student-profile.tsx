@@ -324,6 +324,10 @@ export default function StudentProfilePage({ id }: { id: number }) {
             queryClient.invalidateQueries({ queryKey: ["circles"] });
             setArchiveRequest(null);
             invalidate();
+            const returnTo = new URLSearchParams(location.split("?")[1] ?? "").get("returnTo");
+            if (returnTo === "/leader-circles" || returnTo === "/circles") {
+              navigate(returnTo);
+            }
           }
         },
         onError: (error: any) => toast({

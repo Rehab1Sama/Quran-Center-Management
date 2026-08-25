@@ -81,9 +81,20 @@ router.get("/circles/enriched", authenticate, async (req, res): Promise<void> =>
   const allUsers = await db.select({
     id: usersTable.id, name: usersTable.name, phone: usersTable.phone,
     email: usersTable.email, role: usersTable.role, circleId: usersTable.circleId,
+    isArchived: usersTable.isArchived,
   }).from(usersTable);
   const userMap: Record<number, { name: string; phone: string | null }> = {};
   allUsers.forEach(u => { userMap[u.id] = { name: u.name, phone: u.phone }; });
+  const volunteersByCircle: Record<number, { id: number; name: string; phone: string | null }[]> = {};
+  for (const user of allUsers) {
+    if (user.role === "volunteer" && user.circleId != null && !user.isArchived) {
+      if (!volunteersByCircle[user.circleId]) volunteersByCircle[user.circleId] = [];
+      volunteersByCircle[user.circleId].push({ id: user.id, name: user.name, phone: user.phone });
+    }
+  }
+  Object.values(volunteersByCircle).forEach(volunteers =>
+    volunteers.sort((a, b) => a.name.localeCompare(b.name, "ar", { sensitivity: "base" })),
+  );
 
   // بناء خريطة إيميل الطالبات: مفتاح = الاسم الكامل + circleId
   const studentEmailMap: Record<string, string> = {};
@@ -123,6 +134,7 @@ router.get("/circles/enriched", authenticate, async (req, res): Promise<void> =>
     supervisorName: c.supervisorId ? (userMap[c.supervisorId]?.name ?? null) : null,
     supervisorPhone: c.supervisorId ? (userMap[c.supervisorId]?.phone ?? null) : null,
     students: studentsByCircle[c.id] ?? [],
+    volunteers: volunteersByCircle[c.id] ?? [],
   }));
 
   res.json(enriched);
@@ -130,11 +142,14 @@ router.get("/circles/enriched", authenticate, async (req, res): Promise<void> =>
 
 // Returns minimal circle info (id, name, track) for ALL circles regardless of role — used for transfer selections
 router.get("/circles/names", authenticate, async (req, res): Promise<void> => {
-  const circles = await db.select({
+  let circles = await db.select({
     id: circlesTable.id,
     name: circlesTable.name,
     track: circlesTable.track,
   }).from(circlesTable).where(eq(circlesTable.isArchived, false));
+  if (req.userRole === "track_supervisor") {
+    circles = circles.filter(circle => circle.track === req.userTrack);
+  }
   res.json(circles);
 });
 
