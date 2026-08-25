@@ -35,7 +35,21 @@ function StatCard({
   );
 }
 
-function PeriodFilter({ periodDays, setPeriodDays }: { periodDays: number; setPeriodDays: (v: number) => void }) {
+function PeriodFilter({
+  periodDays,
+  setPeriodDays,
+  customFrom,
+  customTo,
+  setCustomFrom,
+  setCustomTo,
+}: {
+  periodDays: number;
+  setPeriodDays: (v: number) => void;
+  customFrom: string;
+  customTo: string;
+  setCustomFrom: (v: string) => void;
+  setCustomTo: (v: string) => void;
+}) {
   return (
     <Card className="border-0 shadow-sm" data-testid="card-date-range">
       <CardHeader className="pb-2">
@@ -60,6 +74,29 @@ function PeriodFilter({ periodDays, setPeriodDays }: { periodDays: number; setPe
               {opt.label}
             </button>
           ))}
+        </div>
+        <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-border/50 pt-3">
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">من تاريخ</label>
+            <Input
+              type="date"
+              value={customFrom}
+              onChange={e => { setCustomFrom(e.target.value); setPeriodDays(0); }}
+              className="h-9 w-[150px]"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">إلى تاريخ</label>
+            <Input
+              type="date"
+              value={customTo}
+              onChange={e => { setCustomTo(e.target.value); setPeriodDays(0); }}
+              className="h-9 w-[150px]"
+            />
+          </div>
+          {periodDays === 0 && (!customFrom || !customTo) && (
+            <span className="pb-2 text-xs text-amber-600">اختاري تاريخ البداية والنهاية</span>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -839,10 +876,16 @@ const PERIOD_OPTIONS = [
 export default function StatisticsPage() {
   const { data: user } = useGetCurrentUser({ query: { queryKey: ["getCurrentUser"] } });
   const [periodDays, setPeriodDays] = useState(365);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
   const today = new Date().toISOString().slice(0, 10);
   const fromDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const dateParams = { dateFrom: fromDate, dateTo: today };
+  const hasCustomRange = periodDays === 0 && customFrom && customTo && customFrom <= customTo;
+  const dateParams = {
+    dateFrom: hasCustomRange ? customFrom : fromDate,
+    dateTo: hasCustomRange ? customTo : today,
+  };
 
   const { data: summary } = useGetStatsSummary(dateParams, {
     query: { queryKey: ["statsSummary", dateParams] }
@@ -878,7 +921,14 @@ export default function StatisticsPage() {
         <StudentStats userId={user.id} />
       ) : (
         <>
-          <PeriodFilter periodDays={periodDays} setPeriodDays={setPeriodDays} />
+          <PeriodFilter
+            periodDays={periodDays}
+            setPeriodDays={setPeriodDays}
+            customFrom={customFrom}
+            customTo={customTo}
+            setCustomFrom={setCustomFrom}
+            setCustomTo={setCustomTo}
+          />
           {role === "leader" && <ArchivePeriodSettings />}
 
           {summary && circleStats !== undefined ? (
